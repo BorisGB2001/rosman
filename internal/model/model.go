@@ -44,6 +44,9 @@ type Device struct {
 	SiteID        *int64     // location
 	SiteName      string     // joined for display
 	Tags          []string   // grouping tags (filled on demand)
+	SNMPEnabled   bool
+	SNMPCommEnc   string // encrypted community
+	SNMPPort      int
 }
 
 // FwJob is a firmware upgrade run.

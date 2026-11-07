@@ -62,6 +62,11 @@ func runPoll(a *app.App) {
 		if err := a.PollDevice(d); err != nil {
 			log.Printf("poll %s (%s): %v", d.Name, d.IP, err)
 		}
+		if d.SNMPEnabled {
+			if err := a.SNMPPollDevice(d); err != nil {
+				log.Printf("snmp %s (%s): %v", d.Name, d.IP, err)
+			}
+		}
 	})
 }
 

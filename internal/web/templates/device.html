@@ -40,6 +40,19 @@
   </div>
   {{if .HasTemp}}<div style="margin-top:10px"><div class="muted small">{{t "dev.temp"}} — {{printf "%.0f" .H.Temp}}°C</div>{{.TempGraph}}</div>{{end}}
 </div>
+{{if canWrite .User}}
+<div class="card narrow">
+  <h3>SNMP {{if .D.SNMPEnabled}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</h3>
+  <form class="inline" method="post" action="/devices/{{.D.ID}}/snmp" style="gap:8px;flex-wrap:wrap">
+    <label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="snmp_enabled" {{if .D.SNMPEnabled}}checked{{end}}> {{t "dev.snmp_enable"}}</label>
+    <input name="snmp_community" placeholder="community{{if .D.SNMPCommEnc}} ({{t "set.secret_keep"}}){{end}}">
+    <input name="snmp_port" value="{{if .D.SNMPPort}}{{.D.SNMPPort}}{{else}}161{{end}}" style="width:70px" title="port">
+    <button class="btn sm" type="submit">{{t "dev.snmp_save"}}</button>
+  </form>
+  <form class="inline" method="post" action="/devices/{{.D.ID}}/snmppoll" style="margin-top:8px"><button class="btn sm primary" type="submit">{{t "dev.snmp_poll"}}</button></form>
+  <p class="muted small">{{t "dev.snmp_note"}}</p>
+</div>
+{{end}}
 <div class="card">
   <h3>{{t "dev.configs"}} <span class="badge">export</span></h3>
   <div class="scroll"><table>

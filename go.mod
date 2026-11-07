@@ -4,6 +4,7 @@ go 1.27
 
 require (
 	github.com/go-routeros/routeros/v3 v3.0.1
+	github.com/gosnmp/gosnmp v1.47.0
 	github.com/pkg/sftp v1.13.12
 	golang.org/x/crypto v0.58.0
 	modernc.org/sqlite v1.62.0

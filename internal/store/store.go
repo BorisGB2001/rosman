@@ -41,6 +41,9 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE devices ADD COLUMN fw_status TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN site_id INTEGER`,
 		`ALTER TABLE metrics ADD COLUMN temp REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE devices ADD COLUMN snmp_enabled INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE devices ADD COLUMN snmp_community_enc TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE devices ADD COLUMN snmp_port INTEGER NOT NULL DEFAULT 161`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -137,10 +140,13 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	var tls int
 	var last, exp sql.NullTime
 	var site sql.NullInt64
+	var snmpEn int
 	err := row.Scan(&d.ID, &d.Name, &d.IP, &d.APIPort, &tls, &d.APIUser, &d.APIPassEnc,
 		&d.SSHUser, &d.APICertPin, &d.SSHHostPin, &d.Model, &d.Serial, &d.ROSVersion, &last, &d.CreatedAt,
-		&d.APISSLCert, &exp, &d.FwLatest, &d.FwChannel, &d.FwStatus, &site)
+		&d.APISSLCert, &exp, &d.FwLatest, &d.FwChannel, &d.FwStatus, &site,
+		&snmpEn, &d.SNMPCommEnc, &d.SNMPPort)
 	d.APITLS = tls != 0
+	d.SNMPEnabled = snmpEn != 0
 	if last.Valid {
 		d.LastSeen = &last.Time
 	}
@@ -153,7 +159,16 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	return d, err
 }
 
-const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id`
+const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id,snmp_enabled,snmp_community_enc,snmp_port`
+
+func (s *Store) SetDeviceSNMP(id int64, enabled bool, communityEnc string, port int) error {
+	if port == 0 {
+		port = 161
+	}
+	_, err := s.db.Exec(`UPDATE devices SET snmp_enabled=?, snmp_community_enc=COALESCE(NULLIF(?,''),snmp_community_enc), snmp_port=? WHERE id=?`,
+		b2i(enabled), communityEnc, port, id)
+	return err
+}
 
 func (s *Store) Device(id int64) (model.Device, error) {
 	d, err := scanDevice(s.db.QueryRow(`SELECT `+deviceCols+` FROM devices WHERE id=?`, id))

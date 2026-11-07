@@ -23,6 +23,7 @@ import (
 	"rosman/internal/pki"
 	"rosman/internal/ros"
 	"rosman/internal/secret"
+	"rosman/internal/snmp"
 	"rosman/internal/store"
 
 	"golang.org/x/crypto/ssh"
@@ -432,6 +433,43 @@ func (a *App) evalFirmware(d model.Device, installed, latest string) {
 		return
 	}
 	_, _ = a.Store.ResolveAlert(d.ID, rule)
+}
+
+// SNMPPollDevice collects an SNMP reading and stores it in the same metrics
+// table, so SNMP-sourced load flows into the device graphs.
+func (a *App) SNMPPollDevice(d model.Device) error {
+	community, _ := a.Box.Decrypt(d.SNMPCommEnc)
+	if community == "" {
+		if c := a.setting("snmp_community"); c != "" {
+			community = c
+		} else {
+			community = "public"
+		}
+	}
+	res, err := snmp.Poll(d.IP, community, d.SNMPPort, a.Cfg.APITimeout)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	free := res.MemTotal - res.MemUsed
+	if free < 0 {
+		free = 0
+	}
+	_ = a.Store.AddHealth(model.Health{DeviceID: d.ID, TS: now, CPU: res.CPU,
+		FreeMem: free, TotalMem: res.MemTotal, Uptime: res.Uptime, Temp: res.Temp})
+	return a.Store.UpdateInventory(d.ID, d.Model, d.Serial, d.ROSVersion, now)
+}
+
+// SaveSNMP stores a device's SNMP settings (community encrypted).
+func (a *App) SaveSNMP(id int64, enabled bool, community string, port int) error {
+	enc := ""
+	if community != "" {
+		var err error
+		if enc, err = a.Box.Encrypt(community); err != nil {
+			return err
+		}
+	}
+	return a.Store.SetDeviceSNMP(id, enabled, enc, port)
 }
 
 // evalDown raises/resolves the device_down alert and notifies on transitions.

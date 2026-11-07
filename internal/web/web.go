@@ -32,7 +32,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.11.0"
+const Version = "0.12.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -104,6 +104,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/fwcheck", s.authed(s.requireRole(model.RoleOperator, s.deviceFwCheck)))
 	mux.Handle("GET /configs/{id}", s.authed(s.configView))
 	mux.Handle("POST /devices/{id}/issuecert", s.authed(s.requireRole(model.RoleOperator, s.deviceIssueCert)))
+	mux.Handle("POST /devices/{id}/snmp", s.authed(s.requireRole(model.RoleOperator, s.deviceSNMPSave)))
+	mux.Handle("POST /devices/{id}/snmppoll", s.authed(s.requireRole(model.RoleOperator, s.deviceSNMPPoll)))
 	mux.Handle("GET /firmware", s.authed(s.firmwarePage))
 	mux.Handle("POST /firmware/upgrade", s.authed(s.requireRole(model.RoleOperator, s.firmwareUpgrade)))
 	mux.Handle("POST /devices/{id}/upgrade", s.authed(s.requireRole(model.RoleOperator, s.deviceUpgrade)))
@@ -795,6 +797,31 @@ func (s *Server) caImport(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "ca_import", "")
 	http.Redirect(w, r, "/ca?msg=imported", http.StatusSeeOther)
+}
+
+func (s *Server) deviceSNMPSave(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	port, _ := strconv.Atoi(r.FormValue("snmp_port"))
+	if err := s.a.SaveSNMP(id, r.FormValue("snmp_enabled") == "on", r.FormValue("snmp_community"), port); err != nil {
+		http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?msg=snmp-saved", http.StatusSeeOther)
+}
+
+func (s *Server) deviceSNMPPoll(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	dst := "/devices/" + r.PathValue("id")
+	if err := s.a.SNMPPollDevice(d); err != nil {
+		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, dst+"?msg=snmp-polled", http.StatusSeeOther)
 }
 
 func (s *Server) deviceIssueCert(w http.ResponseWriter, r *http.Request) {
