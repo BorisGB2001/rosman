@@ -497,6 +497,15 @@ func (a *App) evalFirmware(d model.Device, installed, latest string) {
 	_, _ = a.Store.ResolveAlert(d.ID, rule)
 }
 
+// DeviceServices reads DNS/DHCP/NTP from the device over the API (live).
+func (a *App) DeviceServices(d model.Device) (ros.ServiceInfo, error) {
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return ros.ServiceInfo{}, err
+	}
+	return ros.Services(d, pass, a.Cfg.APITimeout)
+}
+
 // SNMPPollDevice collects an SNMP reading and stores it in the same metrics
 // table, so SNMP-sourced load flows into the device graphs.
 func (a *App) SNMPPollDevice(d model.Device) error {

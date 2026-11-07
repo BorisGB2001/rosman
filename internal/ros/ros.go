@@ -224,6 +224,70 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 	return h, pin, nil
 }
 
+// ServiceInfo is a read-only snapshot of DNS/DHCP/NTP services.
+type ServiceInfo struct {
+	DNSServers string
+	DNSCache   string
+	DNSRecords []DNSRecord
+	DHCP       []DHCPServer
+	NTPEnabled bool
+	NTPServers string
+	NTPStatus  string
+}
+
+type DNSRecord struct{ Name, Type, Value string }
+type DHCPServer struct {
+	Name, Interface, Pool, LeaseTime string
+	Disabled                         bool
+}
+
+func firstNonEmpty(ss ...string) string {
+	for _, s := range ss {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// Services reads DNS, DHCP and NTP configuration over the API (read-only).
+func Services(d model.Device, pass string, timeout time.Duration) (ServiceInfo, error) {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return ServiceInfo{}, err
+	}
+	defer c.Close()
+	var si ServiceInfo
+	if r, e := c.Run("/ip/dns/print"); e == nil && len(r.Re) > 0 {
+		m := r.Re[0].Map
+		si.DNSServers = firstNonEmpty(m["servers"], m["dynamic-servers"])
+		si.DNSCache = m["cache-size"] + " (used " + m["cache-used"] + ")"
+	}
+	if r, e := c.Run("/ip/dns/static/print"); e == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			si.DNSRecords = append(si.DNSRecords, DNSRecord{
+				Name: m["name"], Type: firstNonEmpty(m["type"], "A"),
+				Value: firstNonEmpty(m["address"], m["cname"], m["text"], m["ns"], m["mx-exchange"], m["srv-target"])})
+		}
+	}
+	if r, e := c.Run("/ip/dhcp-server/print"); e == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			si.DHCP = append(si.DHCP, DHCPServer{
+				Name: m["name"], Interface: m["interface"], Pool: m["address-pool"],
+				LeaseTime: m["lease-time"], Disabled: m["disabled"] == "true"})
+		}
+	}
+	if r, e := c.Run("/system/ntp/client/print"); e == nil && len(r.Re) > 0 {
+		m := r.Re[0].Map
+		si.NTPEnabled = m["enabled"] == "true"
+		si.NTPServers = firstNonEmpty(m["servers"], m["primary-ntp"])
+		si.NTPStatus = m["status"]
+	}
+	return si, nil
+}
+
 // CheckUpdates forces the device to contact the upgrade server, then reads the
 // result. This is the normal RouterOS update check (read-only; installs nothing).
 func CheckUpdates(d model.Device, pass string, timeout time.Duration) (latest, channel, status string, err error) {
