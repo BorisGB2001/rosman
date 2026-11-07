@@ -28,6 +28,7 @@ import (
 	"rosman/internal/diff"
 	"rosman/internal/i18n"
 	"rosman/internal/model"
+	"rosman/internal/ros"
 	"rosman/internal/totp"
 
 	qrcode "github.com/skip2/go-qrcode"
@@ -42,7 +43,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.21.0"
+const Version = "0.22.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -128,6 +129,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /devices/{id}/services", s.authed(s.servicesPage))
 	mux.Handle("GET /devices/{id}/capsman", s.authed(s.capsmanPage))
 	mux.Handle("GET /devices/{id}/firewall", s.authed(s.firewallPage))
+	mux.Handle("GET /devices/{id}/tools", s.authed(s.toolsPage))
 	mux.Handle("POST /devices/{id}/firewall", s.authed(s.requireRole(model.RoleOperator, s.firewallApply)))
 	mux.Handle("GET /devices/{id}/diff", s.authed(s.diffPage))
 	mux.Handle("POST /configs/{id}/restore", s.authed(s.requireRole(model.RoleOperator, s.configRestore)))
@@ -859,6 +861,40 @@ func (s *Server) capsmanPage(w http.ResponseWriter, r *http.Request) {
 		data["C"] = ci
 	}
 	s.render(w, r, "capsman", data)
+}
+
+func (s *Server) toolsPage(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	addr := strings.TrimSpace(r.URL.Query().Get("addr"))
+	action := r.URL.Query().Get("action")
+	count, _ := strconv.Atoi(r.URL.Query().Get("count"))
+	if count == 0 {
+		count = 4
+	}
+	data := map[string]any{"Active": "devices", "D": d, "Addr": addr, "Action": action, "Count": count}
+	if addr != "" {
+		if !ros.ValidTarget(addr) {
+			data["Err"] = "invalid target"
+		} else if action == "trace" {
+			if hops, e := s.a.DeviceTraceroute(d, addr); e != nil {
+				data["Err"] = e.Error()
+			} else {
+				data["Trace"] = hops
+			}
+		} else {
+			if pr, e := s.a.DevicePing(d, addr, count); e != nil {
+				data["Err"] = e.Error()
+			} else {
+				data["Ping"] = pr
+			}
+		}
+	}
+	s.render(w, r, "tools", data)
 }
 
 func (s *Server) firewallPage(w http.ResponseWriter, r *http.Request) {

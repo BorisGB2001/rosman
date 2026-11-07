@@ -4,6 +4,7 @@
 package ros
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -13,6 +14,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -415,6 +417,122 @@ func Firewall(d model.Device, pass string, timeout time.Duration) (FirewallInfo,
 		}
 	}
 	return fi, nil
+}
+
+// hostRe limits ping/traceroute targets to plausible host/IP characters.
+var hostRe = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,120}$`)
+
+// ValidTarget reports whether addr is an acceptable ping/traceroute target.
+func ValidTarget(addr string) bool { return hostRe.MatchString(addr) }
+
+type PingRow struct{ Seq, Host, Size, TTL, Time, Status string }
+
+type PingReply struct {
+	Rows                 []PingRow
+	Sent, Received, Loss string
+	AvgRTT, MinRTT, MaxRTT string
+}
+
+// Ping runs an ICMP ping from the device to addr, count times. It terminates
+// when count is reached (bounded additionally by ctx timeout).
+func Ping(d model.Device, pass, addr string, count int, timeout time.Duration) (PingReply, error) {
+	if !ValidTarget(addr) {
+		return PingReply{}, fmt.Errorf("invalid target")
+	}
+	if count < 1 {
+		count = 4
+	} else if count > 10 {
+		count = 10
+	}
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return PingReply{}, err
+	}
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout+time.Duration(count+2)*time.Second)
+	defer cancel()
+	r, err := c.RunContext(ctx, "/ping", "=address="+addr, "=count="+strconv.Itoa(count))
+	if err != nil {
+		return PingReply{}, err
+	}
+	var pr PingReply
+	for _, re := range r.Re {
+		m := re.Map
+		st := m["status"]
+		pr.Rows = append(pr.Rows, PingRow{Seq: m["seq"], Host: firstNonEmpty(m["host"], addr),
+			Size: m["size"], TTL: m["ttl"], Time: m["time"], Status: st})
+		// Running totals appear on each !re; keep the latest.
+		pr.Sent = firstNonEmpty(m["sent"], pr.Sent)
+		pr.Received = firstNonEmpty(m["received"], pr.Received)
+		pr.Loss = firstNonEmpty(m["packet-loss"], pr.Loss)
+		pr.AvgRTT = firstNonEmpty(m["avg-rtt"], pr.AvgRTT)
+		pr.MinRTT = firstNonEmpty(m["min-rtt"], pr.MinRTT)
+		pr.MaxRTT = firstNonEmpty(m["max-rtt"], pr.MaxRTT)
+	}
+	return pr, nil
+}
+
+type TraceHop struct {
+	Num                                  int
+	Address, Loss, Sent, Last, Avg, Best, Worst, Status string
+}
+
+// Traceroute runs a single-round traceroute from the device to addr. RouterOS
+// streams hops continuously, so this collects the first round (stopping when
+// the target is reached, a bounded deadline, or a hop cap) and cancels.
+func Traceroute(d model.Device, pass, addr string, timeout time.Duration) ([]TraceHop, error) {
+	if !ValidTarget(addr) {
+		return nil, fmt.Errorf("invalid target")
+	}
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	l, err := c.ListenContext(ctx, "/tool/traceroute", "=address="+addr, "=count=1")
+	if err != nil {
+		return nil, err
+	}
+	defer l.Cancel()
+	deadline := time.After(8 * time.Second)
+	// RouterOS streams the whole hop list repeatedly (one !re per hop, per
+	// round). Keep only the latest round: a round restarts when the first
+	// hop's address reappears. This yields one clean path.
+	var round []TraceHop
+	firstAddr := ""
+loop:
+	for {
+		select {
+		case s, ok := <-l.Chan():
+			if !ok || s == nil {
+				break loop
+			}
+			m := s.Map
+			a := m["address"]
+			if len(round) > 0 && a != "" && a == firstAddr {
+				round = round[:0] // new round begins
+			}
+			if len(round) == 0 && a != "" {
+				firstAddr = a
+			}
+			round = append(round, TraceHop{Address: a, Loss: m["loss"],
+				Sent: m["sent"], Last: m["last"], Avg: m["avg"], Best: m["best"],
+				Worst: m["worst"], Status: m["status"]})
+			if a == addr || len(round) >= 40 {
+				break loop
+			}
+		case <-deadline:
+			break loop
+		case <-ctx.Done():
+			break loop
+		}
+	}
+	for i := range round {
+		round[i].Num = i + 1
+	}
+	return round, nil
 }
 
 // CheckUpdates forces the device to contact the upgrade server, then reads the

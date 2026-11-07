@@ -1,0 +1,51 @@
+{{define "tools"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "tool.title"}} — {{.D.Name}}</h1></div>
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+<div class="card">
+  <p class="muted small">{{t "tool.note"}}</p>
+  <form method="get" action="/devices/{{.D.ID}}/tools">
+    <div class="grid2">
+      <label>{{t "tool.target"}}<input name="addr" value="{{.Addr}}" placeholder="8.8.8.8 / example.com" required></label>
+      <label>{{t "tool.count"}}<input name="count" value="{{.Count}}" style="width:90px"></label>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn primary" type="submit" name="action" value="ping">Ping</button>
+      <button class="btn" type="submit" name="action" value="trace">Traceroute</button>
+    </div>
+  </form>
+</div>
+
+{{with .Ping}}
+<div class="card">
+  <h3>Ping — {{$.Addr}}</h3>
+  <p class="small">{{t "tool.sent"}}: {{.Sent}} · {{t "tool.recv"}}: {{.Received}} · {{t "tool.loss"}}: {{.Loss}}
+    {{if .AvgRTT}} · RTT {{.MinRTT}}/{{.AvgRTT}}/{{.MaxRTT}}{{end}}</p>
+  <div class="scroll"><table>
+    <thead><tr><th>#</th><th>{{t "tool.host"}}</th><th>{{t "tool.size"}}</th><th>TTL</th><th>{{t "tool.time"}}</th><th>{{t "sec.severity"}}</th></tr></thead>
+    <tbody>
+    {{range $i, $row := .Rows}}
+      <tr><td class="muted">{{$i}}</td><td class="mono">{{$row.Host}}</td><td>{{$row.Size}}</td><td>{{$row.TTL}}</td>
+        <td class="mono">{{if $row.Time}}{{$row.Time}}{{else}}<span class="badge bad">{{if $row.Status}}{{$row.Status}}{{else}}timeout{{end}}</span>{{end}}</td>
+        <td>{{if $row.Status}}<span class="badge">{{$row.Status}}</span>{{else}}<span class="badge good">ok</span>{{end}}</td></tr>
+    {{else}}<tr><td colspan="6" class="muted">—</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+{{end}}
+
+{{if .Trace}}
+<div class="card">
+  <h3>Traceroute — {{.Addr}}</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "tool.hop"}}</th><th>{{t "tool.address"}}</th><th>{{t "tool.loss"}}</th><th>{{t "tool.last"}}</th><th>{{t "tool.avg"}}</th><th>{{t "tool.best"}}</th><th>{{t "tool.worst"}}</th></tr></thead>
+    <tbody>
+    {{range .Trace}}
+      <tr><td class="muted">{{.Num}}</td><td class="mono">{{if .Address}}{{.Address}}{{else}}<span class="muted">* * *</span>{{end}}</td>
+        <td>{{.Loss}}</td><td class="mono">{{.Last}}</td><td class="mono">{{.Avg}}</td><td class="mono">{{.Best}}</td><td class="mono">{{.Worst}}</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
+{{end}}
+<p><a href="/devices/{{.D.ID}}">← {{t "dev.back"}}</a></p>
+{{template "tail" .}}{{end}}

@@ -522,6 +522,22 @@ func (a *App) DeviceFirewall(d model.Device) (ros.FirewallInfo, error) {
 	return ros.Firewall(d, pass, a.Cfg.APITimeout)
 }
 
+func (a *App) DevicePing(d model.Device, addr string, count int) (ros.PingReply, error) {
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return ros.PingReply{}, err
+	}
+	return ros.Ping(d, pass, addr, count, a.Cfg.APITimeout)
+}
+
+func (a *App) DeviceTraceroute(d model.Device, addr string) ([]ros.TraceHop, error) {
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return nil, err
+	}
+	return ros.Traceroute(d, pass, addr, a.Cfg.APITimeout)
+}
+
 // SNMPPollDevice collects an SNMP reading and stores it in the same metrics
 // table, so SNMP-sourced load flows into the device graphs.
 func (a *App) SNMPPollDevice(d model.Device) error {
