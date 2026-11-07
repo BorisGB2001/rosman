@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ROSMan</title>
-<link rel="icon" href="/static/favicon.svg">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="icon" sizes="any" href="/static/favicon.ico">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <aside class="side">
-  <div class="brand"><span class="logo">◆</span> ROSMan</div>
+  <a href="/" class="brand" title="Router Operation System Manager" style="display:inline-flex;align-items:center;padding:2px 6px"><img src="/static/logo.svg" height="26" alt="ROSMan"></a>
   <nav>
     <a href="/" class="{{if eq .Active "devices"}}on{{end}}">{{t "nav.devices"}}</a>
     <a href="/alerts" class="{{if eq .Active "alerts"}}on{{end}}">{{t "nav.alerts"}}{{if gt (alertCount) 0}} <span class="badge bad">{{alertCount}}</span>{{end}}</a>

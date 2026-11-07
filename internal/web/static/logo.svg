@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 32">
+  <!-- mark -->
+  <rect width="32" height="32" rx="7" fill="#0f1b33"/>
+  <path d="M10 22 L16 10.5 L22 22" fill="none" stroke="#3b82f6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="16" cy="10.5" r="3.1" fill="#22d3ee"/>
+  <circle cx="10" cy="22" r="2.7" fill="#3b82f6"/>
+  <circle cx="22" cy="22" r="2.7" fill="#3b82f6"/>
+  <!-- wordmark -->
+  <text x="42" y="22" font-family="-apple-system,Segoe UI,Roboto,Arial,sans-serif" font-size="19" font-weight="700" letter-spacing="0.3">
+    <tspan fill="#ffffff">ROS</tspan><tspan fill="#3b82f6">Man</tspan>
+  </text>
+</svg>
