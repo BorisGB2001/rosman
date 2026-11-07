@@ -70,6 +70,14 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_state ON alerts(state);
 
+-- Named RouterOS config snippets applied with change-guard.
+CREATE TABLE IF NOT EXISTS config_templates (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    body       TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Single-row CA store (id=1): the certificate authority ROSMan issues with.
 CREATE TABLE IF NOT EXISTS ca (
     id         INTEGER PRIMARY KEY CHECK (id = 1),

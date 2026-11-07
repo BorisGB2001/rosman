@@ -116,6 +116,60 @@ func (a *App) RefreshFirmware(d model.Device) error {
 	return nil
 }
 
+// ---- change-guard ----
+
+// ApplyResult is the outcome of applying a template to one device.
+type ApplyResult struct {
+	Device string
+	OK     bool
+	Detail string
+}
+
+// ApplyTemplate applies a script to one device under change-guard: it arms an
+// auto-rollback, applies, verifies the device is still reachable over the API,
+// and only then disarms. If verification fails the guard is left armed and the
+// device rolls itself back.
+func (a *App) ApplyTemplate(d model.Device, script string, guardSeconds int) error {
+	if a.signer == nil {
+		return fmt.Errorf("no SSH key configured (ROSMAN_SSH_KEY) — change-guard needs SSH")
+	}
+	if guardSeconds < 30 {
+		guardSeconds = 30
+	} else if guardSeconds > 3600 {
+		guardSeconds = 3600
+	}
+	base := fmt.Sprintf("rosman-guard-%d", time.Now().UnixNano())
+	if err := ros.ApplyWithGuard(d, a.signer, base, script, guardSeconds, a.Cfg.SSHTimeout+20*time.Second); err != nil {
+		return err
+	}
+	// Verify the device is still reachable over the API before disarming.
+	pass, derr := a.Box.Decrypt(d.APIPassEnc)
+	if derr != nil {
+		return derr
+	}
+	if _, err := ros.ServedFingerprint(d, pass, a.Cfg.APITimeout); err != nil {
+		return fmt.Errorf("применено, но устройство недоступно по API — автооткат сработает через %d с", guardSeconds)
+	}
+	if err := ros.DisarmGuard(d, a.signer, base, a.Cfg.SSHTimeout); err != nil {
+		return fmt.Errorf("применено и проверено, но не удалось снять страховку (%v) — откат через %d с; снимите планировщик %s вручную или примените снова", err, guardSeconds, base)
+	}
+	return nil
+}
+
+// ApplyTemplateAll applies a script to every device, sequentially, each guarded.
+func (a *App) ApplyTemplateAll(script string, guardSeconds int) []ApplyResult {
+	devs, _ := a.Store.Devices()
+	results := make([]ApplyResult, 0, len(devs))
+	for _, d := range devs {
+		r := ApplyResult{Device: d.Name, OK: true, Detail: "ok"}
+		if err := a.ApplyTemplate(d, script, guardSeconds); err != nil {
+			r.OK, r.Detail = false, err.Error()
+		}
+		results = append(results, r)
+	}
+	return results
+}
+
 // ---- PKI / api-ssl ----
 
 type CAInfo struct {

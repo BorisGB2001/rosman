@@ -289,6 +289,48 @@ func (s *Store) UpdateCertInfo(id int64, certName string, expiry *time.Time) err
 	return err
 }
 
+// ---- config templates ----
+
+func (s *Store) Templates() ([]model.Template, error) {
+	rows, err := s.db.Query(`SELECT id,name,body,created_at FROM config_templates ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Template
+	for rows.Next() {
+		var t model.Template
+		if err := rows.Scan(&t.ID, &t.Name, &t.Body, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) Template(id int64) (model.Template, error) {
+	var t model.Template
+	err := s.db.QueryRow(`SELECT id,name,body,created_at FROM config_templates WHERE id=?`, id).
+		Scan(&t.ID, &t.Name, &t.Body, &t.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return t, ErrNotFound
+	}
+	return t, err
+}
+
+func (s *Store) CreateTemplate(name, body string) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO config_templates(name,body) VALUES(?,?)`, name, body)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) DeleteTemplate(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM config_templates WHERE id=?`, id)
+	return err
+}
+
 func (s *Store) UpdateFirmware(id int64, latest, channel, status string) error {
 	_, err := s.db.Exec(`UPDATE devices SET fw_latest=?, fw_channel=?, fw_status=? WHERE id=?`, latest, channel, status, id)
 	return err

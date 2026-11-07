@@ -1,0 +1,44 @@
+{{define "templates"}}{{template "head" .}}
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+<div class="cardhead"><h1 style="margin:0">{{t "tpl.title"}}</h1></div>
+<p class="muted">{{t "tpl.guard_note"}}</p>
+
+{{if .Results}}
+<div class="card"><h3>{{t "tpl.results"}}</h3>
+<div class="scroll"><table><thead><tr><th>{{t "al.device"}}</th><th>{{t "al.state"}}</th><th>{{t "al.detail"}}</th></tr></thead><tbody>
+{{range .Results}}<tr><td>{{.Device}}</td><td>{{if .OK}}<span class="badge good">ok</span>{{else}}<span class="badge bad">fail</span>{{end}}</td><td class="muted">{{.Detail}}</td></tr>{{end}}
+</tbody></table></div></div>
+{{end}}
+
+<div class="card">
+  <h3>{{t "tpl.list"}}</h3>
+  {{range .Templates}}
+  <div class="card" style="background:var(--bg)">
+    <div class="cardhead">
+      <b>{{.Name}}</b>
+      <form class="inline" method="post" action="/templates/{{.ID}}/delete"><button class="btn sm danger" type="submit">{{t "tpl.delete"}}</button></form>
+    </div>
+    <pre class="http" style="max-height:160px">{{.Body}}</pre>
+    <form class="inline" method="post" action="/templates/{{.ID}}/apply" style="margin-top:8px;gap:8px;flex-wrap:wrap">
+      <select name="target">
+        <option value="all">{{t "tpl.all"}}</option>
+        {{range $.Devices}}<option value="{{.ID}}">{{.Name}} ({{.IP}})</option>{{end}}
+      </select>
+      <input name="guard" value="120" style="width:72px" title="{{t "tpl.guard"}}">
+      <span class="muted small">{{t "tpl.guard"}}</span>
+      <button class="btn sm primary" type="submit" onclick="return confirm('{{t "tpl.confirm"}}')">{{t "tpl.apply"}}</button>
+    </form>
+  </div>
+  {{else}}<p class="muted">{{t "tpl.empty"}}</p>{{end}}
+</div>
+
+<div class="card narrow">
+  <h3>{{t "tpl.new"}}</h3>
+  <form method="post" action="/templates/new" style="display:flex;flex-direction:column;gap:10px">
+    <label>{{t "tpl.name"}}<input name="name" required></label>
+    <label>{{t "tpl.body"}}<textarea name="body" class="code" rows="6" required placeholder="/system identity set name=..."></textarea></label>
+    <div><button class="btn primary" type="submit">{{t "tpl.create"}}</button></div>
+  </form>
+</div>
+{{template "tail" .}}{{end}}

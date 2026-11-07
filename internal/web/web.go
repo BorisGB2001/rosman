@@ -29,7 +29,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.4.0"
+const Version = "0.5.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -100,6 +100,10 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/issuecert", s.authed(s.requireRole(model.RoleOperator, s.deviceIssueCert)))
 	mux.Handle("GET /alerts", s.authed(s.alerts))
 	mux.Handle("GET /audit", s.authed(s.auditPage))
+	mux.Handle("GET /templates", s.authed(s.templatesPage))
+	mux.Handle("POST /templates/new", s.authed(s.requireRole(model.RoleOperator, s.templateCreate)))
+	mux.Handle("POST /templates/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.templateDelete)))
+	mux.Handle("POST /templates/{id}/apply", s.authed(s.requireRole(model.RoleOperator, s.templateApply)))
 	mux.Handle("GET /ca", s.authed(s.requireRole(model.RoleAdmin, s.caPage)))
 	mux.Handle("POST /ca/generate", s.authed(s.requireRole(model.RoleAdmin, s.caGenerate)))
 	mux.Handle("POST /ca/import", s.authed(s.requireRole(model.RoleAdmin, s.caImport)))
@@ -392,6 +396,70 @@ func (s *Server) alerts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) auditPage(w http.ResponseWriter, r *http.Request) {
 	rows, _ := s.a.Store.RecentAudit(200)
 	s.render(w, r, "audit", map[string]any{"Active": "audit", "Rows": rows})
+}
+
+func (s *Server) templatesPage(w http.ResponseWriter, r *http.Request) {
+	s.renderTemplates(w, r, nil, r.URL.Query().Get("msg"), r.URL.Query().Get("err"))
+}
+
+func (s *Server) renderTemplates(w http.ResponseWriter, r *http.Request, results []app.ApplyResult, msg, errMsg string) {
+	tpls, _ := s.a.Store.Templates()
+	devs, _ := s.a.Store.Devices()
+	s.render(w, r, "templates", map[string]any{"Active": "templates",
+		"Templates": tpls, "Devices": devs, "Results": results, "Msg": msg, "Err": errMsg})
+}
+
+func (s *Server) templateCreate(w http.ResponseWriter, r *http.Request) {
+	name := r.FormValue("name")
+	if name == "" || r.FormValue("body") == "" {
+		http.Redirect(w, r, "/templates?err=name+and+body+required", http.StatusSeeOther)
+		return
+	}
+	if _, err := s.a.Store.CreateTemplate(name, r.FormValue("body")); err != nil {
+		http.Redirect(w, r, "/templates?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "template_create", name)
+	http.Redirect(w, r, "/templates?msg=template-saved", http.StatusSeeOther)
+}
+
+func (s *Server) templateDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	_ = s.a.Store.DeleteTemplate(id)
+	http.Redirect(w, r, "/templates?msg=template-deleted", http.StatusSeeOther)
+}
+
+func (s *Server) templateApply(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	t, err := s.a.Store.Template(id)
+	if err != nil {
+		http.Error(w, "template not found", 404)
+		return
+	}
+	guard, _ := strconv.Atoi(r.FormValue("guard"))
+	if guard == 0 {
+		guard = 120
+	}
+	target := r.FormValue("target")
+	if target == "all" {
+		res := s.a.ApplyTemplateAll(t.Body, guard)
+		_ = s.a.Store.AddAudit(userFrom(r).Username, "template_apply_all", t.Name)
+		s.renderTemplates(w, r, res, "", "")
+		return
+	}
+	did, _ := strconv.ParseInt(target, 10, 64)
+	d, err := s.a.Store.Device(did)
+	if err != nil {
+		http.Redirect(w, r, "/templates?err=device+not+found", http.StatusSeeOther)
+		return
+	}
+	dst := "/devices/" + strconv.FormatInt(did, 10)
+	if err := s.a.ApplyTemplate(d, t.Body, guard); err != nil {
+		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "template_apply", t.Name+" -> "+d.Name)
+	http.Redirect(w, r, dst+"?msg=template-applied", http.StatusSeeOther)
 }
 
 func (s *Server) caPage(w http.ResponseWriter, r *http.Request) {

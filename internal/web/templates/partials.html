@@ -13,6 +13,7 @@
     <a href="/" class="{{if eq .Active "devices"}}on{{end}}">{{t "nav.devices"}}</a>
     <a href="/alerts" class="{{if eq .Active "alerts"}}on{{end}}">{{t "nav.alerts"}}{{if gt (alertCount) 0}} <span class="badge bad">{{alertCount}}</span>{{end}}</a>
     <a href="/audit" class="{{if eq .Active "audit"}}on{{end}}">{{t "nav.audit"}}</a>
+    {{if canWrite .User}}<a href="/templates" class="{{if eq .Active "templates"}}on{{end}}">{{t "nav.templates"}}</a>{{end}}
     {{if isAdmin .User}}<a href="/ca" class="{{if eq .Active "ca"}}on{{end}}">{{t "nav.ca"}}</a>{{end}}
     {{if canWrite .User}}<a href="/devices/new" class="{{if eq .Active "new"}}on{{end}}">{{t "nav.add"}}</a>{{end}}
   </nav>

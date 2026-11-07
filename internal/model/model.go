@@ -75,6 +75,14 @@ type Audit struct {
 	Detail string
 }
 
+// Template is a named RouterOS config snippet.
+type Template struct {
+	ID        int64
+	Name      string
+	Body      string
+	CreatedAt time.Time
+}
+
 // Config is one stored configuration snapshot.
 type Config struct {
 	ID       int64

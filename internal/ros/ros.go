@@ -233,6 +233,75 @@ func Export(d model.Device, signer ssh.Signer, timeout time.Duration) (text, hos
 	return out, seen, nil
 }
 
+// ApplyWithGuard applies a RouterOS script with an automatic rollback safety net:
+// it saves a binary backup, arms a scheduler that reloads that backup after
+// guardSeconds (which reboots and fully reverts), then runs the script. If the
+// change keeps the device reachable the caller disarms the guard; otherwise the
+// scheduler fires and the device rolls itself back. base is a unique name used
+// for the backup, scheduler and script file.
+func ApplyWithGuard(d model.Device, signer ssh.Signer, base, scriptBody string, guardSeconds int, timeout time.Duration) error {
+	client, _, err := dialSSH(d, signer, timeout)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	sc, err := sftp.NewClient(client)
+	if err != nil {
+		return fmt.Errorf("sftp: %w", err)
+	}
+	f, err := sc.Create(base + ".rsc")
+	if err != nil {
+		sc.Close()
+		return fmt.Errorf("upload script: %w", err)
+	}
+	if _, err := f.Write([]byte(scriptBody + "\n")); err != nil {
+		f.Close()
+		sc.Close()
+		return fmt.Errorf("write script: %w", err)
+	}
+	f.Close()
+	sc.Close()
+
+	if out, err := run(client, fmt.Sprintf("/system backup save name=%s", base)); err != nil {
+		return fmt.Errorf("backup save: %v (%s)", err, out)
+	}
+	if out, err := run(client, fmt.Sprintf(`/system scheduler add name=%s interval=%d on-event="/system backup load name=%s"`, base, guardSeconds, base)); err != nil {
+		return fmt.Errorf("arm guard: %v (%s)", err, out)
+	}
+	// Apply the change.
+	out, err := run(client, fmt.Sprintf("/import file-name=%s.rsc", base))
+	_, _ = run(client, fmt.Sprintf(`/file remove [find where name="%s.rsc"]`, base))
+	if err != nil || scriptFailed(out) {
+		return fmt.Errorf("apply failed (guard will roll back in %ds): %v %s", guardSeconds, err, out)
+	}
+	return nil
+}
+
+// DisarmGuard cancels the rollback safety net after a successful, verified apply.
+func DisarmGuard(d model.Device, signer ssh.Signer, base string, timeout time.Duration) error {
+	client, _, err := dialSSH(d, signer, timeout)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	if _, err := run(client, fmt.Sprintf(`/system scheduler remove [find where name="%s"]`, base)); err != nil {
+		return err
+	}
+	_, _ = run(client, fmt.Sprintf(`/file remove [find where name="%s.backup"]`, base))
+	return nil
+}
+
+func scriptFailed(out string) bool {
+	l := strings.ToLower(out)
+	for _, s := range []string{"syntax error", "failure:", "expected command name", "bad command name", "no such item"} {
+		if strings.Contains(l, s) {
+			return true
+		}
+	}
+	return false
+}
+
 // InstallServerCert uploads the CA + leaf certificate and key over SFTP, imports
 // them, binds the api-ssl service to the leaf (matched by fingerprint, so re-issues
 // are unambiguous) and cleans up the files. name is the cert name on the device.
