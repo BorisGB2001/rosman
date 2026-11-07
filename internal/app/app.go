@@ -490,7 +490,7 @@ func (a *App) evalFirmware(d model.Device, installed, latest string) {
 		_ = a.Store.RaiseAlert(d.ID, rule, "warn",
 			fmt.Sprintf("доступна RouterOS %s (установлена %s)", latest, cur))
 		if prev != "active" {
-			a.alertNotify("🟡 "+d.Name+": доступна прошивка "+latest, "установлена "+cur)
+			a.alertNotifyDev(d, "🟡 "+d.Name+": доступна прошивка "+latest, "установлена "+cur)
 		}
 		return
 	}
@@ -582,12 +582,12 @@ func (a *App) evalDown(d model.Device, down bool, detail string) {
 		prev, _ := a.Store.AlertState(d.ID, rule)
 		_ = a.Store.RaiseAlert(d.ID, rule, "crit", "недоступно по API: "+detail)
 		if prev != "active" {
-			a.alertNotify("🔴 "+d.Name+" недоступно", d.IP+": "+detail)
+			a.alertNotifyDev(d, "🔴 "+d.Name+" недоступно", d.IP+": "+detail)
 		}
 		return
 	}
 	if was, _ := a.Store.ResolveAlert(d.ID, rule); was {
-		a.alertNotify("🟢 "+d.Name+" снова доступно", d.IP)
+		a.alertNotifyDev(d, "🟢 "+d.Name+" снова доступно", d.IP)
 	}
 }
 
@@ -600,7 +600,7 @@ func (a *App) evalCert(d model.Device, expiry *time.Time) {
 		_ = a.Store.RaiseAlert(d.ID, rule, "warn",
 			fmt.Sprintf("api-ssl сертификат истекает %s (через %d дн.)", expiry.Format("2006-01-02"), days))
 		if prev != "active" {
-			a.alertNotify("🟡 "+d.Name+": истекает сертификат", expiry.Format("2006-01-02"))
+			a.alertNotifyDev(d, "🟡 "+d.Name+": истекает сертификат", expiry.Format("2006-01-02"))
 		}
 		return
 	}
@@ -745,6 +745,16 @@ func (a *App) smtp() notify.SMTP {
 }
 
 // alertNotify fans an alert out to env channels plus settings-configured Telegram and email.
+// alertNotifyDev sends a device alert notification unless the device is
+// currently inside a maintenance window, in which case alert state is still
+// recorded by the caller but no Telegram/email/webhook is sent.
+func (a *App) alertNotifyDev(d model.Device, subject, text string) {
+	if a.Store.InMaintenance(d.ID, time.Now()) {
+		return
+	}
+	a.alertNotify(subject, text)
+}
+
 func (a *App) alertNotify(subject, text string) {
 	a.Notify.Send(subject, text)
 	if tok, chat := a.setting("tg_token"), a.setting("tg_chat"); tok != "" && chat != "" {

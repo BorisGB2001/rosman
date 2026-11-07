@@ -191,3 +191,16 @@ CREATE TABLE IF NOT EXISTS api_tokens (
     last_used  TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id);
+
+-- Maintenance windows suppress alert notifications for a device (or the whole
+-- fleet when device_id IS NULL) between starts_at and ends_at.
+CREATE TABLE IF NOT EXISTS maintenance_windows (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id  INTEGER,
+    starts_at  TIMESTAMP NOT NULL,
+    ends_at    TIMESTAMP NOT NULL,
+    note       TEXT NOT NULL DEFAULT '',
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_maint_dev ON maintenance_windows(device_id);

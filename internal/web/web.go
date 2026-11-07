@@ -43,7 +43,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.22.0"
+const Version = "0.23.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -148,6 +148,9 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /clients", s.authed(s.clientsPage))
 	mux.Handle("GET /security", s.authed(s.securityPage))
 	mux.Handle("GET /devices/{id}/cve", s.authed(s.cvePage))
+	mux.Handle("GET /maintenance", s.authed(s.maintenancePage))
+	mux.Handle("POST /maintenance", s.authed(s.requireRole(model.RoleOperator, s.windowCreate)))
+	mux.Handle("POST /maintenance/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.windowDelete)))
 	mux.Handle("GET /account", s.authed(s.accountPage))
 	mux.Handle("POST /account/2fa/begin", s.authed(s.totpBegin))
 	mux.Handle("POST /account/2fa/enable", s.authed(s.totpEnable))
@@ -775,6 +778,7 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 		"CPUGraph":  graphSVG(cpu, 100, "var(--accent)"), "RAMGraph": graphSVG(ram, 100, "var(--warn)"),
 		"TempGraph": graphSVG(temp, 0, "var(--bad)"), "HasTemp": len(temp) > 0,
 		"HasSSH": s.a.HasSSHKey(), "Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
+		"InMaint": s.a.Store.InMaintenance(d.ID, time.Now()),
 	})
 }
 
@@ -895,6 +899,62 @@ func (s *Server) toolsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.render(w, r, "tools", data)
+}
+
+func (s *Server) maintenancePage(w http.ResponseWriter, r *http.Request) {
+	wins, _ := s.a.Store.Windows()
+	devs, _ := s.a.Store.Devices()
+	names := map[int64]string{}
+	for _, d := range devs {
+		names[d.ID] = d.Name
+	}
+	now := time.Now()
+	rows := make([]map[string]any, 0, len(wins))
+	for _, wn := range wins {
+		scope, fleet := "", true
+		if wn.DeviceID != nil {
+			fleet = false
+			if n, ok := names[*wn.DeviceID]; ok {
+				scope = n
+			} else {
+				scope = "#" + strconv.FormatInt(*wn.DeviceID, 10)
+			}
+		}
+		active := !now.Before(wn.StartsAt) && !now.After(wn.EndsAt)
+		rows = append(rows, map[string]any{"W": wn, "Scope": scope, "Fleet": fleet,
+			"Active": active, "Upcoming": now.Before(wn.StartsAt)})
+	}
+	s.render(w, r, "maintenance", map[string]any{"Active": "maintenance",
+		"Rows": rows, "Devices": devs, "Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
+}
+
+func (s *Server) windowCreate(w http.ResponseWriter, r *http.Request) {
+	const layout = "2006-01-02T15:04"
+	start, e1 := time.ParseInLocation(layout, r.FormValue("start"), time.Local)
+	end, e2 := time.ParseInLocation(layout, r.FormValue("end"), time.Local)
+	if e1 != nil || e2 != nil || !end.After(start) {
+		http.Redirect(w, r, "/maintenance?err=invalid+time+range", http.StatusSeeOther)
+		return
+	}
+	var dev *int64
+	if v := r.FormValue("device_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			dev = &id
+		}
+	}
+	if err := s.a.Store.CreateWindow(dev, start, end, strings.TrimSpace(r.FormValue("note")), userFrom(r).Username); err != nil {
+		http.Redirect(w, r, "/maintenance?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "maintenance_add", r.FormValue("note"))
+	http.Redirect(w, r, "/maintenance?msg=window-added", http.StatusSeeOther)
+}
+
+func (s *Server) windowDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	_ = s.a.Store.DeleteWindow(id)
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "maintenance_delete", r.PathValue("id"))
+	http.Redirect(w, r, "/maintenance?msg=window-removed", http.StatusSeeOther)
 }
 
 func (s *Server) firewallPage(w http.ResponseWriter, r *http.Request) {

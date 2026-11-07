@@ -98,6 +98,46 @@ func (s *Store) SetTOTP(userID int64, secretEnc string, enabled bool) error {
 	return err
 }
 
+// ---- maintenance windows ----
+
+func (s *Store) CreateWindow(deviceID *int64, start, end time.Time, note, by string) error {
+	_, err := s.db.Exec(`INSERT INTO maintenance_windows(device_id,starts_at,ends_at,note,created_by) VALUES(?,?,?,?,?)`,
+		deviceID, start, end, note, by)
+	return err
+}
+
+func (s *Store) Windows() ([]model.MaintenanceWindow, error) {
+	rows, err := s.db.Query(`SELECT id,device_id,starts_at,ends_at,note,created_by,created_at FROM maintenance_windows ORDER BY starts_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.MaintenanceWindow
+	for rows.Next() {
+		var m model.MaintenanceWindow
+		if err := rows.Scan(&m.ID, &m.DeviceID, &m.StartsAt, &m.EndsAt, &m.Note, &m.CreatedBy, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteWindow(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM maintenance_windows WHERE id=?`, id)
+	return err
+}
+
+// InMaintenance reports whether a device is covered by an active window now
+// (either a device-specific window or a fleet-wide one with device_id NULL).
+func (s *Store) InMaintenance(deviceID int64, now time.Time) bool {
+	var one int
+	err := s.db.QueryRow(`SELECT 1 FROM maintenance_windows
+		WHERE (device_id IS NULL OR device_id=?) AND starts_at<=? AND ends_at>=? LIMIT 1`,
+		deviceID, now, now).Scan(&one)
+	return err == nil
+}
+
 // ---- API tokens ----
 
 func (s *Store) CreateToken(userID int64, name, hash string) (int64, error) {

@@ -1,0 +1,42 @@
+{{define "maintenance"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "maint.title"}}</h1></div>
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+<div class="card">
+  <p class="muted small">{{t "maint.note"}}</p>
+  {{if canWrite .User}}
+  <form method="post" action="/maintenance">
+    <div class="grid2">
+      <label>{{t "maint.scope"}}
+        <select name="device_id">
+          <option value="">{{t "maint.fleet"}}</option>
+          {{range .Devices}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select></label>
+      <label>{{t "maint.note_f"}}<input name="note" placeholder="{{t "maint.note_ph"}}" maxlength="120"></label>
+      <label>{{t "maint.start"}}<input type="datetime-local" name="start" required></label>
+      <label>{{t "maint.end"}}<input type="datetime-local" name="end" required></label>
+    </div>
+    <div style="margin-top:10px"><button class="btn primary" type="submit">{{t "maint.add"}}</button></div>
+  </form>
+  {{end}}
+</div>
+<div class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "maint.scope"}}</th><th>{{t "maint.start"}}</th><th>{{t "maint.end"}}</th><th>{{t "maint.note_f"}}</th><th>{{t "al.state"}}</th><th></th></tr></thead>
+    <tbody>
+    {{range .Rows}}
+      <tr>
+        <td>{{if .Fleet}}<span class="badge">{{t "maint.fleet"}}</span>{{else}}{{.Scope}}{{end}}</td>
+        <td class="mono">{{ts .W.StartsAt}}</td>
+        <td class="mono">{{ts .W.EndsAt}}</td>
+        <td class="muted">{{.W.Note}}</td>
+        <td>{{if .Active}}<span class="badge good">{{t "maint.active"}}</span>{{else if .Upcoming}}<span class="badge">{{t "maint.upcoming"}}</span>{{else}}<span class="badge" style="opacity:.6">{{t "maint.past"}}</span>{{end}}</td>
+        <td>{{if canWrite $.User}}<form class="inline" method="post" action="/maintenance/{{.W.ID}}/delete"><button class="link" type="submit" onclick="return confirm('{{t "maint.del_confirm"}}')">{{t "site.delete"}}</button></form>{{end}}</td>
+      </tr>
+    {{else}}
+      <tr><td colspan="6" class="muted">{{t "maint.none"}}</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
+{{template "tail" .}}{{end}}

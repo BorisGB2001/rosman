@@ -21,6 +21,18 @@ type User struct {
 	TOTPEnabled   bool
 }
 
+// MaintenanceWindow suppresses alert notifications for a device (or the whole
+// fleet when DeviceID is nil) during [StartsAt, EndsAt].
+type MaintenanceWindow struct {
+	ID        int64
+	DeviceID  *int64
+	StartsAt  time.Time
+	EndsAt    time.Time
+	Note      string
+	CreatedBy string
+	CreatedAt time.Time
+}
+
 // APIToken is a personal bearer token for the JSON API (hash stored, not value).
 type APIToken struct {
 	ID        int64
