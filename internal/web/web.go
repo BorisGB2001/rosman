@@ -1,5 +1,6 @@
-// Package web serves the rosman UI and API over HTTPS. Server-rendered HTML,
-// session-cookie auth, minimal JS — deliberately light for weak hardware.
+// Package web serves the ROSMan UI and API over HTTPS. Server-rendered HTML with
+// a sidebar shell, cookie-based language and theme (no client state needed),
+// session-cookie auth. The visual style follows the WAFISP-Panel design system.
 package web
 
 import (
@@ -7,12 +8,16 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"rosman/internal/app"
 	"rosman/internal/auth"
+	"rosman/internal/i18n"
 	"rosman/internal/model"
 	"rosman/internal/store"
 )
@@ -20,10 +25,17 @@ import (
 //go:embed templates/*.html
 var tmplFS embed.FS
 
-// Version is the product version shown in the UI and used for releases.
-const Version = "0.1.0"
+//go:embed static
+var staticFS embed.FS
 
-const cookieName = "rosman_session"
+// Version is the product version shown in the UI and used for releases.
+const Version = "0.2.0"
+
+const (
+	cookieName  = "rosman_session"
+	langCookie  = "rosman_lang"
+	themeCookie = "rosman_theme"
+)
 
 type Server struct {
 	a    *app.App
@@ -36,21 +48,29 @@ const userKey ctxKey = 1
 
 func New(a *app.App) (*Server, error) {
 	funcs := template.FuncMap{
-		"mb":  func(b int64) string { return fmt.Sprintf("%.0f MB", float64(b)/1024/1024) },
+		"mb": func(b int64) string { return fmt.Sprintf("%.0f MB", float64(b)/1024/1024) },
 		"ago": func(t *time.Time) string {
 			if t == nil {
-				return "never"
+				return "—"
 			}
-			return time.Since(*t).Round(time.Second).String() + " ago"
+			return time.Since(*t).Round(time.Second).String()
 		},
 		"ts":       func(t time.Time) string { return t.Format("2006-01-02 15:04:05") },
-		"canWrite": func(u model.User) bool { return roleRank(u.Role) >= roleRank(model.RoleOperator) },
 		"date":     func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02") },
+		"canWrite": func(u model.User) bool { return roleRank(u.Role) >= roleRank(model.RoleOperator) },
 		"alertCount": func() int {
 			al, _ := a.Store.ActiveAlerts()
 			return len(al)
 		},
 		"version": func() string { return Version },
+		"langs":   func() []string { return i18n.Langs() },
+		"qesc":    url.QueryEscape,
+		"upper":   strings.ToUpper,
+		// Per-request overrides are bound in render(); these are parse-time defaults.
+		"t":     func(key string) string { return i18n.T(i18n.Default, key) },
+		"lang":  func() string { return i18n.Default },
+		"theme": func() string { return "" },
+		"path":  func() string { return "/" },
 	}
 	t, err := template.New("").Funcs(funcs).ParseFS(tmplFS, "templates/*.html")
 	if err != nil {
@@ -61,9 +81,13 @@ func New(a *app.App) (*Server, error) {
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
+	sub, _ := fs.Sub(staticFS, "static")
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(sub))))
 	mux.HandleFunc("GET /login", s.loginForm)
 	mux.HandleFunc("POST /login", s.loginSubmit)
 	mux.HandleFunc("POST /logout", s.logout)
+	mux.HandleFunc("GET /lang/{lang}", s.setLang)
+	mux.HandleFunc("GET /theme/{theme}", s.setTheme)
 	mux.Handle("GET /{$}", s.authed(s.devices))
 	mux.Handle("GET /devices/new", s.authed(s.requireRole(model.RoleOperator, s.newDeviceForm)))
 	mux.Handle("POST /devices/new", s.authed(s.requireRole(model.RoleOperator, s.newDeviceSubmit)))
@@ -76,9 +100,82 @@ func (s *Server) Routes() http.Handler {
 	return mux
 }
 
-func (s *Server) render(w http.ResponseWriter, name string, data any) {
+// ---- language / theme ----
+
+func langOf(r *http.Request) string {
+	if c, err := r.Cookie(langCookie); err == nil && i18n.Valid(c.Value) {
+		return c.Value
+	}
+	return i18n.Default
+}
+
+func themeOf(r *http.Request) string {
+	if c, err := r.Cookie(themeCookie); err == nil && (c.Value == "light" || c.Value == "dark") {
+		return c.Value
+	}
+	return ""
+}
+
+func safeNext(next string) string {
+	if len(next) > 0 && next[0] == '/' && (len(next) == 1 || next[1] != '/') {
+		return next
+	}
+	return "/"
+}
+
+func (s *Server) setLang(w http.ResponseWriter, r *http.Request) {
+	lang := r.PathValue("lang")
+	if !i18n.Valid(lang) {
+		http.NotFound(w, r)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: langCookie, Value: lang, Path: "/", MaxAge: 365 * 24 * 3600,
+		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode})
+	http.Redirect(w, r, safeNext(r.URL.Query().Get("next")), http.StatusSeeOther)
+}
+
+func (s *Server) setTheme(w http.ResponseWriter, r *http.Request) {
+	switch theme := r.PathValue("theme"); theme {
+	case "light", "dark":
+		http.SetCookie(w, &http.Cookie{Name: themeCookie, Value: theme, Path: "/", MaxAge: 365 * 24 * 3600,
+			HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode})
+	case "system":
+		http.SetCookie(w, &http.Cookie{Name: themeCookie, Path: "/", MaxAge: -1,
+			HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode})
+	default:
+		http.NotFound(w, r)
+		return
+	}
+	http.Redirect(w, r, safeNext(r.URL.Query().Get("next")), http.StatusSeeOther)
+}
+
+// render clones the template set, binds per-request language/theme/path, injects
+// common data, and executes the named template.
+func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, data map[string]any) {
+	lang := langOf(r)
+	theme := themeOf(r)
+	path := r.URL.Path
+	if data == nil {
+		data = map[string]any{}
+	}
+	if _, ok := data["User"]; !ok {
+		data["User"] = userFrom(r)
+	}
+	data["Lang"], data["Theme"], data["Path"] = lang, theme, path
+
+	t, err := s.tmpl.Clone()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	t = t.Funcs(template.FuncMap{
+		"t":     func(key string) string { return i18n.T(lang, key) },
+		"lang":  func() string { return lang },
+		"theme": func() string { return theme },
+		"path":  func() string { return path },
+	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
+	if err := t.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -131,7 +228,7 @@ func (s *Server) requireRole(min model.Role, h http.HandlerFunc) http.HandlerFun
 // ---- handlers ----
 
 func (s *Server) loginForm(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "login", map[string]any{"Err": r.URL.Query().Get("err")})
+	s.render(w, r, "login", map[string]any{"Err": r.URL.Query().Get("err")})
 }
 
 func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -177,11 +274,11 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		}
 		rows = append(rows, rr)
 	}
-	s.render(w, "devices", map[string]any{"User": userFrom(r), "Devices": rows})
+	s.render(w, r, "devices", map[string]any{"Active": "devices", "Devices": rows})
 }
 
 func (s *Server) newDeviceForm(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "new_device", map[string]any{"User": userFrom(r)})
+	s.render(w, r, "new_device", map[string]any{"Active": "devices"})
 }
 
 func (s *Server) newDeviceSubmit(w http.ResponseWriter, r *http.Request) {
@@ -196,7 +293,7 @@ func (s *Server) newDeviceSubmit(w http.ResponseWriter, r *http.Request) {
 	id, err := s.a.AddDevice(r.FormValue("name"), r.FormValue("ip"), port,
 		r.FormValue("api_user"), r.FormValue("api_pass"), sshUser)
 	if err != nil {
-		s.render(w, "new_device", map[string]any{"User": userFrom(r), "Err": err.Error(),
+		s.render(w, r, "new_device", map[string]any{"Active": "devices", "Err": err.Error(),
 			"Name": r.FormValue("name"), "IP": r.FormValue("ip"), "APIUser": r.FormValue("api_user")})
 		return
 	}
@@ -213,8 +310,8 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	health, _ := s.a.Store.LatestHealth(id)
 	cfgs, _ := s.a.Store.Configs(id, 20)
-	s.render(w, "device", map[string]any{
-		"User": userFrom(r), "D": d, "H": health, "Configs": cfgs,
+	s.render(w, r, "device", map[string]any{"Active": "devices",
+		"D": d, "H": health, "Configs": cfgs,
 		"HasSSH": s.a.HasSSHKey(), "Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
 	})
 }
@@ -247,9 +344,9 @@ func (s *Server) deviceBackup(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
 		return
 	}
-	msg := "backup+unchanged"
+	msg := "backup-unchanged"
 	if changed {
-		msg = "backup+stored+new+version"
+		msg = "backup-stored"
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "backup", d.Name+" ("+msg+")")
 	http.Redirect(w, r, dst+"?msg="+msg, http.StatusSeeOther)
@@ -262,29 +359,27 @@ func (s *Server) configView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", 404)
 		return
 	}
-	s.render(w, "config", map[string]any{"User": userFrom(r), "C": c})
+	s.render(w, r, "config", map[string]any{"Active": "devices", "C": c})
 }
 
 func (s *Server) alerts(w http.ResponseWriter, r *http.Request) {
 	active, _ := s.a.Store.ActiveAlerts()
 	all, _ := s.a.Store.AllAlerts(100)
-	s.render(w, "alerts", map[string]any{"User": userFrom(r), "Active": active, "All": all})
+	s.render(w, r, "alerts", map[string]any{"Active": "alerts", "ActiveAlerts": active, "All": all})
 }
 
 func (s *Server) auditPage(w http.ResponseWriter, r *http.Request) {
 	rows, _ := s.a.Store.RecentAudit(200)
-	s.render(w, "audit", map[string]any{"User": userFrom(r), "Rows": rows})
+	s.render(w, r, "audit", map[string]any{"Active": "audit", "Rows": rows})
 }
 
 func urlq(s string) string {
-	// minimal query escaping for flash messages
 	out := make([]rune, 0, len(s))
 	for _, r := range s {
 		switch r {
 		case ' ':
 			out = append(out, '+')
 		case '&', '?', '#', '%', '"', '\'', '<', '>':
-			// drop characters that would break the query string
 		default:
 			out = append(out, r)
 		}

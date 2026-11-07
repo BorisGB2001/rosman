@@ -1,46 +1,34 @@
-{{define "device"}}<!doctype html><html lang="ru"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>ROSMan — {{.D.Name}}</title>{{template "styles"}}</head>
-<body>
-{{template "nav" .User}}
-<main>
-  {{if .Msg}}<div class="flash ok">{{.Msg}}</div>{{end}}
-  {{if .Err}}<div class="flash err">{{.Err}}</div>{{end}}
-
-  <div class="card">
-    <div class="row">
-      <h3 style="margin:0;flex:1">{{.D.Name}} <span class="muted">{{.D.IP}}:{{.D.APIPort}}</span></h3>
-      {{if canWrite .User}}
-      <form method="post" action="/devices/{{.D.ID}}/poll" style="margin:0"><button class="secondary" type="submit">Опросить</button></form>
-      <form method="post" action="/devices/{{.D.ID}}/backup" style="margin:0">
-        <button type="submit" {{if not .HasSSH}}disabled title="нет SSH-ключа (ROSMAN_SSH_KEY)"{{end}}>Сделать бэкап</button>
-      </form>
-      {{end}}
-    </div>
-    <table>
-      <tr><th>Модель</th><td>{{.D.Model}}</td><th>Серийник</th><td>{{.D.Serial}}</td></tr>
-      <tr><th>RouterOS</th><td>{{.D.ROSVersion}}</td><th>Uptime</th><td>{{.H.Uptime}}</td></tr>
-      <tr><th>CPU</th><td>{{.H.CPU}}%</td><th>Память</th><td>{{mb .H.FreeMem}} своб. / {{mb .H.TotalMem}}</td></tr>
-      <tr><th>api-ssl cert</th><td>{{if .D.APISSLCert}}{{.D.APISSLCert}}{{else}}—{{end}}</td><th>Истекает</th><td>{{date .D.APICertExpiry}}</td></tr>
-      <tr><th>Виден</th><td>{{ago .D.LastSeen}}</td><th>SSH-user</th><td>{{.D.SSHUser}}</td></tr>
-      <tr><th>API cert pin</th><td colspan="3" class="muted" style="font-family:monospace;font-size:12px">{{if .D.APICertPin}}{{.D.APICertPin}}{{else}}—{{end}}</td></tr>
-      <tr><th>SSH host pin</th><td colspan="3" class="muted" style="font-family:monospace;font-size:12px">{{if .D.SSHHostPin}}{{.D.SSHHostPin}}{{else}}—{{end}}</td></tr>
-    </table>
-  </div>
-
-  <div class="card">
-    <h4 style="margin-top:0">Версии конфига <span class="pill">export</span></h4>
-    <table>
-      <thead><tr><th>Снято</th><th>SHA-256</th><th></th></tr></thead>
-      <tbody>
-      {{range .Configs}}
-        <tr><td>{{ts .TakenAt}}</td><td class="muted" style="font-family:monospace;font-size:12px">{{slice .SHA256 0 16}}…</td><td><a href="/configs/{{.ID}}">смотреть</a></td></tr>
-      {{else}}
-        <tr><td colspan="3" class="muted">Бэкапов ещё нет.{{if not .HasSSH}} Для бэкапа задайте ROSMAN_SSH_KEY.{{end}}</td></tr>
-      {{end}}
-      </tbody>
-    </table>
-  </div>
-  <p><a href="/">← ко всем устройствам</a></p>
-</main>
-{{template "footer" .}}
-</body></html>{{end}}
+{{define "device"}}{{template "head" .}}
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+<div class="cardhead">
+  <h1 style="margin:0">{{.D.Name}} <small class="muted">{{.D.IP}}:{{.D.APIPort}}</small></h1>
+  {{if canWrite .User}}<div class="badges">
+    <form class="inline" method="post" action="/devices/{{.D.ID}}/poll"><button class="btn sm" type="submit">{{t "dev.poll"}}</button></form>
+    <form class="inline" method="post" action="/devices/{{.D.ID}}/backup"><button class="btn sm primary" type="submit" {{if not .HasSSH}}disabled title="{{t "dev.need_ssh"}}"{{end}}>{{t "dev.backup"}}</button></form>
+  </div>{{end}}
+</div>
+<div class="card"><table>
+  <tr><th>{{t "col.model"}}</th><td>{{.D.Model}}</td><th>{{t "dev.serial"}}</th><td>{{.D.Serial}}</td></tr>
+  <tr><th>RouterOS</th><td>{{.D.ROSVersion}}</td><th>{{t "col.uptime"}}</th><td>{{.H.Uptime}}</td></tr>
+  <tr><th>CPU</th><td>{{.H.CPU}}%</td><th>{{t "dev.mem"}}</th><td>{{mb .H.FreeMem}} {{t "dev.free"}} / {{mb .H.TotalMem}}</td></tr>
+  <tr><th>api-ssl cert</th><td>{{if .D.APISSLCert}}{{.D.APISSLCert}}{{else}}—{{end}}</td><th>{{t "dev.expires"}}</th><td>{{date .D.APICertExpiry}}</td></tr>
+  <tr><th>{{t "col.seen"}}</th><td class="muted">{{ago .D.LastSeen}}</td><th>{{t "dev.sshuser"}}</th><td>{{.D.SSHUser}}</td></tr>
+  <tr><th>API cert pin</th><td class="mono" colspan="3">{{if .D.APICertPin}}{{.D.APICertPin}}{{else}}—{{end}}</td></tr>
+  <tr><th>SSH host pin</th><td class="mono" colspan="3">{{if .D.SSHHostPin}}{{.D.SSHHostPin}}{{else}}—{{end}}</td></tr>
+</table></div>
+<div class="card">
+  <h3>{{t "dev.configs"}} <span class="badge">export</span></h3>
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "dev.taken"}}</th><th>SHA-256</th><th></th></tr></thead>
+    <tbody>
+    {{range .Configs}}
+      <tr><td>{{ts .TakenAt}}</td><td class="mono">{{slice .SHA256 0 16}}…</td><td><a href="/configs/{{.ID}}">{{t "dev.view"}}</a></td></tr>
+    {{else}}
+      <tr><td colspan="3" class="muted">{{t "dev.no_configs"}}{{if not $.HasSSH}} {{t "dev.need_ssh"}}{{end}}</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
+<p><a href="/">← {{t "dev.back"}}</a></p>
+{{template "tail" .}}{{end}}

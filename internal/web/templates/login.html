@@ -1,19 +1,25 @@
-{{define "login"}}<!doctype html><html lang="ru"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>ROSMan — вход</title>{{template "styles"}}</head>
-<body>
-<main style="max-width:360px">
-  <div class="card">
-    <h2 style="margin-top:0;margin-bottom:0">ROSMan</h2>
-    <p class="muted" style="margin-top:2px">Router Operation System Manager</p>
-    {{if .Err}}<div class="flash err">{{.Err}}</div>{{end}}
+{{define "login"}}<!doctype html>
+<html lang="{{.Lang}}"{{if .Theme}} data-theme="{{.Theme}}"{{end}}>
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ROSMan — {{t "login.title"}}</title>
+<link rel="icon" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bare">
+<main>
+  <div class="brand big" style="text-align:center;margin-bottom:10px"><span class="logo">◆</span> ROSMan</div>
+  <div class="card narrow">
+    {{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
     <form method="post" action="/login">
-      <label>Пользователь</label>
-      <input name="username" autofocus required style="width:100%">
-      <label>Пароль</label>
-      <input name="password" type="password" required style="width:100%">
-      <div style="margin-top:14px"><button type="submit" style="width:100%">Войти</button></div>
+      <label>{{t "login.user"}}<input name="username" autofocus required style="width:100%"></label>
+      <label style="margin-top:10px">{{t "login.pass"}}<input name="password" type="password" required style="width:100%"></label>
+      <div style="margin-top:14px"><button class="btn primary" style="width:100%" type="submit">{{t "login.submit"}}</button></div>
     </form>
   </div>
+  <div class="prefs" style="justify-content:center;margin-top:12px">
+    <span class="pseg">{{range langs}}<a href="/lang/{{.}}?next=%2Flogin" class="{{if eq . $.Lang}}on{{end}}">{{upper .}}</a>{{end}}</span>
+  </div>
+  <div class="ver" style="text-align:center;margin-top:8px;opacity:.5">ROSMan v{{version}}</div>
 </main>
-{{template "footer" .}}
 </body></html>{{end}}

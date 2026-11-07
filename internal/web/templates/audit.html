@@ -1,21 +1,15 @@
-{{define "audit"}}<!doctype html><html lang="ru"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>ROSMan — аудит</title>{{template "styles"}}</head>
-<body>
-{{template "nav" .User}}
-<main>
-  <div class="card">
-    <h3 style="margin-top:0">Журнал аудита</h3>
-    <table>
-      <thead><tr><th>Время</th><th>Пользователь</th><th>Действие</th><th>Детали</th></tr></thead>
-      <tbody>
-      {{range .Rows}}
-        <tr><td class="muted">{{ts .TS}}</td><td>{{.Actor}}</td><td>{{.Action}}</td><td class="muted">{{.Detail}}</td></tr>
-      {{else}}
-        <tr><td colspan="4" class="muted">Пока пусто.</td></tr>
-      {{end}}
-      </tbody>
-    </table>
-  </div>
-</main>
-{{template "footer" .}}
-</body></html>{{end}}
+{{define "audit"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "au.title"}}</h1></div>
+<div class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "au.time"}}</th><th>{{t "au.user"}}</th><th>{{t "au.action"}}</th><th>{{t "al.detail"}}</th></tr></thead>
+    <tbody>
+    {{range .Rows}}
+      <tr><td class="muted">{{ts .TS}}</td><td>{{.Actor}}</td><td class="mono">{{.Action}}</td><td class="muted">{{.Detail}}</td></tr>
+    {{else}}
+      <tr><td colspan="4" class="muted">{{t "au.empty"}}</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
+{{template "tail" .}}{{end}}
