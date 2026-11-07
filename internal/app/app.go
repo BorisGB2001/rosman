@@ -129,6 +129,67 @@ func (a *App) RefreshFirmware(d model.Device) error {
 	return nil
 }
 
+// RestoreConfig restores a stored config version to its device. Binary/archive
+// versions are loaded via /system backup load (true restore, reboot); an export
+// version is re-applied via /import under change-guard (additive).
+func (a *App) RestoreConfig(id int64) error {
+	if a.signer == nil {
+		return fmt.Errorf("no SSH key configured (ROSMAN_SSH_KEY) — restore needs SSH")
+	}
+	c, err := a.Store.ConfigContent(id)
+	if err != nil {
+		return err
+	}
+	d, err := a.Store.Device(c.DeviceID)
+	if err != nil {
+		return err
+	}
+	name := fmt.Sprintf("rosman-restore-%d", time.Now().Unix())
+	pw := a.settingDecrypt("backup_password_enc")
+	switch c.Kind {
+	case "binary":
+		data, err := base64.StdEncoding.DecodeString(c.Content)
+		if err != nil {
+			return err
+		}
+		return ros.RestoreBinary(d, a.signer, name, data, pw, a.Cfg.SSHTimeout+30*time.Second)
+	case "archive":
+		zipData, err := base64.StdEncoding.DecodeString(c.Content)
+		if err != nil {
+			return err
+		}
+		data, err := backupFromZip(zipData)
+		if err != nil {
+			return err
+		}
+		return ros.RestoreBinary(d, a.signer, name, data, pw, a.Cfg.SSHTimeout+30*time.Second)
+	default: // export: additive re-apply under change-guard
+		return a.ApplyTemplate(d, c.Content, 120)
+	}
+}
+
+func backupFromZip(zipData []byte) ([]byte, error) {
+	zr, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range zr.File {
+		if strings.HasSuffix(f.Name, ".backup") {
+			rc, err := f.Open()
+			if err != nil {
+				return nil, err
+			}
+			defer rc.Close()
+			buf := new(bytes.Buffer)
+			if _, err := buf.ReadFrom(rc); err != nil {
+				return nil, err
+			}
+			return buf.Bytes(), nil
+		}
+	}
+	return nil, fmt.Errorf("no .backup in archive")
+}
+
 // ---- firmware upgrades ----
 
 func firstField(s string) string {

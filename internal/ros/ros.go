@@ -439,6 +439,38 @@ func BinaryBackup(d model.Device, signer ssh.Signer, name, password string, time
 	return data, nil
 }
 
+// RestoreBinary uploads a .backup over SFTP and loads it (reboots + restores).
+func RestoreBinary(d model.Device, signer ssh.Signer, name string, data []byte, password string, timeout time.Duration) error {
+	client, _, err := dialSSH(d, signer, timeout)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	sc, err := sftp.NewClient(client)
+	if err != nil {
+		return fmt.Errorf("sftp: %w", err)
+	}
+	f, err := sc.Create(name + ".backup")
+	if err != nil {
+		sc.Close()
+		return fmt.Errorf("upload backup: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		sc.Close()
+		return fmt.Errorf("write backup: %w", err)
+	}
+	f.Close()
+	sc.Close()
+	cmd := "/system backup load name=" + name
+	if password != "" {
+		cmd += fmt.Sprintf(` password="%s"`, password)
+	}
+	// backup load reboots immediately; the exec connection drops — expected.
+	_, _ = run(client, cmd)
+	return nil
+}
+
 // InstallServerCert uploads the CA + leaf certificate and key over SFTP, imports
 // them, binds the api-ssl service to the leaf (matched by fingerprint, so re-issues
 // are unambiguous) and cleans up the files. name is the cert name on the device.

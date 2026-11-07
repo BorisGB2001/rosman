@@ -54,13 +54,13 @@
 </div>
 {{end}}
 <div class="card">
-  <h3>{{t "dev.configs"}} <span class="badge">export</span></h3>
+  <h3>{{t "dev.configs"}} <a href="/devices/{{.D.ID}}/diff" class="btn sm secondary" style="margin-left:8px">{{t "diff.compare"}}</a></h3>
   <div class="scroll"><table>
     <thead><tr><th>{{t "dev.taken"}}</th><th></th><th>SHA-256</th><th></th></tr></thead>
     <tbody>
     {{range .Configs}}
       <tr><td>{{ts .TakenAt}}</td><td><span class="badge">{{.Kind}}</span></td><td class="mono">{{slice .SHA256 0 16}}…</td>
-        <td>{{if eq .Kind "export"}}<a href="/configs/{{.ID}}">{{t "dev.view"}}</a> · {{end}}<a href="/configs/{{.ID}}/download">↓ {{t "dev.download"}}</a></td></tr>
+        <td>{{if eq .Kind "export"}}<a href="/configs/{{.ID}}">{{t "dev.view"}}</a> · {{end}}<a href="/configs/{{.ID}}/download">↓</a>{{if canWrite $.User}} · <form class="inline" method="post" action="/configs/{{.ID}}/restore"><button class="link" type="submit" onclick="return confirm('{{t "diff.restore_confirm"}}')">{{t "diff.restore"}}</button></form>{{end}}</td></tr>
     {{else}}
       <tr><td colspan="4" class="muted">{{t "dev.no_configs"}}{{if not $.HasSSH}} {{t "dev.need_ssh"}}{{end}}</td></tr>
     {{end}}

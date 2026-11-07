@@ -20,6 +20,7 @@ import (
 
 	"rosman/internal/app"
 	"rosman/internal/auth"
+	"rosman/internal/diff"
 	"rosman/internal/i18n"
 	"rosman/internal/model"
 	"rosman/internal/oui"
@@ -33,7 +34,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.15.0"
+const Version = "0.16.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -105,6 +106,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/backup", s.authed(s.requireRole(model.RoleOperator, s.deviceBackup)))
 	mux.Handle("POST /devices/{id}/fwcheck", s.authed(s.requireRole(model.RoleOperator, s.deviceFwCheck)))
 	mux.Handle("GET /configs/{id}", s.authed(s.configView))
+	mux.Handle("GET /devices/{id}/diff", s.authed(s.diffPage))
+	mux.Handle("POST /configs/{id}/restore", s.authed(s.requireRole(model.RoleOperator, s.configRestore)))
 	mux.Handle("POST /devices/{id}/issuecert", s.authed(s.requireRole(model.RoleOperator, s.deviceIssueCert)))
 	mux.Handle("POST /devices/{id}/snmp", s.authed(s.requireRole(model.RoleOperator, s.deviceSNMPSave)))
 	mux.Handle("POST /devices/{id}/snmppoll", s.authed(s.requireRole(model.RoleOperator, s.deviceSNMPPoll)))
@@ -607,6 +610,52 @@ func (s *Server) deviceFwCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, dst+"?msg=fwchecked", http.StatusSeeOther)
+}
+
+func (s *Server) diffPage(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	all, _ := s.a.Store.Configs(id, 50)
+	var exports []model.Config
+	for _, c := range all {
+		if c.Kind == "export" {
+			exports = append(exports, c)
+		}
+	}
+	data := map[string]any{"Active": "devices", "D": d, "Configs": exports}
+	aID, _ := strconv.ParseInt(r.URL.Query().Get("a"), 10, 64)
+	bID, _ := strconv.ParseInt(r.URL.Query().Get("b"), 10, 64)
+	if aID > 0 && bID > 0 {
+		ca, e1 := s.a.Store.ConfigContent(aID)
+		cb, e2 := s.a.Store.ConfigContent(bID)
+		if e1 == nil && e2 == nil {
+			lines := diff.Lines(ca.Content, cb.Content)
+			added, removed := diff.Stat(lines)
+			data["Lines"], data["Added"], data["Removed"] = lines, added, removed
+			data["A"], data["B"] = aID, bID
+		}
+	}
+	s.render(w, r, "diff", data)
+}
+
+func (s *Server) configRestore(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	c, err := s.a.Store.ConfigContent(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	dst := "/devices/" + strconv.FormatInt(c.DeviceID, 10)
+	if err := s.a.RestoreConfig(id); err != nil {
+		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "config_restore", strconv.FormatInt(id, 10))
+	http.Redirect(w, r, dst+"?msg=restore-started", http.StatusSeeOther)
 }
 
 func (s *Server) configView(w http.ResponseWriter, r *http.Request) {
