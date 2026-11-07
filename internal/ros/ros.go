@@ -288,6 +288,74 @@ func Services(d model.Device, pass string, timeout time.Duration) (ServiceInfo, 
 	return si, nil
 }
 
+// CAPsMANInfo is a read-only snapshot of the classic CAPsMAN controller:
+// whether it is enabled, the remote CAPs that joined, the managed interfaces
+// and the wireless registrations (connected clients).
+type CAPsMANInfo struct {
+	Enabled       bool
+	Interfaces    string // comma-separated interfaces the manager listens on
+	RemoteCAPs    []RemoteCAP
+	CAPInterfaces []CAPInterface
+	Registrations []CAPReg
+}
+
+type RemoteCAP struct {
+	Identity, Address, Board, Version, State string
+}
+
+type CAPInterface struct {
+	Name, Radio, Configuration, MasterIface string
+	Disabled                                bool
+}
+
+type CAPReg struct {
+	Interface, SSID, MAC, Signal, Uptime, TxRate, RxRate string
+}
+
+// CAPsMAN reads the classic /caps-man state over the API. It never errors on a
+// device without CAPsMAN — it simply returns Enabled=false and empty lists.
+func CAPsMAN(d model.Device, pass string, timeout time.Duration) (CAPsMANInfo, error) {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return CAPsMANInfo{}, err
+	}
+	defer c.Close()
+	var ci CAPsMANInfo
+	if r, e := c.Run("/caps-man/manager/print"); e == nil && len(r.Re) > 0 {
+		m := r.Re[0].Map
+		ci.Enabled = m["enabled"] == "true"
+		ci.Interfaces = m["interfaces"]
+	}
+	if r, e := c.Run("/caps-man/remote-cap/print"); e == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			ci.RemoteCAPs = append(ci.RemoteCAPs, RemoteCAP{
+				Identity: firstNonEmpty(m["identity"], m["name"]),
+				Address:  m["address"], Board: m["board"],
+				Version: m["version"], State: m["state"]})
+		}
+	}
+	if r, e := c.Run("/caps-man/interface/print"); e == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			ci.CAPInterfaces = append(ci.CAPInterfaces, CAPInterface{
+				Name: m["name"], Radio: firstNonEmpty(m["radio-mac"], m["radio-name"]),
+				Configuration: m["configuration"], MasterIface: m["master-interface"],
+				Disabled: m["disabled"] == "true"})
+		}
+	}
+	if r, e := c.Run("/caps-man/registration-table/print"); e == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			ci.Registrations = append(ci.Registrations, CAPReg{
+				Interface: m["interface"], SSID: m["ssid"], MAC: m["mac-address"],
+				Signal: firstNonEmpty(m["rx-signal"], m["signal"]), Uptime: m["uptime"],
+				TxRate: m["tx-rate"], RxRate: m["rx-rate"]})
+		}
+	}
+	return ci, nil
+}
+
 // CheckUpdates forces the device to contact the upgrade server, then reads the
 // result. This is the normal RouterOS update check (read-only; installs nothing).
 func CheckUpdates(d model.Device, pass string, timeout time.Duration) (latest, channel, status string, err error) {

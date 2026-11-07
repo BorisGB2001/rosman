@@ -506,6 +506,14 @@ func (a *App) DeviceServices(d model.Device) (ros.ServiceInfo, error) {
 	return ros.Services(d, pass, a.Cfg.APITimeout)
 }
 
+func (a *App) DeviceCAPsMAN(d model.Device) (ros.CAPsMANInfo, error) {
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return ros.CAPsMANInfo{}, err
+	}
+	return ros.CAPsMAN(d, pass, a.Cfg.APITimeout)
+}
+
 // SNMPPollDevice collects an SNMP reading and stores it in the same metrics
 // table, so SNMP-sourced load flows into the device graphs.
 func (a *App) SNMPPollDevice(d model.Device) error {

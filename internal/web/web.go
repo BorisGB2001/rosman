@@ -34,7 +34,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.17.0"
+const Version = "0.18.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -107,6 +107,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/fwcheck", s.authed(s.requireRole(model.RoleOperator, s.deviceFwCheck)))
 	mux.Handle("GET /configs/{id}", s.authed(s.configView))
 	mux.Handle("GET /devices/{id}/services", s.authed(s.servicesPage))
+	mux.Handle("GET /devices/{id}/capsman", s.authed(s.capsmanPage))
 	mux.Handle("GET /devices/{id}/diff", s.authed(s.diffPage))
 	mux.Handle("POST /configs/{id}/restore", s.authed(s.requireRole(model.RoleOperator, s.configRestore)))
 	mux.Handle("POST /devices/{id}/issuecert", s.authed(s.requireRole(model.RoleOperator, s.deviceIssueCert)))
@@ -628,6 +629,23 @@ func (s *Server) servicesPage(w http.ResponseWriter, r *http.Request) {
 		data["S"] = si
 	}
 	s.render(w, r, "services", data)
+}
+
+func (s *Server) capsmanPage(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	data := map[string]any{"Active": "devices", "D": d}
+	ci, err := s.a.DeviceCAPsMAN(d)
+	if err != nil {
+		data["Err"] = err.Error()
+	} else {
+		data["C"] = ci
+	}
+	s.render(w, r, "capsman", data)
 }
 
 func (s *Server) diffPage(w http.ResponseWriter, r *http.Request) {

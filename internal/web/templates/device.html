@@ -4,6 +4,7 @@
 <div class="cardhead">
   <h1 style="margin:0">{{.D.Name}} <small class="muted">{{.D.IP}}:{{.D.APIPort}}</small></h1>
   <a class="btn sm secondary" href="/devices/{{.D.ID}}/services">{{t "svc.title"}}</a>
+  <a class="btn sm secondary" href="/devices/{{.D.ID}}/capsman">CAPsMAN</a>
   {{if canWrite .User}}<div class="badges">
     <form class="inline" method="post" action="/devices/{{.D.ID}}/poll"><button class="btn sm" type="submit">{{t "dev.poll"}}</button></form>
     <form class="inline" method="post" action="/devices/{{.D.ID}}/backup">

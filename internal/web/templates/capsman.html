@@ -1,0 +1,31 @@
+{{define "capsman"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">CAPsMAN — {{.D.Name}}</h1></div>
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+{{with .C}}
+<div class="card">
+  <table>
+    <tr><th>{{t "svc.enabled"}}</th><td>{{if .Enabled}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</td>
+        <th>{{t "caps.ifaces"}}</th><td class="mono">{{if .Interfaces}}{{.Interfaces}}{{else}}—{{end}}</td></tr>
+  </table>
+</div>
+<div class="card">
+  <h3>{{t "caps.remote"}}</h3>
+  <div class="scroll"><table><thead><tr><th>Identity</th><th>{{t "caps.address"}}</th><th>{{t "col.model"}}</th><th>RouterOS</th><th>{{t "caps.state"}}</th></tr></thead><tbody>
+  {{range .RemoteCAPs}}<tr><td>{{.Identity}}</td><td class="mono">{{.Address}}</td><td>{{.Board}}</td><td>{{.Version}}</td><td><span class="badge{{if eq .State "run"}} good{{end}}">{{.State}}</span></td></tr>{{else}}<tr><td colspan="5" class="muted">—</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+<div class="card">
+  <h3>{{t "caps.ifaces"}}</h3>
+  <div class="scroll"><table><thead><tr><th>{{t "svc.name"}}</th><th>{{t "caps.radio"}}</th><th>{{t "caps.config"}}</th><th>{{t "caps.master"}}</th><th></th></tr></thead><tbody>
+  {{range .CAPInterfaces}}<tr {{if .Disabled}}style="opacity:.5"{{end}}><td>{{.Name}}</td><td class="mono">{{.Radio}}</td><td>{{.Configuration}}</td><td class="muted">{{.MasterIface}}</td><td>{{if .Disabled}}<span class="badge">off</span>{{end}}</td></tr>{{else}}<tr><td colspan="5" class="muted">—</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+<div class="card">
+  <h3>{{t "caps.reg"}}</h3>
+  <div class="scroll"><table><thead><tr><th>{{t "neigh.iface"}}</th><th>SSID</th><th>MAC</th><th>{{t "cl.vendor"}}</th><th>{{t "caps.signal"}}</th><th>{{t "col.uptime"}}</th><th>TX</th><th>RX</th></tr></thead><tbody>
+  {{range .Registrations}}<tr><td>{{.Interface}}</td><td>{{.SSID}}</td><td class="mono">{{.MAC}}</td><td>{{vendor .MAC}}</td><td class="mono">{{.Signal}}</td><td class="muted">{{.Uptime}}</td><td class="mono nowrap">{{.TxRate}}</td><td class="mono nowrap">{{.RxRate}}</td></tr>{{else}}<tr><td colspan="8" class="muted">{{t "caps.noreg"}}</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+{{end}}
+<p><a href="/devices/{{.D.ID}}">← {{t "dev.back"}}</a></p>
+{{template "tail" .}}{{end}}
