@@ -19,6 +19,7 @@ import (
 	"rosman/internal/model"
 
 	"github.com/go-routeros/routeros/v3"
+	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -160,6 +161,17 @@ func CheckUpdates(d model.Device, pass string, timeout time.Duration) (latest, c
 	return latest, channel, status, nil
 }
 
+// ServedFingerprint dials api-ssl without enforcing a pin and returns the
+// fingerprint of the certificate the service actually presents.
+func ServedFingerprint(d model.Device, pass string, timeout time.Duration) (string, error) {
+	c, fp, err := dialAPI(d, pass, "", timeout)
+	if err != nil {
+		return fp, err
+	}
+	c.Close()
+	return fp, nil
+}
+
 // LoadSigner reads an SSH private key (no passphrase) for /export.
 func LoadSigner(path string) (ssh.Signer, error) {
 	raw, err := os.ReadFile(path)
@@ -174,9 +186,9 @@ func hostKeyFingerprint(key ssh.PublicKey) string {
 	return "SHA256:" + base64.StdEncoding.EncodeToString(sum[:])
 }
 
-// Export runs /export over SSH. The host key is pinned TOFU-style: the seen
+// dialSSH opens an SSH client with TOFU host-key pinning. The seen host-key
 // fingerprint is returned so the caller can store it on first contact.
-func Export(d model.Device, signer ssh.Signer, timeout time.Duration) (text, hostPin string, err error) {
+func dialSSH(d model.Device, signer ssh.Signer, timeout time.Duration) (*ssh.Client, string, error) {
 	var seen string
 	cb := func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		seen = hostKeyFingerprint(key)
@@ -194,20 +206,78 @@ func Export(d model.Device, signer ssh.Signer, timeout time.Duration) (text, hos
 		Timeout:           timeout,
 	}
 	client, err := ssh.Dial("tcp", d.IP+":22", conf)
+	return client, seen, err
+}
+
+func run(client *ssh.Client, cmd string) (string, error) {
+	sess, err := client.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer sess.Close()
+	out, err := sess.CombinedOutput(cmd)
+	return string(out), err
+}
+
+// Export runs /export over SSH.
+func Export(d model.Device, signer ssh.Signer, timeout time.Duration) (text, hostPin string, err error) {
+	client, seen, err := dialSSH(d, signer, timeout)
 	if err != nil {
 		return "", seen, err
 	}
 	defer client.Close()
-	sess, err := client.NewSession()
+	out, err := run(client, "/export")
 	if err != nil {
 		return "", seen, err
 	}
-	defer sess.Close()
-	out, err := sess.Output("/export")
+	return out, seen, nil
+}
+
+// InstallServerCert uploads the CA + leaf certificate and key over SFTP, imports
+// them, binds the api-ssl service to the leaf (matched by fingerprint, so re-issues
+// are unambiguous) and cleans up the files. name is the cert name on the device.
+func InstallServerCert(d model.Device, signer ssh.Signer, caPEM, certPEM, keyPEM []byte, fingerprint, name string, timeout time.Duration) (hostPin string, err error) {
+	client, seen, err := dialSSH(d, signer, timeout)
 	if err != nil {
-		return "", seen, err
+		return seen, err
 	}
-	return string(out), seen, nil
+	defer client.Close()
+
+	sc, err := sftp.NewClient(client)
+	if err != nil {
+		return seen, fmt.Errorf("sftp: %w", err)
+	}
+	defer sc.Close()
+	files := map[string][]byte{"rosman_ca.crt": caPEM, name + ".crt": certPEM, name + ".key": keyPEM}
+	for fn, data := range files {
+		f, err := sc.Create(fn)
+		if err != nil {
+			return seen, fmt.Errorf("upload %s: %w", fn, err)
+		}
+		if _, err := f.Write(data); err != nil {
+			f.Close()
+			return seen, fmt.Errorf("write %s: %w", fn, err)
+		}
+		f.Close()
+	}
+
+	steps := []string{
+		`/certificate import file-name=rosman_ca.crt passphrase=""`,
+		fmt.Sprintf(`/certificate import file-name=%s.crt passphrase=""`, name),
+		fmt.Sprintf(`/certificate import file-name=%s.key passphrase=""`, name),
+		fmt.Sprintf(`/certificate set [find where fingerprint="%s"] name="%s"`, fingerprint, name),
+		fmt.Sprintf(`/ip service set api-ssl certificate="%s"`, name),
+		`/ip service enable api-ssl`,
+		`/file remove [find where name="rosman_ca.crt"]`,
+		fmt.Sprintf(`/file remove [find where name="%s.crt"]`, name),
+		fmt.Sprintf(`/file remove [find where name="%s.key"]`, name),
+	}
+	for _, cmd := range steps {
+		if out, err := run(client, cmd); err != nil {
+			return seen, fmt.Errorf("%q: %v (%s)", cmd, err, out)
+		}
+	}
+	return seen, nil
 }
 
 func atoi(s string) int {

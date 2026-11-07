@@ -6,12 +6,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
 	"rosman/internal/config"
 	"rosman/internal/model"
 	"rosman/internal/notify"
+	"rosman/internal/pki"
 	"rosman/internal/ros"
 	"rosman/internal/secret"
 	"rosman/internal/store"
@@ -111,6 +113,107 @@ func (a *App) RefreshFirmware(d model.Device) error {
 	}
 	_ = a.Store.UpdateFirmware(d.ID, latest, channel, status)
 	a.evalFirmware(d, d.ROSVersion, latest)
+	return nil
+}
+
+// ---- PKI / api-ssl ----
+
+type CAInfo struct {
+	CN      string
+	Created time.Time
+	Present bool
+}
+
+func (a *App) CAStatus() CAInfo {
+	cn, _, _, created, ok := a.Store.GetCA()
+	return CAInfo{CN: cn, Created: created, Present: ok}
+}
+
+// GenerateCA creates a new self-signed CA and stores it (key encrypted).
+func (a *App) GenerateCA(cn string) error {
+	if cn == "" {
+		cn = "ROSMan CA"
+	}
+	certPEM, keyPEM, err := pki.GenerateCA(cn)
+	if err != nil {
+		return err
+	}
+	enc, err := a.Box.Encrypt(string(keyPEM))
+	if err != nil {
+		return err
+	}
+	return a.Store.SaveCA(cn, string(certPEM), enc)
+}
+
+// ImportCA validates and stores an existing CA (certificate + key PEM).
+func (a *App) ImportCA(certPEM, keyPEM string) error {
+	if _, _, err := pki.ParseCA([]byte(certPEM), []byte(keyPEM)); err != nil {
+		return err
+	}
+	enc, err := a.Box.Encrypt(keyPEM)
+	if err != nil {
+		return err
+	}
+	cn := pki.CASubject([]byte(certPEM))
+	if cn == "" {
+		cn = "imported CA"
+	}
+	return a.Store.SaveCA(cn, certPEM, enc)
+}
+
+// IssueCert issues an api-ssl server certificate for the device signed by the
+// CA, installs it over SSH, binds api-ssl, and re-pins ROSMan to the new cert.
+func (a *App) IssueCert(d model.Device) error {
+	if a.signer == nil {
+		return fmt.Errorf("no SSH key configured (ROSMAN_SSH_KEY) — cert install needs SSH")
+	}
+	cn, caCertPEM, keyEnc, _, ok := a.Store.GetCA()
+	_ = cn
+	if !ok {
+		return fmt.Errorf("no CA configured — generate or import one first")
+	}
+	caKeyPEM, err := a.Box.Decrypt(keyEnc)
+	if err != nil {
+		return err
+	}
+	name := d.Name
+	if name == "" {
+		name = "device"
+	}
+	var ips []net.IP
+	if ip := net.ParseIP(d.IP); ip != nil {
+		ips = append(ips, ip)
+	}
+	// Unique CN avoids RouterOS's unstable api-ssl cert selection when several
+	// certificates share a common name; the device identity and IP go in SANs,
+	// so hostname/IP validation still works.
+	certName := fmt.Sprintf("rosman-%s-%d", name, time.Now().Unix())
+	certPEM, keyPEM, fp, expiry, err := pki.IssueServerCert([]byte(caCertPEM), []byte(caKeyPEM), certName, ips, []string{name}, 3650)
+	if err != nil {
+		return err
+	}
+	if _, err := ros.InstallServerCert(d, a.signer, []byte(caCertPEM), certPEM, keyPEM, fp, certName, a.Cfg.SSHTimeout+10*time.Second); err != nil {
+		return err
+	}
+	exp := expiry
+	_ = a.Store.UpdateCertInfo(d.ID, certName, &exp)
+	a.evalCert(d, &exp)
+
+	// Verify what api-ssl actually serves and pin THAT, so polling keeps working
+	// regardless. RouterOS selects the server cert by common name, so if another
+	// certificate with the same CN is still present it may be served instead.
+	pass, derr := a.Box.Decrypt(d.APIPassEnc)
+	if derr == nil {
+		if served, serr := ros.ServedFingerprint(d, pass, a.Cfg.APITimeout); serr == nil && served != "" {
+			_ = a.Store.SetCertPin(d.ID, served)
+			if served != fp {
+				return fmt.Errorf("сертификат установлен, но api-ssl отдаёт другой (CN=%s уже есть у другого сертификата на устройстве — удалите лишние вручную, тогда будет отдаваться сертификат ROSMan)", name)
+			}
+			return nil
+		}
+	}
+	// Could not verify the served cert; fall back to pinning the issued one.
+	_ = a.Store.SetCertPin(d.ID, fp)
 	return nil
 }
 

@@ -7,6 +7,7 @@
     <form class="inline" method="post" action="/devices/{{.D.ID}}/poll"><button class="btn sm" type="submit">{{t "dev.poll"}}</button></form>
     <form class="inline" method="post" action="/devices/{{.D.ID}}/backup"><button class="btn sm primary" type="submit" {{if not .HasSSH}}disabled title="{{t "dev.need_ssh"}}"{{end}}>{{t "dev.backup"}}</button></form>
     <form class="inline" method="post" action="/devices/{{.D.ID}}/fwcheck"><button class="btn sm" type="submit">{{t "dev.fw_check"}}</button></form>
+    <form class="inline" method="post" action="/devices/{{.D.ID}}/issuecert"><button class="btn sm" type="submit">{{t "dev.issue_cert"}}</button></form>
   </div>{{end}}
 </div>
 <div class="card"><table>

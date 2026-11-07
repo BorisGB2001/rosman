@@ -70,6 +70,15 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_state ON alerts(state);
 
+-- Single-row CA store (id=1): the certificate authority ROSMan issues with.
+CREATE TABLE IF NOT EXISTS ca (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    cn         TEXT NOT NULL,
+    cert_pem   TEXT NOT NULL,
+    key_enc    TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id     INTEGER PRIMARY KEY AUTOINCREMENT,
     ts     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

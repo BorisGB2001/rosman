@@ -1,0 +1,34 @@
+{{define "ca"}}{{template "head" .}}
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+<div class="cardhead"><h1 style="margin:0">{{t "ca.title"}}</h1></div>
+<div class="card narrow">
+  {{if .CA.Present}}
+    <p><span class="badge good">{{t "ca.present"}}</span></p>
+    <table>
+      <tr><th>{{t "ca.cn"}}</th><td>{{.CA.CN}}</td></tr>
+      <tr><th>{{t "ca.created"}}</th><td>{{ts .CA.Created}}</td></tr>
+    </table>
+    <p class="muted" style="margin-top:10px">{{t "ca.regen_warn"}}</p>
+  {{else}}
+    <p class="muted">{{t "ca.none"}}</p>
+  {{end}}
+</div>
+<div class="grid2">
+  <div class="card">
+    <h3>{{t "ca.generate"}}</h3>
+    <form method="post" action="/ca/generate" style="display:flex;flex-direction:column;gap:10px">
+      <label>{{t "ca.generate_cn"}}<input name="cn" value="ROSMan CA"></label>
+      <div><button class="btn primary" type="submit">{{t "ca.generate"}}</button></div>
+    </form>
+  </div>
+  <div class="card">
+    <h3>{{t "ca.import"}}</h3>
+    <form method="post" action="/ca/import" style="display:flex;flex-direction:column;gap:10px">
+      <label>{{t "ca.import_cert"}}<textarea name="cert" class="code" rows="5" required></textarea></label>
+      <label>{{t "ca.import_key"}}<textarea name="key" class="code" rows="5" required></textarea></label>
+      <div><button class="btn" type="submit">{{t "ca.import"}}</button></div>
+    </form>
+  </div>
+</div>
+{{template "tail" .}}{{end}}

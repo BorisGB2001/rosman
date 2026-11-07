@@ -181,6 +181,37 @@ func (s *Store) UpdateInventory(id int64, model_, serial, ros string, seen time.
 	return err
 }
 
+// SetCertPin overwrites the API cert pin (used after ROSMan rebinds api-ssl to a
+// cert it issued, so the new fingerprint becomes the pinned one).
+func (s *Store) SetCertPin(id int64, pin string) error {
+	_, err := s.db.Exec(`UPDATE devices SET api_cert_pin=? WHERE id=?`, pin, id)
+	return err
+}
+
+// ---- CA ----
+
+func (s *Store) HasCA() bool {
+	var n int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM ca WHERE id=1`).Scan(&n)
+	return n > 0
+}
+
+func (s *Store) SaveCA(cn, certPEM, keyEnc string) error {
+	_, err := s.db.Exec(`INSERT INTO ca(id,cn,cert_pem,key_enc) VALUES(1,?,?,?)
+		ON CONFLICT(id) DO UPDATE SET cn=excluded.cn, cert_pem=excluded.cert_pem, key_enc=excluded.key_enc, created_at=CURRENT_TIMESTAMP`,
+		cn, certPEM, keyEnc)
+	return err
+}
+
+// GetCA returns the CN, certificate PEM and encrypted key, or ok=false.
+func (s *Store) GetCA() (cn, certPEM, keyEnc string, created time.Time, ok bool) {
+	err := s.db.QueryRow(`SELECT cn,cert_pem,key_enc,created_at FROM ca WHERE id=1`).Scan(&cn, &certPEM, &keyEnc, &created)
+	if err != nil {
+		return "", "", "", time.Time{}, false
+	}
+	return cn, certPEM, keyEnc, created, true
+}
+
 func (s *Store) UpdatePins(id int64, apiCertPin, sshHostPin string) error {
 	_, err := s.db.Exec(`UPDATE devices SET api_cert_pin=COALESCE(NULLIF(?,''),api_cert_pin), ssh_host_pin=COALESCE(NULLIF(?,''),ssh_host_pin) WHERE id=?`,
 		apiCertPin, sshHostPin, id)

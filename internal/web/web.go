@@ -29,7 +29,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.3.0"
+const Version = "0.4.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -58,6 +58,7 @@ func New(a *app.App) (*Server, error) {
 		"ts":       func(t time.Time) string { return t.Format("2006-01-02 15:04:05") },
 		"date":     func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02") },
 		"canWrite": func(u model.User) bool { return roleRank(u.Role) >= roleRank(model.RoleOperator) },
+		"isAdmin":  func(u model.User) bool { return u.Role == model.RoleAdmin },
 		"alertCount": func() int {
 			al, _ := a.Store.ActiveAlerts()
 			return len(al)
@@ -96,8 +97,12 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/backup", s.authed(s.requireRole(model.RoleOperator, s.deviceBackup)))
 	mux.Handle("POST /devices/{id}/fwcheck", s.authed(s.requireRole(model.RoleOperator, s.deviceFwCheck)))
 	mux.Handle("GET /configs/{id}", s.authed(s.configView))
+	mux.Handle("POST /devices/{id}/issuecert", s.authed(s.requireRole(model.RoleOperator, s.deviceIssueCert)))
 	mux.Handle("GET /alerts", s.authed(s.alerts))
 	mux.Handle("GET /audit", s.authed(s.auditPage))
+	mux.Handle("GET /ca", s.authed(s.requireRole(model.RoleAdmin, s.caPage)))
+	mux.Handle("POST /ca/generate", s.authed(s.requireRole(model.RoleAdmin, s.caGenerate)))
+	mux.Handle("POST /ca/import", s.authed(s.requireRole(model.RoleAdmin, s.caImport)))
 	return mux
 }
 
@@ -387,6 +392,45 @@ func (s *Server) alerts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) auditPage(w http.ResponseWriter, r *http.Request) {
 	rows, _ := s.a.Store.RecentAudit(200)
 	s.render(w, r, "audit", map[string]any{"Active": "audit", "Rows": rows})
+}
+
+func (s *Server) caPage(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, "ca", map[string]any{"Active": "ca", "CA": s.a.CAStatus(),
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
+}
+
+func (s *Server) caGenerate(w http.ResponseWriter, r *http.Request) {
+	if err := s.a.GenerateCA(r.FormValue("cn")); err != nil {
+		http.Redirect(w, r, "/ca?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "ca_generate", r.FormValue("cn"))
+	http.Redirect(w, r, "/ca?msg=generated", http.StatusSeeOther)
+}
+
+func (s *Server) caImport(w http.ResponseWriter, r *http.Request) {
+	if err := s.a.ImportCA(r.FormValue("cert"), r.FormValue("key")); err != nil {
+		s.render(w, r, "ca", map[string]any{"Active": "ca", "CA": s.a.CAStatus(), "Err": err.Error()})
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "ca_import", "")
+	http.Redirect(w, r, "/ca?msg=imported", http.StatusSeeOther)
+}
+
+func (s *Server) deviceIssueCert(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	dst := "/devices/" + r.PathValue("id")
+	if err := s.a.IssueCert(d); err != nil {
+		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "issue_cert", d.Name)
+	http.Redirect(w, r, dst+"?msg=cert-issued", http.StatusSeeOther)
 }
 
 func urlq(s string) string {
