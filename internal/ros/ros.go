@@ -356,6 +356,67 @@ func CAPsMAN(d model.Device, pass string, timeout time.Duration) (CAPsMANInfo, e
 	return ci, nil
 }
 
+// FirewallInfo is a read-only snapshot of the IP firewall.
+type FirewallInfo struct {
+	Filter   []FilterRule
+	NAT      []NatRule
+	AddrList []AddrListEntry
+}
+
+type FilterRule struct {
+	Chain, Action, Protocol, SrcAddr, DstAddr, DstPort, InIface, OutIface, Comment string
+	Disabled, Dynamic                                                             bool
+	Bytes                                                                         string
+}
+
+type NatRule struct {
+	Chain, Action, Protocol, DstPort, ToAddr, ToPorts, Comment string
+	Disabled                                                   bool
+}
+
+type AddrListEntry struct {
+	List, Address, Comment string
+	Dynamic                bool
+}
+
+// Firewall reads filter rules, NAT rules and address lists over the API.
+func Firewall(d model.Device, pass string, timeout time.Duration) (FirewallInfo, error) {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return FirewallInfo{}, err
+	}
+	defer c.Close()
+	var fi FirewallInfo
+	if r, e := c.Run("/ip/firewall/filter/print"); e == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			fi.Filter = append(fi.Filter, FilterRule{
+				Chain: m["chain"], Action: m["action"], Protocol: m["protocol"],
+				SrcAddr: m["src-address"], DstAddr: m["dst-address"], DstPort: m["dst-port"],
+				InIface: m["in-interface"], OutIface: m["out-interface"], Comment: m["comment"],
+				Disabled: m["disabled"] == "true", Dynamic: m["dynamic"] == "true", Bytes: m["bytes"]})
+		}
+	}
+	if r, e := c.Run("/ip/firewall/nat/print"); e == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			fi.NAT = append(fi.NAT, NatRule{
+				Chain: m["chain"], Action: m["action"], Protocol: m["protocol"],
+				DstPort: m["dst-port"], ToAddr: m["to-addresses"], ToPorts: m["to-ports"],
+				Comment: m["comment"], Disabled: m["disabled"] == "true"})
+		}
+	}
+	if r, e := c.Run("/ip/firewall/address-list/print"); e == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			fi.AddrList = append(fi.AddrList, AddrListEntry{
+				List: m["list"], Address: m["address"], Comment: m["comment"],
+				Dynamic: m["dynamic"] == "true"})
+		}
+	}
+	return fi, nil
+}
+
 // CheckUpdates forces the device to contact the upgrade server, then reads the
 // result. This is the normal RouterOS update check (read-only; installs nothing).
 func CheckUpdates(d model.Device, pass string, timeout time.Duration) (latest, channel, status string, err error) {

@@ -1,0 +1,55 @@
+{{define "firewall"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "fire.title"}} — {{.D.Name}}</h1></div>
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+
+{{if canWrite .User}}
+<div class="card">
+  <h3>{{t "fire.build"}}</h3>
+  <p class="muted small">{{t "fire.note"}}</p>
+  <form method="post" action="/devices/{{.D.ID}}/firewall" onsubmit="return confirm('{{t "fire.confirm"}}')">
+    <div class="grid2">
+      <label>{{t "fire.chain"}}
+        <select name="chain"><option value="forward">forward</option><option value="input">input</option><option value="output">output</option></select></label>
+      <label>{{t "fire.action"}}
+        <select name="action"><option value="drop">drop</option><option value="accept">accept</option><option value="reject">reject</option><option value="log">log</option><option value="tarpit">tarpit</option></select></label>
+      <label>{{t "fire.proto"}}
+        <select name="protocol"><option value="">—</option><option value="tcp">tcp</option><option value="udp">udp</option><option value="icmp">icmp</option></select></label>
+      <label>{{t "fire.dstport"}}<input name="dst_port" placeholder="80,443 / 1000-2000"></label>
+      <label>{{t "fire.src"}}<input name="src_address" placeholder="192.168.0.0/24"></label>
+      <label>{{t "fire.dst"}}<input name="dst_address" placeholder="10.0.0.1"></label>
+      <label>{{t "fire.srcport"}}<input name="src_port" placeholder=""></label>
+      <label>{{t "fire.in"}}<input name="in_iface" placeholder="ether1"></label>
+      <label>{{t "fire.out"}}<input name="out_iface" placeholder=""></label>
+      <label>{{t "fire.placebefore"}}<input name="place_before" placeholder="0" style="width:90px"></label>
+      <label>{{t "fire.comment"}}<input name="comment" placeholder=""></label>
+      <label>{{t "tpl.guard"}}<input name="guard" value="120" style="width:90px"></label>
+    </div>
+    <label style="flex-direction:row;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" name="disabled"> {{t "fire.disabled"}}</label>
+    <div style="margin-top:10px"><button class="btn primary" type="submit" {{if not .HasSSH}}disabled title="{{t "dev.need_ssh"}}"{{end}}>{{t "fire.add"}}</button></div>
+  </form>
+</div>
+{{end}}
+
+{{with .F}}
+<div class="card">
+  <h3>{{t "fire.filter"}} <span class="muted small">(filter)</span></h3>
+  <div class="scroll"><table><thead><tr><th>#</th><th>{{t "fire.chain"}}</th><th>{{t "fire.action"}}</th><th>{{t "fire.proto"}}</th><th>{{t "fire.src"}}</th><th>{{t "fire.dst"}}</th><th>{{t "fire.dstport"}}</th><th>{{t "neigh.iface"}}</th><th>{{t "fire.comment"}}</th></tr></thead><tbody>
+  {{range $i, $r := .Filter}}<tr {{if $r.Disabled}}style="opacity:.45"{{end}}><td class="muted">{{$i}}</td><td>{{$r.Chain}}</td><td><span class="badge{{if eq $r.Action "accept"}} good{{else if or (eq $r.Action "drop") (eq $r.Action "reject")}} bad{{end}}">{{$r.Action}}</span></td><td>{{$r.Protocol}}</td><td class="mono">{{$r.SrcAddr}}</td><td class="mono">{{$r.DstAddr}}</td><td class="mono">{{$r.DstPort}}</td><td class="muted">{{$r.InIface}}{{if $r.OutIface}}→{{$r.OutIface}}{{end}}</td><td class="muted">{{$r.Comment}}{{if $r.Dynamic}} <span class="badge">dyn</span>{{end}}</td></tr>{{else}}<tr><td colspan="9" class="muted">—</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+<div class="card">
+  <h3>NAT</h3>
+  <div class="scroll"><table><thead><tr><th>{{t "fire.chain"}}</th><th>{{t "fire.action"}}</th><th>{{t "fire.proto"}}</th><th>{{t "fire.dstport"}}</th><th>{{t "fire.toaddr"}}</th><th>{{t "fire.toports"}}</th><th>{{t "fire.comment"}}</th></tr></thead><tbody>
+  {{range .NAT}}<tr {{if .Disabled}}style="opacity:.45"{{end}}><td>{{.Chain}}</td><td><span class="badge">{{.Action}}</span></td><td>{{.Protocol}}</td><td class="mono">{{.DstPort}}</td><td class="mono">{{.ToAddr}}</td><td class="mono">{{.ToPorts}}</td><td class="muted">{{.Comment}}</td></tr>{{else}}<tr><td colspan="7" class="muted">—</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+<div class="card">
+  <h3>{{t "fire.addrlist"}}</h3>
+  <div class="scroll"><table><thead><tr><th>{{t "fire.list"}}</th><th>{{t "fire.address"}}</th><th>{{t "fire.comment"}}</th></tr></thead><tbody>
+  {{range .AddrList}}<tr><td>{{.List}}</td><td class="mono">{{.Address}}</td><td class="muted">{{.Comment}}{{if .Dynamic}} <span class="badge">dyn</span>{{end}}</td></tr>{{else}}<tr><td colspan="3" class="muted">—</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+{{end}}
+<p><a href="/devices/{{.D.ID}}">← {{t "dev.back"}}</a></p>
+{{template "tail" .}}{{end}}

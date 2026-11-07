@@ -13,6 +13,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,7 +35,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.18.0"
+const Version = "0.19.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -108,6 +109,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /configs/{id}", s.authed(s.configView))
 	mux.Handle("GET /devices/{id}/services", s.authed(s.servicesPage))
 	mux.Handle("GET /devices/{id}/capsman", s.authed(s.capsmanPage))
+	mux.Handle("GET /devices/{id}/firewall", s.authed(s.firewallPage))
+	mux.Handle("POST /devices/{id}/firewall", s.authed(s.requireRole(model.RoleOperator, s.firewallApply)))
 	mux.Handle("GET /devices/{id}/diff", s.authed(s.diffPage))
 	mux.Handle("POST /configs/{id}/restore", s.authed(s.requireRole(model.RoleOperator, s.configRestore)))
 	mux.Handle("POST /devices/{id}/issuecert", s.authed(s.requireRole(model.RoleOperator, s.deviceIssueCert)))
@@ -646,6 +649,113 @@ func (s *Server) capsmanPage(w http.ResponseWriter, r *http.Request) {
 		data["C"] = ci
 	}
 	s.render(w, r, "capsman", data)
+}
+
+func (s *Server) firewallPage(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	data := map[string]any{"Active": "devices", "D": d,
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"), "HasSSH": s.a.HasSSHKey()}
+	fi, ferr := s.a.DeviceFirewall(d)
+	if ferr != nil {
+		if data["Err"] == "" {
+			data["Err"] = ferr.Error()
+		}
+	} else {
+		data["F"] = fi
+	}
+	s.render(w, r, "firewall", data)
+}
+
+// fwSafe permits only characters valid in RouterOS firewall value fields
+// (addresses, ports, ranges, interface names), blocking anything that could
+// break out of the generated command line.
+var fwSafe = regexp.MustCompile(`^[A-Za-z0-9 ._:/,\-!]*$`)
+
+// buildFilterAddCmd composes a validated "/ip firewall filter add" command
+// from form fields. It returns an error on an unknown chain/action or on a
+// value containing characters outside the safe set.
+func buildFilterAddCmd(r *http.Request) (string, error) {
+	chain := r.FormValue("chain")
+	action := r.FormValue("action")
+	allowed := map[string]bool{"input": true, "forward": true, "output": true}
+	allowedAct := map[string]bool{"accept": true, "drop": true, "reject": true, "log": true, "tarpit": true}
+	if !allowed[chain] {
+		return "", fmt.Errorf("invalid chain")
+	}
+	if !allowedAct[action] {
+		return "", fmt.Errorf("invalid action")
+	}
+	parts := []string{"/ip firewall filter add", "chain=" + chain, "action=" + action}
+	add := func(key, val string) error {
+		val = strings.TrimSpace(val)
+		if val == "" {
+			return nil
+		}
+		if !fwSafe.MatchString(val) {
+			return fmt.Errorf("invalid value in %s", key)
+		}
+		parts = append(parts, key+"="+val)
+		return nil
+	}
+	if p := r.FormValue("protocol"); p != "" {
+		if p != "tcp" && p != "udp" && p != "icmp" {
+			return "", fmt.Errorf("invalid protocol")
+		}
+		parts = append(parts, "protocol="+p)
+	}
+	for key, form := range map[string]string{
+		"src-address": "src_address", "dst-address": "dst_address",
+		"dst-port": "dst_port", "src-port": "src_port",
+		"in-interface": "in_iface", "out-interface": "out_iface",
+	} {
+		if err := add(key, r.FormValue(form)); err != nil {
+			return "", err
+		}
+	}
+	if r.FormValue("disabled") == "on" {
+		parts = append(parts, "disabled=yes")
+	}
+	// Comment: strip quotes/backslashes, always tag as rosman-made.
+	cmt := strings.NewReplacer(`"`, "", `\`, "", "\n", " ", "\r", " ").Replace(r.FormValue("comment"))
+	cmt = strings.TrimSpace("rosman: " + cmt)
+	parts = append(parts, `comment="`+cmt+`"`)
+	if pb := strings.TrimSpace(r.FormValue("place_before")); pb != "" {
+		if !regexp.MustCompile(`^[0-9]+$`).MatchString(pb) {
+			return "", fmt.Errorf("invalid place-before")
+		}
+		parts = append(parts, "place-before="+pb)
+	}
+	return strings.Join(parts, " "), nil
+}
+
+func (s *Server) firewallApply(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	dst := "/devices/" + r.PathValue("id") + "/firewall"
+	cmd, berr := buildFilterAddCmd(r)
+	if berr != nil {
+		http.Redirect(w, r, dst+"?err="+urlq(berr.Error()), http.StatusSeeOther)
+		return
+	}
+	guard, _ := strconv.Atoi(r.FormValue("guard"))
+	if guard == 0 {
+		guard = 120
+	}
+	if err := s.a.ApplyTemplate(d, cmd, guard); err != nil {
+		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "firewall_add", d.Name+": "+cmd)
+	http.Redirect(w, r, dst+"?msg=rule-added", http.StatusSeeOther)
 }
 
 func (s *Server) diffPage(w http.ResponseWriter, r *http.Request) {
