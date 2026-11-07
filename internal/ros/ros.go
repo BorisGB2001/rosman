@@ -41,6 +41,8 @@ type Health struct {
 	FwStatus      string     // device update status string
 	Neighbors     []model.Neighbor
 	Ifaces        []model.IfaceSample
+	Ports         []model.Port
+	Temp          float64
 }
 
 // parseROSTime parses RouterOS date strings in both the modern ISO form and the
@@ -144,11 +146,14 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 		h.FwLatest = m["latest-version"]
 		h.FwStatus = m["status"]
 	}
-	// Per-interface byte counters for traffic graphs.
+	// Interfaces: port list for the faceplate + byte counters for traffic graphs.
 	if r, err := c.Run("/interface/print", "=stats="); err == nil {
 		for _, re := range r.Re {
 			m := re.Map
-			if m["disabled"] == "true" {
+			disabled := m["disabled"] == "true"
+			h.Ports = append(h.Ports, model.Port{
+				Name: m["name"], Type: m["type"], Running: m["running"] == "true", Disabled: disabled})
+			if disabled {
 				continue
 			}
 			rx, tx := atoi64(m["rx-byte"]), atoi64(m["tx-byte"])
@@ -157,6 +162,18 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 			}
 			h.Ifaces = append(h.Ifaces, model.IfaceSample{
 				Iface: m["name"], RxBytes: rx, TxBytes: tx, Running: m["running"] == "true"})
+		}
+	}
+	// Temperature from /system/health (optional; absent on many boards).
+	if r, err := c.Run("/system/health/print"); err == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			if v := m["temperature"]; v != "" {
+				h.Temp = atof(v)
+			}
+			if n := m["name"]; (n == "temperature" || n == "cpu-temperature" || n == "board-temperature1") && m["value"] != "" {
+				h.Temp = atof(m["value"])
+			}
 		}
 	}
 	// Discovered neighbours (MNDP/LLDP/CDP) for topology.
@@ -440,5 +457,10 @@ func atoi(s string) int {
 
 func atoi64(s string) int64 {
 	n, _ := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	return n
+}
+
+func atof(s string) float64 {
+	n, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	return n
 }

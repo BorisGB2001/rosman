@@ -40,6 +40,7 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE devices ADD COLUMN fw_channel TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN fw_status TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN site_id INTEGER`,
+		`ALTER TABLE metrics ADD COLUMN temp REAL NOT NULL DEFAULT 0`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -226,19 +227,77 @@ func (s *Store) UpdatePins(id int64, apiCertPin, sshHostPin string) error {
 // ---- metrics ----
 
 func (s *Store) AddHealth(h model.Health) error {
-	_, err := s.db.Exec(`INSERT INTO metrics(device_id,ts,cpu,free_mem,total_mem,uptime) VALUES(?,?,?,?,?,?)`,
-		h.DeviceID, h.TS, h.CPU, h.FreeMem, h.TotalMem, h.Uptime)
+	_, err := s.db.Exec(`INSERT INTO metrics(device_id,ts,cpu,free_mem,total_mem,uptime,temp) VALUES(?,?,?,?,?,?,?)`,
+		h.DeviceID, h.TS, h.CPU, h.FreeMem, h.TotalMem, h.Uptime, h.Temp)
 	return err
 }
 
 func (s *Store) LatestHealth(deviceID int64) (model.Health, error) {
 	var h model.Health
-	err := s.db.QueryRow(`SELECT device_id,ts,cpu,free_mem,total_mem,uptime FROM metrics WHERE device_id=? ORDER BY ts DESC LIMIT 1`, deviceID).
-		Scan(&h.DeviceID, &h.TS, &h.CPU, &h.FreeMem, &h.TotalMem, &h.Uptime)
+	err := s.db.QueryRow(`SELECT device_id,ts,cpu,free_mem,total_mem,uptime,temp FROM metrics WHERE device_id=? ORDER BY ts DESC LIMIT 1`, deviceID).
+		Scan(&h.DeviceID, &h.TS, &h.CPU, &h.FreeMem, &h.TotalMem, &h.Uptime, &h.Temp)
 	if errors.Is(err, sql.ErrNoRows) {
 		return h, ErrNotFound
 	}
 	return h, err
+}
+
+// MetricsSince returns health samples since t, oldest first, for graphs.
+func (s *Store) MetricsSince(deviceID int64, t time.Time) ([]model.Health, error) {
+	rows, err := s.db.Query(`SELECT ts,cpu,free_mem,total_mem,temp FROM metrics WHERE device_id=? AND ts>=? ORDER BY ts`, deviceID, t)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Health
+	for rows.Next() {
+		var h model.Health
+		if err := rows.Scan(&h.TS, &h.CPU, &h.FreeMem, &h.TotalMem, &h.Temp); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// ---- ports (faceplate) ----
+
+func (s *Store) ReplacePorts(deviceID int64, ports []model.Port) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM device_ports WHERE device_id=?`, deviceID); err != nil {
+		tx.Rollback()
+		return err
+	}
+	for i, p := range ports {
+		if _, err := tx.Exec(`INSERT INTO device_ports(device_id,pos,name,type,running,disabled) VALUES(?,?,?,?,?,?)`,
+			deviceID, i, p.Name, p.Type, b2i(p.Running), b2i(p.Disabled)); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) DevicePorts(deviceID int64) ([]model.Port, error) {
+	rows, err := s.db.Query(`SELECT name,type,running,disabled FROM device_ports WHERE device_id=? ORDER BY pos`, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Port
+	for rows.Next() {
+		var p model.Port
+		var run, dis int
+		if err := rows.Scan(&p.Name, &p.Type, &run, &dis); err != nil {
+			return nil, err
+		}
+		p.Running, p.Disabled = run != 0, dis != 0
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 // ---- configs ----

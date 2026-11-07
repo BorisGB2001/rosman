@@ -491,9 +491,24 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 	traffic := s.trafficRows(id)
 	sites, _ := s.a.Store.Sites()
 	devTags, _ := s.a.Store.DeviceTags(id)
+	ports, _ := s.a.Store.DevicePorts(id)
+	metrics, _ := s.a.Store.MetricsSince(id, time.Now().Add(-2*time.Hour))
+	var cpu, ram, temp []float64
+	for _, m := range metrics {
+		cpu = append(cpu, float64(m.CPU))
+		if m.TotalMem > 0 {
+			ram = append(ram, float64(m.TotalMem-m.FreeMem)/float64(m.TotalMem)*100)
+		}
+		if m.Temp > 0 {
+			temp = append(temp, m.Temp)
+		}
+	}
 	s.render(w, r, "device", map[string]any{"Active": "devices",
 		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors, "Traffic": traffic,
 		"Sites": sites, "DevTags": devTags, "BackupMode": s.a.BackupMode(),
+		"Faceplate": facePlateSVG(ports),
+		"CPUGraph":  graphSVG(cpu, 100, "var(--accent)"), "RAMGraph": graphSVG(ram, 100, "var(--warn)"),
+		"TempGraph": graphSVG(temp, 0, "var(--bad)"), "HasTemp": len(temp) > 0,
 		"HasSSH": s.a.HasSSHKey(), "Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
 	})
 }
@@ -851,6 +866,107 @@ func (s *Server) trafficRows(deviceID int64) []TrafficRow {
 		rows = rows[:20]
 	}
 	return rows
+}
+
+func portLabel(name string) string {
+	i := len(name)
+	for i > 0 && name[i-1] >= '0' && name[i-1] <= '9' {
+		i--
+	}
+	d := name[i:]
+	if d == "" {
+		return name
+	}
+	switch {
+	case strings.Contains(name, "sfp"), strings.Contains(name, "qsfp"):
+		return "S" + d
+	case strings.HasPrefix(name, "wlan"), strings.HasPrefix(name, "wifi"):
+		return "W" + d
+	default:
+		return d
+	}
+}
+
+// facePlateSVG draws a schematic front panel of the device's physical ports,
+// coloured by link state (green up, grey down, dim disabled).
+func facePlateSVG(ports []model.Port) template.HTML {
+	var ph []model.Port
+	for _, p := range ports {
+		t := p.Type
+		if strings.HasPrefix(t, "ether") || strings.Contains(t, "sfp") || strings.Contains(t, "qsfp") || t == "wlan" || strings.HasPrefix(t, "wifi") {
+			ph = append(ph, p)
+		}
+	}
+	if len(ph) == 0 {
+		return ""
+	}
+	const cw, ch, gap, perRow = 30, 30, 6, 16
+	cols := perRow
+	if len(ph) < cols {
+		cols = len(ph)
+	}
+	rows := (len(ph) + perRow - 1) / perRow
+	W := cols*(cw+gap) + gap
+	H := rows*(ch+gap+12) + gap
+	var b strings.Builder
+	fmt.Fprintf(&b, `<svg viewBox="0 0 %d %d" width="100%%" style="max-width:%dpx;height:auto">`, W, H, W)
+	fmt.Fprintf(&b, `<rect x="0" y="0" width="%d" height="%d" rx="8" fill="var(--bg)" stroke="var(--line)"/>`, W, H)
+	for i, p := range ph {
+		c, r := i%perRow, i/perRow
+		x := gap + c*(cw+gap)
+		y := gap + r*(ch+gap+12)
+		color := "var(--muted)"
+		if p.Disabled {
+			color = "var(--line)"
+		} else if p.Running {
+			color = "var(--good)"
+		}
+		title := template.HTMLEscapeString(p.Name + " (" + p.Type + ")")
+		if strings.Contains(p.Type, "sfp") || strings.Contains(p.Type, "qsfp") {
+			fmt.Fprintf(&b, `<g><title>%s</title><rect x="%d" y="%d" width="%d" height="%d" rx="3" fill="%s" opacity="0.85"/><line x1="%d" y1="%d" x2="%d" y2="%d" stroke="var(--surface)" stroke-width="2"/></g>`,
+				title, x, y, cw, ch, color, x+6, y+ch-6, x+cw-6, y+6)
+		} else {
+			fmt.Fprintf(&b, `<g><title>%s</title><rect x="%d" y="%d" width="%d" height="%d" rx="3" fill="%s" opacity="0.9"/><rect x="%d" y="%d" width="8" height="4" fill="var(--surface)"/></g>`,
+				title, x, y, cw, ch, color, x+cw/2-4, y)
+		}
+		fmt.Fprintf(&b, `<text x="%d" y="%d" text-anchor="middle" font-size="8" fill="var(--muted)">%s</text>`,
+			x+cw/2, y+ch+10, template.HTMLEscapeString(portLabel(p.Name)))
+	}
+	b.WriteString("</svg>")
+	return template.HTML(b.String())
+}
+
+// graphSVG draws a line graph of series; maxFixed>0 pins the Y scale (e.g. 100 for %).
+func graphSVG(series []float64, maxFixed float64, color string) template.HTML {
+	const w, h = 240, 46
+	if len(series) == 0 {
+		return ""
+	}
+	max := maxFixed
+	if max <= 0 {
+		max = 1
+		for _, v := range series {
+			if v > max {
+				max = v
+			}
+		}
+	}
+	n := len(series)
+	var pts strings.Builder
+	for i, v := range series {
+		x := 0.0
+		if n > 1 {
+			x = float64(i) / float64(n-1) * w
+		}
+		y := h - v/max*h
+		if i > 0 {
+			pts.WriteByte(' ')
+		}
+		fmt.Fprintf(&pts, "%.1f,%.1f", x, y)
+	}
+	return template.HTML(fmt.Sprintf(
+		`<svg viewBox="0 0 %d %d" width="100%%" style="max-width:%dpx;height:auto" preserveAspectRatio="none"><polyline fill="none" stroke="%s" stroke-width="1.8" points="%s"/></svg>`,
+		w, h, w, color, pts.String()))
 }
 
 func fmtbps(v float64) string {

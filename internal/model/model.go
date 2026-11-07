@@ -78,10 +78,11 @@ type Site struct {
 type Health struct {
 	DeviceID  int64
 	TS        time.Time
-	CPU       int    // percent
-	FreeMem   int64  // bytes
-	TotalMem  int64  // bytes
-	Uptime    string // RouterOS uptime string
+	CPU       int     // percent
+	FreeMem   int64   // bytes
+	TotalMem  int64   // bytes
+	Uptime    string  // RouterOS uptime string
+	Temp      float64 // °C (0 when unknown)
 }
 
 // Alert is one monitoring finding (one row per device+rule).
@@ -104,6 +105,14 @@ type Audit struct {
 	Actor  string
 	Action string
 	Detail string
+}
+
+// Port is a physical/interface port for the device faceplate.
+type Port struct {
+	Name     string
+	Type     string
+	Running  bool
+	Disabled bool
 }
 
 // IfaceSample is one per-interface byte-counter reading.

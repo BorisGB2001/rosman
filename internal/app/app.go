@@ -100,7 +100,8 @@ func (a *App) PollDevice(d model.Device) error {
 	if d.APICertPin == "" && pin != "" {
 		_ = a.Store.UpdatePins(d.ID, pin, "")
 	}
-	_ = a.Store.AddHealth(model.Health{DeviceID: d.ID, TS: now, CPU: h.CPU, FreeMem: h.FreeMem, TotalMem: h.TotalMem, Uptime: h.Uptime})
+	_ = a.Store.AddHealth(model.Health{DeviceID: d.ID, TS: now, CPU: h.CPU, FreeMem: h.FreeMem, TotalMem: h.TotalMem, Uptime: h.Uptime, Temp: h.Temp})
+	_ = a.Store.ReplacePorts(d.ID, h.Ports)
 	_ = a.Store.UpdateCertInfo(d.ID, h.APISSLCert, h.APICertExpiry)
 	a.evalCert(d, h.APICertExpiry)
 	_ = a.Store.UpdateFirmware(d.ID, h.FwLatest, h.FwChannel, h.FwStatus)

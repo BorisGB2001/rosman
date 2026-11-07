@@ -29,6 +29,18 @@
   <tr><th>SSH host pin</th><td class="mono" colspan="3">{{if .D.SSHHostPin}}{{.D.SSHHostPin}}{{else}}—{{end}}</td></tr>
 </table></div>
 <div class="card">
+  <h3>{{t "dev.faceplate"}}</h3>
+  {{if .Faceplate}}{{.Faceplate}}<p class="muted small">{{t "dev.faceplate_legend"}}</p>{{else}}<p class="muted">{{t "dev.faceplate_none"}}</p>{{end}}
+</div>
+<div class="card">
+  <h3>{{t "dev.graphs"}} <span class="muted small">{{t "dev.graphs_note"}}</span></h3>
+  <div class="grid2">
+    <div><div class="muted small">CPU — {{.H.CPU}}%</div>{{.CPUGraph}}</div>
+    <div><div class="muted small">RAM — {{mb .H.FreeMem}} / {{mb .H.TotalMem}}</div>{{.RAMGraph}}</div>
+  </div>
+  {{if .HasTemp}}<div style="margin-top:10px"><div class="muted small">{{t "dev.temp"}} — {{printf "%.0f" .H.Temp}}°C</div>{{.TempGraph}}</div>{{end}}
+</div>
+<div class="card">
   <h3>{{t "dev.configs"}} <span class="badge">export</span></h3>
   <div class="scroll"><table>
     <thead><tr><th>{{t "dev.taken"}}</th><th></th><th>SHA-256</th><th></th></tr></thead>

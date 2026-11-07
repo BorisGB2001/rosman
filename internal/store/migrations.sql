@@ -95,6 +95,17 @@ CREATE TABLE IF NOT EXISTS iface_traffic (
 );
 CREATE INDEX IF NOT EXISTS idx_iface_dev_if_ts ON iface_traffic(device_id, iface, ts);
 
+-- Physical/interface port list for the faceplate, replaced per poll.
+CREATE TABLE IF NOT EXISTS device_ports (
+    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    pos       INTEGER NOT NULL DEFAULT 0,
+    name      TEXT NOT NULL DEFAULT '',
+    type      TEXT NOT NULL DEFAULT '',
+    running   INTEGER NOT NULL DEFAULT 0,
+    disabled  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_ports_dev ON device_ports(device_id, pos);
+
 -- Discovered neighbours (MNDP/LLDP/CDP), replaced per poll.
 CREATE TABLE IF NOT EXISTS device_neighbors (
     device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
