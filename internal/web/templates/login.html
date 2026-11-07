@@ -1,0 +1,19 @@
+{{define "login"}}<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ROSMan — вход</title>{{template "styles"}}</head>
+<body>
+<main style="max-width:360px">
+  <div class="card">
+    <h2 style="margin-top:0;margin-bottom:0">ROSMan</h2>
+    <p class="muted" style="margin-top:2px">Router Operation System Manager</p>
+    {{if .Err}}<div class="flash err">{{.Err}}</div>{{end}}
+    <form method="post" action="/login">
+      <label>Пользователь</label>
+      <input name="username" autofocus required style="width:100%">
+      <label>Пароль</label>
+      <input name="password" type="password" required style="width:100%">
+      <div style="margin-top:14px"><button type="submit" style="width:100%">Войти</button></div>
+    </form>
+  </div>
+</main>
+{{template "footer" .}}
+</body></html>{{end}}

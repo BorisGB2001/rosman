@@ -1,0 +1,47 @@
+{{define "alerts"}}<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ROSMan — алерты</title>{{template "styles"}}</head>
+<body>
+{{template "nav" .User}}
+<main>
+  <div class="card">
+    <h3 style="margin-top:0">Активные алерты</h3>
+    <table>
+      <thead><tr><th>Важность</th><th>Устройство</th><th>Правило</th><th>Детали</th><th>С</th></tr></thead>
+      <tbody>
+      {{range .Active}}
+        <tr>
+          <td class="sev-{{.Severity}}">{{.Severity}}</td>
+          <td><a href="/devices/{{.DeviceID}}">{{.Device}}</a></td>
+          <td>{{.Rule}}</td>
+          <td>{{.Detail}}</td>
+          <td class="muted">{{ts .Since}}</td>
+        </tr>
+      {{else}}
+        <tr><td colspan="5" class="ok">Активных алертов нет 🎉</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top:0">История (последние 100)</h4>
+    <table>
+      <thead><tr><th>Состояние</th><th>Важность</th><th>Устройство</th><th>Правило</th><th>Обновлено</th></tr></thead>
+      <tbody>
+      {{range .All}}
+        <tr>
+          <td class="st-{{.State}}">{{.State}}</td>
+          <td class="sev-{{.Severity}}">{{.Severity}}</td>
+          <td><a href="/devices/{{.DeviceID}}">{{.Device}}</a></td>
+          <td>{{.Rule}}</td>
+          <td class="muted">{{ts .UpdatedAt}}</td>
+        </tr>
+      {{else}}
+        <tr><td colspan="5" class="muted">Пусто.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</main>
+{{template "footer" .}}
+</body></html>{{end}}

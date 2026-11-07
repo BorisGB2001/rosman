@@ -1,0 +1,14 @@
+# runtime data (DB, keys, TLS) — never commit
+/data/
+*.db
+*.db-shm
+*.db-wal
+secret.key
+tls.crt
+tls.key
+
+# build artifacts
+/rosman
+/rosman-linux
+/dist/
+*.log

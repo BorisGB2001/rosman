@@ -1,0 +1,15 @@
+{{define "config"}}<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ROSMan — конфиг</title>{{template "styles"}}</head>
+<body>
+{{template "nav" .User}}
+<main>
+  <div class="card">
+    <div class="row"><h3 style="margin:0;flex:1">Конфиг #{{.C.ID}} <span class="pill">{{.C.Kind}}</span></h3>
+      <span class="muted">{{ts .C.TakenAt}}</span></div>
+    <p class="muted" style="font-family:monospace;font-size:12px">sha256: {{.C.SHA256}}</p>
+    <pre>{{.C.Content}}</pre>
+  </div>
+  <p><a href="/devices/{{.C.DeviceID}}">← к устройству</a></p>
+</main>
+{{template "footer" .}}
+</body></html>{{end}}

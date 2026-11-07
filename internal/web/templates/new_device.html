@@ -1,0 +1,31 @@
+{{define "new_device"}}<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ROSMan — добавить устройство</title>{{template "styles"}}</head>
+<body>
+{{template "nav" .User}}
+<main style="max-width:560px">
+  <div class="card">
+    <h3 style="margin-top:0">Добавить устройство</h3>
+    <p class="muted">При добавлении rosman подключится по API-SSL, запомнит отпечаток сертификата (TOFU) и считает identity/версию.</p>
+    {{if .Err}}<div class="flash err">{{.Err}}</div>{{end}}
+    <form method="post" action="/devices/new">
+      <label>Имя (пусто — возьмём identity)</label>
+      <input name="name" value="{{.Name}}" style="width:100%">
+      <label>IP-адрес</label>
+      <input name="ip" value="{{.IP}}" required style="width:100%">
+      <label>API-порт</label>
+      <input name="api_port" value="8729" style="width:100%">
+      <label>API-пользователь</label>
+      <input name="api_user" value="{{.APIUser}}" required style="width:100%">
+      <label>API-пароль</label>
+      <input name="api_pass" type="password" style="width:100%">
+      <label>SSH-пользователь (для /export; пусто — как API)</label>
+      <input name="ssh_user" style="width:100%">
+      <div style="margin-top:14px" class="row">
+        <button type="submit">Добавить</button>
+        <a class="btn secondary" href="/">Отмена</a>
+      </div>
+    </form>
+  </div>
+</main>
+{{template "footer" .}}
+</body></html>{{end}}
