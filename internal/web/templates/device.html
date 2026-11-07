@@ -6,6 +6,7 @@
   <a class="btn sm secondary" href="/devices/{{.D.ID}}/services">{{t "svc.title"}}</a>
   <a class="btn sm secondary" href="/devices/{{.D.ID}}/capsman">CAPsMAN</a>
   <a class="btn sm secondary" href="/devices/{{.D.ID}}/firewall">{{t "fire.title"}}</a>
+  <a class="btn sm secondary" href="/devices/{{.D.ID}}/cve">{{t "cve.title"}}</a>
   {{if canWrite .User}}<div class="badges">
     <form class="inline" method="post" action="/devices/{{.D.ID}}/poll"><button class="btn sm" type="submit">{{t "dev.poll"}}</button></form>
     <form class="inline" method="post" action="/devices/{{.D.ID}}/backup">

@@ -1,0 +1,33 @@
+{{define "cve"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "cve.title"}} — {{.D.Name}}</h1></div>
+<div class="card">
+  <table>
+    <tr><th>RouterOS</th><td>{{if .D.ROSVersion}}{{.D.ROSVersion}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <th>{{t "sec.severity"}}</th><td>{{if .Worst}}<span class="badge bad">{{.Worst}}</span>{{else}}<span class="badge good">{{t "cve.clean"}}</span>{{end}}</td></tr>
+  </table>
+  <p class="muted small">{{t "cve.dbnote"}} ({{.DBCount}})</p>
+</div>
+{{if .Findings}}
+<div class="card">
+  <h3>{{t "cve.affected_by"}}</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>CVE</th><th>{{t "sec.severity"}}</th><th>CVSS</th><th>{{t "cve.desc"}}</th><th>{{t "cve.fixedin"}}</th></tr></thead>
+    <tbody>
+    {{range .Findings}}
+      <tr>
+        <td class="mono"><a href="{{.CVE.Ref}}" target="_blank" rel="noopener noreferrer">{{.CVE.ID}}</a></td>
+        <td><span class="badge {{if eq .CVE.Severity "Medium"}}{{else}}bad{{end}}">{{.CVE.Severity}}</span></td>
+        <td>{{printf "%.1f" .CVE.CVSS}}</td>
+        <td>{{.CVE.Title}}</td>
+        <td class="mono">{{.Fixed}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  <p class="muted small">{{t "cve.fixhint"}}</p>
+</div>
+{{else}}
+<div class="card"><p class="muted">{{t "cve.none"}}</p></div>
+{{end}}
+<p><a href="/devices/{{.D.ID}}">← {{t "dev.back"}}</a> · <a href="/security">{{t "sec.title"}}</a></p>
+{{template "tail" .}}{{end}}

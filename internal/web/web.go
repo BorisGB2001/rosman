@@ -21,6 +21,7 @@ import (
 
 	"rosman/internal/app"
 	"rosman/internal/auth"
+	"rosman/internal/cve"
 	"rosman/internal/diff"
 	"rosman/internal/i18n"
 	"rosman/internal/model"
@@ -35,7 +36,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.19.0"
+const Version = "0.20.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -68,6 +69,16 @@ func New(a *app.App) (*Server, error) {
 		"alertCount": func() int {
 			al, _ := a.Store.ActiveAlerts()
 			return len(al)
+		},
+		"cveCount": func() int {
+			devs, _ := a.Store.Devices()
+			n := 0
+			for _, d := range devs {
+				if len(cve.Scan(d.ROSVersion)) > 0 {
+					n++
+				}
+			}
+			return n
 		},
 		"version": func() string { return Version },
 		"langs":   func() []string { return i18n.Langs() },
@@ -126,6 +137,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/site", s.authed(s.requireRole(model.RoleOperator, s.deviceSetSite)))
 	mux.Handle("POST /devices/{id}/tag", s.authed(s.requireRole(model.RoleOperator, s.deviceTag)))
 	mux.Handle("GET /clients", s.authed(s.clientsPage))
+	mux.Handle("GET /security", s.authed(s.securityPage))
+	mux.Handle("GET /devices/{id}/cve", s.authed(s.cvePage))
 	mux.Handle("GET /topology", s.authed(s.topologyPage))
 	mux.Handle("GET /alerts", s.authed(s.alerts))
 	mux.Handle("GET /audit", s.authed(s.auditPage))
@@ -756,6 +769,33 @@ func (s *Server) firewallApply(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "firewall_add", d.Name+": "+cmd)
 	http.Redirect(w, r, dst+"?msg=rule-added", http.StatusSeeOther)
+}
+
+func (s *Server) cvePage(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	fs := cve.Scan(d.ROSVersion)
+	s.render(w, r, "cve", map[string]any{"Active": "devices", "D": d,
+		"Findings": fs, "Worst": cve.Worst(fs), "DBCount": len(cve.Data)})
+}
+
+func (s *Server) securityPage(w http.ResponseWriter, r *http.Request) {
+	devs, _ := s.a.Store.Devices()
+	rows := make([]map[string]any, 0, len(devs))
+	affected := 0
+	for _, d := range devs {
+		fs := cve.Scan(d.ROSVersion)
+		if len(fs) > 0 {
+			affected++
+		}
+		rows = append(rows, map[string]any{"D": d, "Findings": fs, "Worst": cve.Worst(fs)})
+	}
+	s.render(w, r, "security", map[string]any{"Active": "security",
+		"Rows": rows, "Affected": affected, "Total": len(devs), "DBCount": len(cve.Data)})
 }
 
 func (s *Server) diffPage(w http.ResponseWriter, r *http.Request) {

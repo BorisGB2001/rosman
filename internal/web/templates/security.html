@@ -1,0 +1,28 @@
+{{define "security"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "sec.title"}}</h1></div>
+<div class="card">
+  <p style="margin:.2em 0">
+    {{if gt .Affected 0}}<span class="badge bad">{{.Affected}}</span> {{t "sec.affected"}} / {{.Total}}
+    {{else}}<span class="badge good">0</span> {{t "sec.clean"}} ({{.Total}}){{end}}
+  </p>
+  <p class="muted small">{{t "sec.dbnote"}} ({{.DBCount}})</p>
+</div>
+<div class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "col.name"}}</th><th>RouterOS</th><th>{{t "sec.severity"}}</th><th>{{t "sec.count"}}</th><th></th></tr></thead>
+    <tbody>
+    {{range .Rows}}
+      <tr>
+        <td><a href="/devices/{{.D.ID}}/cve">{{.D.Name}}</a></td>
+        <td>{{if .D.ROSVersion}}{{.D.ROSVersion}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>{{if .Worst}}<span class="badge {{if eq .Worst "Medium"}}{{else}}bad{{end}}">{{.Worst}}</span>{{else}}<span class="badge good">—</span>{{end}}</td>
+        <td>{{len .Findings}}</td>
+        <td><a href="/devices/{{.D.ID}}/cve">{{t "sec.view"}}</a></td>
+      </tr>
+    {{else}}
+      <tr><td colspan="5" class="muted">{{t "devices.empty"}}</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
+{{template "tail" .}}{{end}}
