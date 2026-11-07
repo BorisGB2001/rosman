@@ -44,6 +44,8 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE devices ADD COLUMN snmp_enabled INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE devices ADD COLUMN snmp_community_enc TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN snmp_port INTEGER NOT NULL DEFAULT 161`,
+		`ALTER TABLE users ADD COLUMN totp_secret_enc TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -69,11 +71,12 @@ func (s *Store) CreateUser(u model.User) (int64, error) {
 	return res.LastInsertId()
 }
 
-func (s *Store) UserByName(name string) (model.User, error) {
+const userCols = `id,username,password_hash,role,created_at,totp_secret_enc,totp_enabled`
+
+func scanUser(row interface{ Scan(...any) error }) (model.User, error) {
 	var u model.User
 	var role string
-	err := s.db.QueryRow(`SELECT id,username,password_hash,role,created_at FROM users WHERE username=?`, name).
-		Scan(&u.ID, &u.Username, &u.PasswordHash, &role, &u.CreatedAt)
+	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &role, &u.CreatedAt, &u.TOTPSecretEnc, &u.TOTPEnabled)
 	if errors.Is(err, sql.ErrNoRows) {
 		return u, ErrNotFound
 	}
@@ -81,16 +84,66 @@ func (s *Store) UserByName(name string) (model.User, error) {
 	return u, err
 }
 
+func (s *Store) UserByName(name string) (model.User, error) {
+	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE username=?`, name))
+}
+
 func (s *Store) UserByID(id int64) (model.User, error) {
-	var u model.User
-	var role string
-	err := s.db.QueryRow(`SELECT id,username,password_hash,role,created_at FROM users WHERE id=?`, id).
-		Scan(&u.ID, &u.Username, &u.PasswordHash, &role, &u.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return u, ErrNotFound
+	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE id=?`, id))
+}
+
+// SetTOTP stores (or clears) a user's encrypted TOTP secret and enabled flag.
+func (s *Store) SetTOTP(userID int64, secretEnc string, enabled bool) error {
+	_, err := s.db.Exec(`UPDATE users SET totp_secret_enc=?, totp_enabled=? WHERE id=?`, secretEnc, enabled, userID)
+	return err
+}
+
+// ---- API tokens ----
+
+func (s *Store) CreateToken(userID int64, name, hash string) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO api_tokens(user_id,name,token_hash) VALUES(?,?,?)`, userID, name, hash)
+	if err != nil {
+		return 0, err
 	}
-	u.Role = model.Role(role)
-	return u, err
+	return res.LastInsertId()
+}
+
+func (s *Store) TokensByUser(userID int64) ([]model.APIToken, error) {
+	rows, err := s.db.Query(`SELECT id,user_id,name,created_at,last_used FROM api_tokens WHERE user_id=? ORDER BY id DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.APIToken
+	for rows.Next() {
+		var t model.APIToken
+		if err := rows.Scan(&t.ID, &t.UserID, &t.Name, &t.CreatedAt, &t.LastUsed); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// UserByTokenHash returns the user owning the token with the given hash and
+// updates its last_used timestamp.
+func (s *Store) UserByTokenHash(hash string) (model.User, error) {
+	var uid int64
+	err := s.db.QueryRow(`SELECT user_id FROM api_tokens WHERE token_hash=?`, hash).Scan(&uid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.User{}, ErrNotFound
+	}
+	if err != nil {
+		return model.User{}, err
+	}
+	_, _ = s.db.Exec(`UPDATE api_tokens SET last_used=CURRENT_TIMESTAMP WHERE token_hash=?`, hash)
+	return s.UserByID(uid)
+}
+
+// DeleteToken revokes a token, but only if it belongs to userID.
+func (s *Store) DeleteToken(id, userID int64) error {
+	_, err := s.db.Exec(`DELETE FROM api_tokens WHERE id=? AND user_id=?`, id, userID)
+	return err
 }
 
 // ---- sessions ----

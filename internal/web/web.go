@@ -5,8 +5,11 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -25,6 +28,9 @@ import (
 	"rosman/internal/diff"
 	"rosman/internal/i18n"
 	"rosman/internal/model"
+	"rosman/internal/totp"
+
+	qrcode "github.com/skip2/go-qrcode"
 	"rosman/internal/oui"
 	"rosman/internal/store"
 )
@@ -36,7 +42,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.20.0"
+const Version = "0.21.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -63,6 +69,7 @@ func New(a *app.App) (*Server, error) {
 			return time.Since(*t).Round(time.Second).String()
 		},
 		"ts":       func(t time.Time) string { return t.Format("2006-01-02 15:04:05") },
+		"tsp":      func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02 15:04:05") },
 		"date":     func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02") },
 		"canWrite": func(u model.User) bool { return roleRank(u.Role) >= roleRank(model.RoleOperator) },
 		"isAdmin":  func(u model.User) bool { return u.Role == model.RoleAdmin },
@@ -139,6 +146,16 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /clients", s.authed(s.clientsPage))
 	mux.Handle("GET /security", s.authed(s.securityPage))
 	mux.Handle("GET /devices/{id}/cve", s.authed(s.cvePage))
+	mux.Handle("GET /account", s.authed(s.accountPage))
+	mux.Handle("POST /account/2fa/begin", s.authed(s.totpBegin))
+	mux.Handle("POST /account/2fa/enable", s.authed(s.totpEnable))
+	mux.Handle("POST /account/2fa/disable", s.authed(s.totpDisable))
+	mux.Handle("POST /account/tokens", s.authed(s.tokenCreate))
+	mux.Handle("POST /account/tokens/{id}/delete", s.authed(s.tokenDelete))
+	mux.HandleFunc("GET /api/v1/devices", s.apiAuth(s.apiDevices))
+	mux.HandleFunc("GET /api/v1/devices/{id}", s.apiAuth(s.apiDevice))
+	mux.HandleFunc("GET /api/v1/alerts", s.apiAuth(s.apiAlerts))
+	mux.HandleFunc("GET /api/v1/security", s.apiAuth(s.apiSecurity))
 	mux.Handle("GET /topology", s.authed(s.topologyPage))
 	mux.Handle("GET /alerts", s.authed(s.alerts))
 	mux.Handle("GET /audit", s.authed(s.auditPage))
@@ -292,6 +309,13 @@ func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?err=invalid+credentials", http.StatusSeeOther)
 		return
 	}
+	if u.TOTPEnabled {
+		sec, derr := s.a.Box.Decrypt(u.TOTPSecretEnc)
+		if derr != nil || !totp.Validate(sec, r.FormValue("otp")) {
+			http.Redirect(w, r, "/login?err=invalid+2fa+code", http.StatusSeeOther)
+			return
+		}
+	}
 	tok := auth.NewToken()
 	if err := s.a.Store.CreateSession(tok, u.ID, time.Now().Add(12*time.Hour)); err != nil {
 		http.Error(w, err.Error(), 500)
@@ -308,6 +332,179 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+// ---- account: 2FA and API tokens ----
+
+func tokenHash(tok string) string {
+	h := sha256.Sum256([]byte(tok))
+	return hex.EncodeToString(h[:])
+}
+
+func (s *Server) accountData(r *http.Request, extra map[string]any) map[string]any {
+	u := userFrom(r)
+	// Re-read to get fresh TOTP state.
+	if fresh, err := s.a.Store.UserByID(u.ID); err == nil {
+		u = fresh
+	}
+	toks, _ := s.a.Store.TokensByUser(u.ID)
+	data := map[string]any{"Active": "account", "U": u, "Tokens": toks,
+		"TOTPEnabled": u.TOTPEnabled, "TOTPPending": !u.TOTPEnabled && u.TOTPSecretEnc != "",
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")}
+	if data["TOTPPending"] == true {
+		if sec, err := s.a.Box.Decrypt(u.TOTPSecretEnc); err == nil {
+			uri := totp.URI("ROSMan", u.Username, sec)
+			data["TOTPSecret"] = sec
+			data["TOTPURI"] = uri
+			if png, err := qrcode.Encode(uri, qrcode.Medium, 220); err == nil {
+				// template.URL bypasses html/template's URL sanitizer, which
+				// otherwise rewrites a data: URI to "#ZgotmplZ".
+				data["TOTPQR"] = template.URL("data:image/png;base64," + base64.StdEncoding.EncodeToString(png))
+			}
+		}
+	}
+	for k, v := range extra {
+		data[k] = v
+	}
+	return data
+}
+
+func (s *Server) accountPage(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, "account", s.accountData(r, nil))
+}
+
+func (s *Server) totpBegin(w http.ResponseWriter, r *http.Request) {
+	u := userFrom(r)
+	enc, err := s.a.Box.Encrypt(totp.NewSecret())
+	if err != nil {
+		http.Redirect(w, r, "/account?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	if err := s.a.Store.SetTOTP(u.ID, enc, false); err != nil {
+		http.Redirect(w, r, "/account?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/account", http.StatusSeeOther)
+}
+
+func (s *Server) totpEnable(w http.ResponseWriter, r *http.Request) {
+	u, err := s.a.Store.UserByID(userFrom(r).ID)
+	if err != nil || u.TOTPSecretEnc == "" {
+		http.Redirect(w, r, "/account?err=no+pending+secret", http.StatusSeeOther)
+		return
+	}
+	sec, derr := s.a.Box.Decrypt(u.TOTPSecretEnc)
+	if derr != nil || !totp.Validate(sec, r.FormValue("code")) {
+		http.Redirect(w, r, "/account?err=wrong+code", http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.SetTOTP(u.ID, u.TOTPSecretEnc, true)
+	_ = s.a.Store.AddAudit(u.Username, "2fa_enable", "")
+	http.Redirect(w, r, "/account?msg=2fa-enabled", http.StatusSeeOther)
+}
+
+func (s *Server) totpDisable(w http.ResponseWriter, r *http.Request) {
+	u := userFrom(r)
+	if !auth.CheckPassword(u.PasswordHash, r.FormValue("password")) {
+		http.Redirect(w, r, "/account?err=wrong+password", http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.SetTOTP(u.ID, "", false)
+	_ = s.a.Store.AddAudit(u.Username, "2fa_disable", "")
+	http.Redirect(w, r, "/account?msg=2fa-disabled", http.StatusSeeOther)
+}
+
+func (s *Server) tokenCreate(w http.ResponseWriter, r *http.Request) {
+	u := userFrom(r)
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		name = "token"
+	}
+	raw := "rosman_" + auth.NewToken()
+	if _, err := s.a.Store.CreateToken(u.ID, name, tokenHash(raw)); err != nil {
+		http.Redirect(w, r, "/account?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(u.Username, "token_create", name)
+	// Show the raw token once by rendering the page directly (never in a URL).
+	s.render(w, r, "account", s.accountData(r, map[string]any{"NewToken": raw, "NewTokenName": name}))
+}
+
+func (s *Server) tokenDelete(w http.ResponseWriter, r *http.Request) {
+	u := userFrom(r)
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	_ = s.a.Store.DeleteToken(id, u.ID)
+	_ = s.a.Store.AddAudit(u.Username, "token_delete", r.PathValue("id"))
+	http.Redirect(w, r, "/account?msg=token-revoked", http.StatusSeeOther)
+}
+
+// ---- JSON API (bearer token) ----
+
+func (s *Server) apiAuth(h func(http.ResponseWriter, *http.Request, model.User)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		h2 := r.Header.Get("Authorization")
+		if !strings.HasPrefix(h2, "Bearer ") {
+			writeJSON(w, 401, map[string]any{"error": "missing bearer token"})
+			return
+		}
+		u, err := s.a.Store.UserByTokenHash(tokenHash(strings.TrimPrefix(h2, "Bearer ")))
+		if err != nil {
+			writeJSON(w, 401, map[string]any{"error": "invalid token"})
+			return
+		}
+		h(w, r, u)
+	}
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func deviceJSON(d model.Device) map[string]any {
+	return map[string]any{
+		"id": d.ID, "name": d.Name, "ip": d.IP, "model": d.Model, "serial": d.Serial,
+		"routeros": d.ROSVersion, "fw_latest": d.FwLatest, "fw_status": d.FwStatus,
+		"last_seen": d.LastSeen, "cve": cve.Scan(d.ROSVersion),
+	}
+}
+
+func (s *Server) apiDevices(w http.ResponseWriter, r *http.Request, _ model.User) {
+	devs, _ := s.a.Store.Devices()
+	out := make([]map[string]any, 0, len(devs))
+	for _, d := range devs {
+		out = append(out, deviceJSON(d))
+	}
+	writeJSON(w, 200, map[string]any{"devices": out})
+}
+
+func (s *Server) apiDevice(w http.ResponseWriter, r *http.Request, _ model.User) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		writeJSON(w, 404, map[string]any{"error": "not found"})
+		return
+	}
+	writeJSON(w, 200, deviceJSON(d))
+}
+
+func (s *Server) apiAlerts(w http.ResponseWriter, r *http.Request, _ model.User) {
+	al, _ := s.a.Store.ActiveAlerts()
+	writeJSON(w, 200, map[string]any{"alerts": al})
+}
+
+func (s *Server) apiSecurity(w http.ResponseWriter, r *http.Request, _ model.User) {
+	devs, _ := s.a.Store.Devices()
+	out := make([]map[string]any, 0)
+	for _, d := range devs {
+		fs := cve.Scan(d.ROSVersion)
+		if len(fs) > 0 {
+			out = append(out, map[string]any{"id": d.ID, "name": d.Name,
+				"routeros": d.ROSVersion, "worst": cve.Worst(fs), "findings": fs})
+		}
+	}
+	writeJSON(w, 200, map[string]any{"affected": out})
 }
 
 func (s *Server) devices(w http.ResponseWriter, r *http.Request) {

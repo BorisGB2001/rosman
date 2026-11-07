@@ -12,11 +12,22 @@ const (
 )
 
 type User struct {
-	ID           int64
-	Username     string
-	PasswordHash string
-	Role         Role
-	CreatedAt    time.Time
+	ID            int64
+	Username      string
+	PasswordHash  string
+	Role          Role
+	CreatedAt     time.Time
+	TOTPSecretEnc string
+	TOTPEnabled   bool
+}
+
+// APIToken is a personal bearer token for the JSON API (hash stored, not value).
+type APIToken struct {
+	ID        int64
+	UserID    int64
+	Name      string
+	CreatedAt time.Time
+	LastUsed  *time.Time
 }
 
 // Device is a managed RouterOS unit.

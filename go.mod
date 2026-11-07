@@ -6,6 +6,7 @@ require (
 	github.com/go-routeros/routeros/v3 v3.0.1
 	github.com/gosnmp/gosnmp v1.47.0
 	github.com/pkg/sftp v1.13.12
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	golang.org/x/crypto v0.58.0
 	modernc.org/sqlite v1.62.0
 )

@@ -1,0 +1,58 @@
+{{define "account"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "acc.title"}} — {{.U.Username}}</h1></div>
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+
+<div class="card narrow">
+  <h3>{{t "acc.2fa"}} {{if .TOTPEnabled}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</h3>
+  {{if .TOTPEnabled}}
+    <p class="muted small">{{t "acc.2fa_on"}}</p>
+    <form class="inline" method="post" action="/account/2fa/disable">
+      <input name="password" type="password" placeholder="{{t "login.pass"}}" required>
+      <button class="btn sm danger" type="submit">{{t "acc.2fa_disable"}}</button>
+    </form>
+  {{else if .TOTPPending}}
+    <p class="muted small">{{t "acc.2fa_scan"}}</p>
+    {{if .TOTPQR}}<div style="margin:8px 0"><img src="{{.TOTPQR}}" width="220" height="220" alt="QR" style="background:#fff;padding:6px;border-radius:8px"></div>{{end}}
+    <p class="small">{{t "acc.2fa_manual"}}: <code class="mono">{{.TOTPSecret}}</code></p>
+    <form class="inline" method="post" action="/account/2fa/enable" style="margin-top:8px">
+      <input name="code" inputmode="numeric" placeholder="000000" autocomplete="one-time-code" required>
+      <button class="btn sm primary" type="submit">{{t "acc.2fa_verify"}}</button>
+    </form>
+  {{else}}
+    <p class="muted small">{{t "acc.2fa_off"}}</p>
+    <form method="post" action="/account/2fa/begin"><button class="btn sm primary" type="submit">{{t "acc.2fa_enable"}}</button></form>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>{{t "acc.tokens"}}</h3>
+  <p class="muted small">{{t "acc.tokens_note"}}</p>
+  {{if .NewToken}}
+  <div class="note ok" style="word-break:break-all">
+    {{t "acc.token_new"}} «{{.NewTokenName}}»:<br><code class="mono">{{.NewToken}}</code><br>
+    <small>{{t "acc.token_once"}}</small>
+  </div>
+  {{end}}
+  <form class="inline" method="post" action="/account/tokens" style="margin:8px 0">
+    <input name="name" placeholder="{{t "acc.token_name"}}" maxlength="40">
+    <button class="btn sm primary" type="submit">{{t "acc.token_create"}}</button>
+  </form>
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "acc.token_name"}}</th><th>{{t "ca.created"}}</th><th>{{t "acc.token_used"}}</th><th></th></tr></thead>
+    <tbody>
+    {{range .Tokens}}
+      <tr><td>{{.Name}}</td><td class="muted">{{ts .CreatedAt}}</td><td class="muted">{{tsp .LastUsed}}</td>
+        <td><form class="inline" method="post" action="/account/tokens/{{.ID}}/delete"><button class="link" type="submit" onclick="return confirm('{{t "acc.token_revoke_confirm"}}')">{{t "acc.token_revoke"}}</button></form></td></tr>
+    {{else}}
+      <tr><td colspan="4" class="muted">{{t "acc.token_none"}}</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  <details style="margin-top:10px"><summary class="muted small">{{t "acc.api_hint"}}</summary>
+    <pre class="mono" style="white-space:pre-wrap;font-size:.85em">curl -k -H "Authorization: Bearer &lt;token&gt;" \
+  https://HOST:18443/api/v1/devices
+# endpoints: /api/v1/devices, /api/v1/devices/{id}, /api/v1/alerts, /api/v1/security</pre>
+  </details>
+</div>
+{{template "tail" .}}{{end}}

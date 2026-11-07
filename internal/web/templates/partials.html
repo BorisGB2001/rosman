@@ -44,7 +44,7 @@
   </nav>
   <div class="me">
     <div class="merow">
-      <span class="who">{{.User.Username}} <small>({{.User.Role}})</small></span>
+      <span class="who"><a href="/account">{{.User.Username}}</a> <small>({{.User.Role}})</small></span>
       <form class="inline" method="post" action="/logout"><button class="link" type="submit">{{t "nav.logout"}}</button></form>
     </div>
     <div class="prefs">
