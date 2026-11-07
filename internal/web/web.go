@@ -43,7 +43,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.25.0"
+const Version = "0.26.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -184,6 +184,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/devices/{id}", s.apiAuth(s.apiDevice))
 	mux.HandleFunc("GET /api/v1/alerts", s.apiAuth(s.apiAlerts))
 	mux.HandleFunc("GET /api/v1/security", s.apiAuth(s.apiSecurity))
+	mux.HandleFunc("GET /metrics", s.apiAuth(s.metricsEndpoint))
 	mux.Handle("GET /topology", s.authed(s.topologyPage))
 	mux.Handle("GET /alerts", s.authed(s.alerts))
 	mux.Handle("GET /audit", s.authed(s.auditPage))
@@ -520,6 +521,90 @@ func (s *Server) apiDevice(w http.ResponseWriter, r *http.Request, _ model.User)
 func (s *Server) apiAlerts(w http.ResponseWriter, r *http.Request, _ model.User) {
 	al, _ := s.a.Store.ActiveAlerts()
 	writeJSON(w, 200, map[string]any{"alerts": al})
+}
+
+// promLabel escapes a Prometheus label value (backslash, quote, newline).
+func promLabel(v string) string {
+	v = strings.ReplaceAll(v, `\`, `\\`)
+	v = strings.ReplaceAll(v, `"`, `\"`)
+	v = strings.ReplaceAll(v, "\n", `\n`)
+	return v
+}
+
+// metricsEndpoint exposes fleet metrics in the Prometheus text format. It is
+// bearer-protected (reuse an API token): scrape with
+//   authorization: { credentials: "<token>" }
+func (s *Server) metricsEndpoint(w http.ResponseWriter, r *http.Request, _ model.User) {
+	devs, _ := s.a.Store.Devices()
+	alerts, _ := s.a.Store.ActiveAlerts()
+	var b strings.Builder
+	p := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
+
+	p("# HELP rosman_build_info Build information.\n# TYPE rosman_build_info gauge\n")
+	p("rosman_build_info{version=%q} 1\n", Version)
+	p("# HELP rosman_alerts_active Number of active alerts.\n# TYPE rosman_alerts_active gauge\n")
+	p("rosman_alerts_active %d\n", len(alerts))
+	p("# HELP rosman_devices_total Number of managed devices.\n# TYPE rosman_devices_total gauge\n")
+	p("rosman_devices_total %d\n", len(devs))
+
+	p("# HELP rosman_device_up Device reachability (1 up, 0 down/unknown).\n# TYPE rosman_device_up gauge\n")
+	upLine := func(d model.Device) int {
+		if d.LastSeen != nil && time.Since(*d.LastSeen) < 3*s.a.Cfg.PollInterval {
+			return 1
+		}
+		return 0
+	}
+	for _, d := range devs {
+		p("rosman_device_up{device=%q,ip=%q,model=%q} %d\n", promLabel(d.Name), promLabel(d.IP), promLabel(d.Model), upLine(d))
+	}
+
+	p("# HELP rosman_device_cpu_percent Device CPU load percent (last poll).\n# TYPE rosman_device_cpu_percent gauge\n")
+	cpu := map[int64]model.Health{}
+	for _, d := range devs {
+		if h, err := s.a.Store.LatestHealth(d.ID); err == nil {
+			cpu[d.ID] = h
+			p("rosman_device_cpu_percent{device=%q} %d\n", promLabel(d.Name), h.CPU)
+		}
+	}
+	p("# HELP rosman_device_mem_free_bytes Free memory (last poll).\n# TYPE rosman_device_mem_free_bytes gauge\n")
+	for _, d := range devs {
+		if h, ok := cpu[d.ID]; ok {
+			p("rosman_device_mem_free_bytes{device=%q} %d\n", promLabel(d.Name), h.FreeMem)
+		}
+	}
+	p("# HELP rosman_device_mem_total_bytes Total memory (last poll).\n# TYPE rosman_device_mem_total_bytes gauge\n")
+	for _, d := range devs {
+		if h, ok := cpu[d.ID]; ok {
+			p("rosman_device_mem_total_bytes{device=%q} %d\n", promLabel(d.Name), h.TotalMem)
+		}
+	}
+	p("# HELP rosman_device_temp_celsius Device temperature (last poll).\n# TYPE rosman_device_temp_celsius gauge\n")
+	for _, d := range devs {
+		if h, ok := cpu[d.ID]; ok && h.Temp > 0 {
+			p("rosman_device_temp_celsius{device=%q} %g\n", promLabel(d.Name), h.Temp)
+		}
+	}
+	p("# HELP rosman_device_fw_outdated RouterOS update available (1 yes, 0 no).\n# TYPE rosman_device_fw_outdated gauge\n")
+	for _, d := range devs {
+		out := 0
+		if l := fwFirst(d.FwLatest); l != "" && l != fwFirst(d.ROSVersion) {
+			out = 1
+		}
+		p("rosman_device_fw_outdated{device=%q,routeros=%q} %d\n", promLabel(d.Name), promLabel(d.ROSVersion), out)
+	}
+	p("# HELP rosman_device_cve_count Known CVEs matching the device's RouterOS version.\n# TYPE rosman_device_cve_count gauge\n")
+	for _, d := range devs {
+		p("rosman_device_cve_count{device=%q} %d\n", promLabel(d.Name), len(cve.Scan(d.ROSVersion)))
+	}
+	p("# HELP rosman_device_last_seen_timestamp_seconds Unix time of the last successful poll.\n# TYPE rosman_device_last_seen_timestamp_seconds gauge\n")
+	for _, d := range devs {
+		if d.LastSeen != nil {
+			p("rosman_device_last_seen_timestamp_seconds{device=%q} %d\n", promLabel(d.Name), d.LastSeen.Unix())
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	_, _ = w.Write([]byte(b.String()))
 }
 
 func (s *Server) apiSecurity(w http.ResponseWriter, r *http.Request, _ model.User) {

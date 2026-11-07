@@ -52,7 +52,15 @@
   <details style="margin-top:10px"><summary class="muted small">{{t "acc.api_hint"}}</summary>
     <pre class="mono" style="white-space:pre-wrap;font-size:.85em">curl -k -H "Authorization: Bearer &lt;token&gt;" \
   https://HOST:18443/api/v1/devices
-# endpoints: /api/v1/devices, /api/v1/devices/{id}, /api/v1/alerts, /api/v1/security</pre>
+# endpoints: /api/v1/devices, /api/v1/devices/{id}, /api/v1/alerts, /api/v1/security
+
+# Prometheus (scrape /metrics with the same token):
+#   scrape_configs:
+#     - job_name: rosman
+#       scheme: https
+#       tls_config: { insecure_skip_verify: true }
+#       authorization: { credentials: "&lt;token&gt;" }
+#       static_configs: [{ targets: ["HOST:18443"] }]</pre>
   </details>
 </div>
 {{template "tail" .}}{{end}}
