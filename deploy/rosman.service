@@ -1,0 +1,18 @@
+# boris.gb 2026-11-08 00:04 - systemd-юнит для автозапуска ROSMan на astra (раньше запускался вручную в ssh-сессии и не переживал перезагрузку/закрытие сессии)
+[Unit]
+Description=ROSMan - MikroTik fleet manager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/rosman
+Environment=ROSMAN_LISTEN=:18443
+Environment=ROSMAN_DATA_DIR=/opt/rosman/data
+Environment=ROSMAN_SSH_KEY=/root/.ssh/routeros_crcp
+ExecStart=/opt/rosman/rosman
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
