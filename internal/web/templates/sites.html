@@ -1,0 +1,23 @@
+{{define "sites"}}{{template "head" .}}
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+<div class="cardhead"><h1 style="margin:0">{{t "site.title"}}</h1></div>
+<div class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "site.name"}}</th><th>{{t "site.devices"}}</th><th></th></tr></thead>
+    <tbody>
+    {{range .Sites}}
+      <tr><td><a href="/?site={{.ID}}">{{.Name}}</a></td><td>{{.Count}}</td>
+        <td><form class="inline" method="post" action="/sites/{{.ID}}/delete"><button class="btn sm danger" type="submit">{{t "site.delete"}}</button></form></td></tr>
+    {{else}}<tr><td colspan="3" class="muted">{{t "site.none"}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+<div class="card narrow">
+  <h3>{{t "site.new"}}</h3>
+  <form class="inline" method="post" action="/sites/new">
+    <input name="name" placeholder="{{t "site.name"}}" required>
+    <button class="btn primary" type="submit">{{t "site.create"}}</button>
+  </form>
+</div>
+{{template "tail" .}}{{end}}

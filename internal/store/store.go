@@ -39,6 +39,7 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE devices ADD COLUMN fw_latest TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN fw_channel TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN fw_status TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE devices ADD COLUMN site_id INTEGER`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -134,9 +135,10 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	var d model.Device
 	var tls int
 	var last, exp sql.NullTime
+	var site sql.NullInt64
 	err := row.Scan(&d.ID, &d.Name, &d.IP, &d.APIPort, &tls, &d.APIUser, &d.APIPassEnc,
 		&d.SSHUser, &d.APICertPin, &d.SSHHostPin, &d.Model, &d.Serial, &d.ROSVersion, &last, &d.CreatedAt,
-		&d.APISSLCert, &exp, &d.FwLatest, &d.FwChannel, &d.FwStatus)
+		&d.APISSLCert, &exp, &d.FwLatest, &d.FwChannel, &d.FwStatus, &site)
 	d.APITLS = tls != 0
 	if last.Valid {
 		d.LastSeen = &last.Time
@@ -144,10 +146,13 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	if exp.Valid {
 		d.APICertExpiry = &exp.Time
 	}
+	if site.Valid {
+		d.SiteID = &site.Int64
+	}
 	return d, err
 }
 
-const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status`
+const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id`
 
 func (s *Store) Device(id int64) (model.Device, error) {
 	d, err := scanDevice(s.db.QueryRow(`SELECT `+deviceCols+` FROM devices WHERE id=?`, id))
@@ -524,6 +529,110 @@ func (s *Store) RecentAudit(limit int) ([]model.Audit, error) {
 			return nil, err
 		}
 		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// ---- sites ----
+
+func (s *Store) Sites() ([]model.Site, error) {
+	rows, err := s.db.Query(`SELECT s.id,s.name,(SELECT COUNT(*) FROM devices d WHERE d.site_id=s.id) FROM sites s ORDER BY s.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Site
+	for rows.Next() {
+		var st model.Site
+		if err := rows.Scan(&st.ID, &st.Name, &st.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, st)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CreateSite(name string) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO sites(name) VALUES(?)`, name)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) DeleteSite(id int64) error {
+	if _, err := s.db.Exec(`UPDATE devices SET site_id=NULL WHERE site_id=?`, id); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM sites WHERE id=?`, id)
+	return err
+}
+
+func (s *Store) SetDeviceSite(deviceID int64, siteID *int64) error {
+	_, err := s.db.Exec(`UPDATE devices SET site_id=? WHERE id=?`, siteID, deviceID)
+	return err
+}
+
+// ---- tags ----
+
+func (s *Store) AddDeviceTag(deviceID int64, tag string) error {
+	_, err := s.db.Exec(`INSERT OR IGNORE INTO device_tags(device_id,tag) VALUES(?,?)`, deviceID, tag)
+	return err
+}
+
+func (s *Store) RemoveDeviceTag(deviceID int64, tag string) error {
+	_, err := s.db.Exec(`DELETE FROM device_tags WHERE device_id=? AND tag=?`, deviceID, tag)
+	return err
+}
+
+func (s *Store) DeviceTags(deviceID int64) ([]string, error) {
+	rows, err := s.db.Query(`SELECT tag FROM device_tags WHERE device_id=? ORDER BY tag`, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) AllTags() ([]string, error) {
+	rows, err := s.db.Query(`SELECT DISTINCT tag FROM device_tags ORDER BY tag`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// DeviceIDsByTag returns device ids carrying the tag.
+func (s *Store) DeviceIDsByTag(tag string) (map[int64]bool, error) {
+	rows, err := s.db.Query(`SELECT device_id FROM device_tags WHERE tag=?`, tag)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
 	}
 	return out, rows.Err()
 }

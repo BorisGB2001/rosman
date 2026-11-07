@@ -33,6 +33,24 @@
     </tbody>
   </table></div>
 </div>
+{{if canWrite .User}}
+<div class="card narrow">
+  <h3>{{t "dev.site"}} / {{t "dev.tags"}}</h3>
+  <form class="inline" method="post" action="/devices/{{.D.ID}}/site" style="margin-bottom:10px">
+    <select name="site_id" onchange="this.form.submit()">
+      <option value="">—</option>
+      {{range .Sites}}<option value="{{.ID}}" {{if and $.D.SiteID (eq .ID (deref $.D.SiteID))}}selected{{end}}>{{.Name}}</option>{{end}}
+    </select>
+  </form>
+  <div class="badges">
+    {{range .DevTags}}<span class="badge">{{.}} <form class="inline" method="post" action="/devices/{{$.D.ID}}/tag"><input type="hidden" name="tag" value="{{.}}"><input type="hidden" name="action" value="remove"><button class="link" style="padding:0 2px" type="submit">×</button></form></span> {{end}}
+  </div>
+  <form class="inline" method="post" action="/devices/{{.D.ID}}/tag" style="margin-top:8px">
+    <input name="tag" placeholder="{{t "dev.tag_add"}}">
+    <button class="btn sm" type="submit">+</button>
+  </form>
+</div>
+{{end}}
 <div class="card">
   <h3>{{t "dev.traffic"}} <span class="muted small">{{t "dev.traffic_note"}}</span></h3>
   <div class="scroll"><table>

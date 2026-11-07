@@ -70,6 +70,21 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_state ON alerts(state);
 
+-- Locations / sites.
+CREATE TABLE IF NOT EXISTS sites (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Free-form device grouping tags.
+CREATE TABLE IF NOT EXISTS device_tags (
+    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    tag       TEXT NOT NULL,
+    UNIQUE(device_id, tag)
+);
+CREATE INDEX IF NOT EXISTS idx_device_tags_tag ON device_tags(tag);
+
 -- Per-interface byte counters sampled at each poll (rates computed on read).
 CREATE TABLE IF NOT EXISTS iface_traffic (
     device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,

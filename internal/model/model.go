@@ -41,6 +41,16 @@ type Device struct {
 	FwLatest      string     // latest RouterOS version known to the device
 	FwChannel     string     // update channel (stable/testing/...)
 	FwStatus      string     // device's update status string
+	SiteID        *int64     // location
+	SiteName      string     // joined for display
+	Tags          []string   // grouping tags (filled on demand)
+}
+
+// Site is a location grouping devices.
+type Site struct {
+	ID    int64
+	Name  string
+	Count int // devices in it
 }
 
 // Health is one health sample.

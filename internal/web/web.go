@@ -31,7 +31,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.7.0"
+const Version = "0.8.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -69,6 +69,7 @@ func New(a *app.App) (*Server, error) {
 		"langs":   func() []string { return i18n.Langs() },
 		"qesc":    url.QueryEscape,
 		"upper":   strings.ToUpper,
+		"deref":   func(p *int64) int64 { if p == nil { return 0 }; return *p },
 		// Per-request overrides are bound in render(); these are parse-time defaults.
 		"t":     func(key string) string { return i18n.T(i18n.Default, key) },
 		"lang":  func() string { return i18n.Default },
@@ -100,6 +101,11 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/fwcheck", s.authed(s.requireRole(model.RoleOperator, s.deviceFwCheck)))
 	mux.Handle("GET /configs/{id}", s.authed(s.configView))
 	mux.Handle("POST /devices/{id}/issuecert", s.authed(s.requireRole(model.RoleOperator, s.deviceIssueCert)))
+	mux.Handle("GET /sites", s.authed(s.sitesPage))
+	mux.Handle("POST /sites/new", s.authed(s.requireRole(model.RoleOperator, s.siteCreate)))
+	mux.Handle("POST /sites/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.siteDelete)))
+	mux.Handle("POST /devices/{id}/site", s.authed(s.requireRole(model.RoleOperator, s.deviceSetSite)))
+	mux.Handle("POST /devices/{id}/tag", s.authed(s.requireRole(model.RoleOperator, s.deviceTag)))
 	mux.Handle("GET /topology", s.authed(s.topologyPage))
 	mux.Handle("GET /alerts", s.authed(s.alerts))
 	mux.Handle("GET /audit", s.authed(s.auditPage))
@@ -274,20 +280,97 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	sites, _ := s.a.Store.Sites()
+	siteName := map[int64]string{}
+	for _, st := range sites {
+		siteName[st.ID] = st.Name
+	}
+	allTags, _ := s.a.Store.AllTags()
+	fSite := r.URL.Query().Get("site")
+	fTag := r.URL.Query().Get("tag")
+	var tagged map[int64]bool
+	if fTag != "" {
+		tagged, _ = s.a.Store.DeviceIDsByTag(fTag)
+	}
 	type row struct {
 		model.Device
-		CPU    int
-		Uptime string
+		CPU      int
+		Uptime   string
+		SiteName string
+		DevTags  []string
 	}
 	rows := make([]row, 0, len(devs))
 	for _, d := range devs {
+		if fSite != "" {
+			if d.SiteID == nil || strconv.FormatInt(*d.SiteID, 10) != fSite {
+				continue
+			}
+		}
+		if fTag != "" && !tagged[d.ID] {
+			continue
+		}
 		rr := row{Device: d}
+		if d.SiteID != nil {
+			rr.SiteName = siteName[*d.SiteID]
+		}
+		rr.DevTags, _ = s.a.Store.DeviceTags(d.ID)
 		if h, err := s.a.Store.LatestHealth(d.ID); err == nil {
 			rr.CPU, rr.Uptime = h.CPU, h.Uptime
 		}
 		rows = append(rows, rr)
 	}
-	s.render(w, r, "devices", map[string]any{"Active": "devices", "Devices": rows})
+	s.render(w, r, "devices", map[string]any{"Active": "devices", "Devices": rows,
+		"Sites": sites, "AllTags": allTags, "FSite": fSite, "FTag": fTag})
+}
+
+func (s *Server) sitesPage(w http.ResponseWriter, r *http.Request) {
+	sites, _ := s.a.Store.Sites()
+	s.render(w, r, "sites", map[string]any{"Active": "sites", "Sites": sites,
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
+}
+
+func (s *Server) siteCreate(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		http.Redirect(w, r, "/sites?err=name+required", http.StatusSeeOther)
+		return
+	}
+	if _, err := s.a.Store.CreateSite(name); err != nil {
+		http.Redirect(w, r, "/sites?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/sites?msg=site-created", http.StatusSeeOther)
+}
+
+func (s *Server) siteDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	_ = s.a.Store.DeleteSite(id)
+	http.Redirect(w, r, "/sites?msg=site-deleted", http.StatusSeeOther)
+}
+
+func (s *Server) deviceSetSite(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	var sid *int64
+	if v := r.FormValue("site_id"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			sid = &n
+		}
+	}
+	_ = s.a.Store.SetDeviceSite(id, sid)
+	http.Redirect(w, r, "/devices/"+r.PathValue("id"), http.StatusSeeOther)
+}
+
+func (s *Server) deviceTag(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	tag := strings.TrimSpace(r.FormValue("tag"))
+	if tag != "" {
+		if r.FormValue("action") == "remove" {
+			_ = s.a.Store.RemoveDeviceTag(id, tag)
+		} else {
+			_ = s.a.Store.AddDeviceTag(id, tag)
+		}
+	}
+	http.Redirect(w, r, "/devices/"+r.PathValue("id"), http.StatusSeeOther)
 }
 
 func (s *Server) newDeviceForm(w http.ResponseWriter, r *http.Request) {
@@ -325,8 +408,11 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 	cfgs, _ := s.a.Store.Configs(id, 20)
 	neighbors, _ := s.a.Store.Neighbors(id)
 	traffic := s.trafficRows(id)
+	sites, _ := s.a.Store.Sites()
+	devTags, _ := s.a.Store.DeviceTags(id)
 	s.render(w, r, "device", map[string]any{"Active": "devices",
 		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors, "Traffic": traffic,
+		"Sites": sites, "DevTags": devTags,
 		"HasSSH": s.a.HasSSHKey(), "Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
 	})
 }
