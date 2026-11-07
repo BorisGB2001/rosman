@@ -43,6 +43,7 @@ type Health struct {
 	Ifaces        []model.IfaceSample
 	Ports         []model.Port
 	Temp          float64
+	Clients       []model.Client
 }
 
 // parseROSTime parses RouterOS date strings in both the modern ISO form and the
@@ -176,6 +177,41 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 			}
 		}
 	}
+	// Connected clients: DHCP leases (hostname) merged with ARP (interface).
+	byMac := map[string]*model.Client{}
+	if r, err := c.Run("/ip/dhcp-server/lease/print"); err == nil {
+		for _, re := range r.Re {
+			mm := re.Map
+			mac := strings.ToUpper(mm["mac-address"])
+			if mac == "" {
+				continue
+			}
+			byMac[mac] = &model.Client{MAC: mac, IP: mm["address"], Hostname: mm["host-name"], Iface: mm["server"], Source: "dhcp"}
+		}
+	}
+	if r, err := c.Run("/ip/arp/print"); err == nil {
+		for _, re := range r.Re {
+			mm := re.Map
+			mac := strings.ToUpper(mm["mac-address"])
+			if mac == "" {
+				continue
+			}
+			if cl, ok := byMac[mac]; ok {
+				if cl.Iface == "" {
+					cl.Iface = mm["interface"]
+				}
+				if cl.IP == "" {
+					cl.IP = mm["address"]
+				}
+			} else {
+				byMac[mac] = &model.Client{MAC: mac, IP: mm["address"], Iface: mm["interface"], Source: "arp"}
+			}
+		}
+	}
+	for _, cl := range byMac {
+		h.Clients = append(h.Clients, *cl)
+	}
+
 	// Discovered neighbours (MNDP/LLDP/CDP) for topology.
 	if r, err := c.Run("/ip/neighbor/print"); err == nil {
 		for _, re := range r.Re {

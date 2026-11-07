@@ -110,6 +110,17 @@ type Audit struct {
 	Detail string
 }
 
+// Client is a connected device seen via DHCP lease or ARP.
+type Client struct {
+	DeviceID   int64
+	DeviceName string
+	MAC        string
+	IP         string
+	Hostname   string
+	Iface      string
+	Source     string
+}
+
 // Port is a physical/interface port for the device faceplate.
 type Port struct {
 	Name     string

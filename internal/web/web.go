@@ -22,6 +22,7 @@ import (
 	"rosman/internal/auth"
 	"rosman/internal/i18n"
 	"rosman/internal/model"
+	"rosman/internal/oui"
 	"rosman/internal/store"
 )
 
@@ -32,7 +33,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.14.0"
+const Version = "0.15.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -73,6 +74,7 @@ func New(a *app.App) (*Server, error) {
 		"deref":    func(p *int64) int64 { if p == nil { return 0 }; return *p },
 		"contains": strings.Contains,
 		"fwfirst":  fwFirst,
+		"vendor":   oui.Vendor,
 		// Per-request overrides are bound in render(); these are parse-time defaults.
 		"t":     func(key string) string { return i18n.T(i18n.Default, key) },
 		"lang":  func() string { return i18n.Default },
@@ -115,6 +117,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /sites/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.siteDelete)))
 	mux.Handle("POST /devices/{id}/site", s.authed(s.requireRole(model.RoleOperator, s.deviceSetSite)))
 	mux.Handle("POST /devices/{id}/tag", s.authed(s.requireRole(model.RoleOperator, s.deviceTag)))
+	mux.Handle("GET /clients", s.authed(s.clientsPage))
 	mux.Handle("GET /topology", s.authed(s.topologyPage))
 	mux.Handle("GET /alerts", s.authed(s.alerts))
 	mux.Handle("GET /audit", s.authed(s.auditPage))
@@ -532,6 +535,7 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 	sites, _ := s.a.Store.Sites()
 	devTags, _ := s.a.Store.DeviceTags(id)
 	ports, _ := s.a.Store.DevicePorts(id)
+	clients, _ := s.a.Store.Clients(id)
 	metrics, _ := s.a.Store.MetricsSince(id, time.Now().Add(-2*time.Hour))
 	var cpu, ram, temp []float64
 	for _, m := range metrics {
@@ -546,6 +550,7 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "device", map[string]any{"Active": "devices",
 		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors, "Traffic": traffic,
 		"Sites": sites, "DevTags": devTags, "BackupMode": s.a.BackupMode(),
+		"Clients":   clients,
 		"Faceplate": facePlateSVG(ports),
 		"CPUGraph":  graphSVG(cpu, 100, "var(--accent)"), "RAMGraph": graphSVG(ram, 100, "var(--warn)"),
 		"TempGraph": graphSVG(temp, 0, "var(--bad)"), "HasTemp": len(temp) > 0,
@@ -612,6 +617,11 @@ func (s *Server) configView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, "config", map[string]any{"Active": "devices", "C": c})
+}
+
+func (s *Server) clientsPage(w http.ResponseWriter, r *http.Request) {
+	clients, _ := s.a.Store.AllClients(2000)
+	s.render(w, r, "clients", map[string]any{"Active": "clients", "Clients": clients})
 }
 
 func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {

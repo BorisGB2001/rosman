@@ -275,6 +275,59 @@ func (s *Store) MetricsSince(deviceID int64, t time.Time) ([]model.Health, error
 	return out, rows.Err()
 }
 
+// ---- clients ----
+
+func (s *Store) ReplaceClients(deviceID int64, cs []model.Client) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM device_clients WHERE device_id=?`, deviceID); err != nil {
+		tx.Rollback()
+		return err
+	}
+	for _, c := range cs {
+		if _, err := tx.Exec(`INSERT INTO device_clients(device_id,mac,ip,hostname,iface,source) VALUES(?,?,?,?,?,?)`,
+			deviceID, c.MAC, c.IP, c.Hostname, c.Iface, c.Source); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) clientRows(where string, args ...any) ([]model.Client, error) {
+	rows, err := s.db.Query(`SELECT c.device_id,COALESCE(d.name,''),c.mac,c.ip,c.hostname,c.iface,c.source
+		FROM device_clients c LEFT JOIN devices d ON d.id=c.device_id `+where, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Client
+	for rows.Next() {
+		var c model.Client
+		if err := rows.Scan(&c.DeviceID, &c.DeviceName, &c.MAC, &c.IP, &c.Hostname, &c.Iface, &c.Source); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) Clients(deviceID int64) ([]model.Client, error) {
+	return s.clientRows(`WHERE c.device_id=? ORDER BY c.ip`, deviceID)
+}
+
+func (s *Store) AllClients(limit int) ([]model.Client, error) {
+	return s.clientRows(`ORDER BY d.name, c.ip LIMIT ?`, limit)
+}
+
+func (s *Store) CountClients() int {
+	var n int
+	_ = s.db.QueryRow(`SELECT COUNT(DISTINCT mac) FROM device_clients`).Scan(&n)
+	return n
+}
+
 // ---- ports (faceplate) ----
 
 func (s *Store) ReplacePorts(deviceID int64, ports []model.Port) error {

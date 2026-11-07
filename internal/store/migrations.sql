@@ -95,6 +95,18 @@ CREATE TABLE IF NOT EXISTS iface_traffic (
 );
 CREATE INDEX IF NOT EXISTS idx_iface_dev_if_ts ON iface_traffic(device_id, iface, ts);
 
+-- Connected clients (DHCP leases + ARP), replaced per poll.
+CREATE TABLE IF NOT EXISTS device_clients (
+    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    mac       TEXT NOT NULL DEFAULT '',
+    ip        TEXT NOT NULL DEFAULT '',
+    hostname  TEXT NOT NULL DEFAULT '',
+    iface     TEXT NOT NULL DEFAULT '',
+    source    TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_clients_dev ON device_clients(device_id);
+CREATE INDEX IF NOT EXISTS idx_clients_mac ON device_clients(mac);
+
 -- Physical/interface port list for the faceplate, replaced per poll.
 CREATE TABLE IF NOT EXISTS device_ports (
     device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,

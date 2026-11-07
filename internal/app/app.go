@@ -108,6 +108,7 @@ func (a *App) PollDevice(d model.Device) error {
 	_ = a.Store.UpdateFirmware(d.ID, h.FwLatest, h.FwChannel, h.FwStatus)
 	a.evalFirmware(d, h.Version, h.FwLatest)
 	_ = a.Store.ReplaceNeighbors(d.ID, h.Neighbors)
+	_ = a.Store.ReplaceClients(d.ID, h.Clients)
 	_ = a.Store.AddIfaceSamples(d.ID, now, h.Ifaces)
 	_ = a.Store.PruneIfaceBefore(now.Add(-24 * time.Hour))
 	return a.Store.UpdateInventory(d.ID, h.Model, h.Serial, h.Version, now)
