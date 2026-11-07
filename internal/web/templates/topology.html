@@ -1,0 +1,21 @@
+{{define "topology"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "topo.title"}}</h1></div>
+<div class="card">
+  {{if .Nodes}}
+  <div class="scroll">
+  <svg viewBox="0 0 660 600" width="100%" style="max-width:660px;height:auto">
+    {{range .Edges}}<line x1="{{.X1}}" y1="{{.Y1}}" x2="{{.X2}}" y2="{{.Y2}}" stroke="var(--line)" stroke-width="2"/>{{end}}
+    {{range .Nodes}}
+    <a href="/devices/{{.ID}}">
+      <circle cx="{{.X}}" cy="{{.Y}}" r="24" fill="var(--surface)" stroke="{{if eq .Status "up"}}var(--good){{else if eq .Status "down"}}var(--bad){{else}}var(--muted){{end}}" stroke-width="3"/>
+      <text x="{{.X}}" y="{{.Y}}" text-anchor="middle" dominant-baseline="central" font-size="9" fill="var(--fg)">{{.Name}}</text>
+    </a>
+    {{end}}
+  </svg>
+  </div>
+  <p class="muted small">{{t "topo.legend"}}</p>
+  {{else}}
+  <p class="muted">{{t "topo.empty"}}</p>
+  {{end}}
+</div>
+{{template "tail" .}}{{end}}

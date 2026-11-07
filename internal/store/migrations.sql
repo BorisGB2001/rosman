@@ -70,6 +70,17 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_state ON alerts(state);
 
+-- Discovered neighbours (MNDP/LLDP/CDP), replaced per poll.
+CREATE TABLE IF NOT EXISTS device_neighbors (
+    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    iface     TEXT NOT NULL DEFAULT '',
+    identity  TEXT NOT NULL DEFAULT '',
+    ip        TEXT NOT NULL DEFAULT '',
+    mac       TEXT NOT NULL DEFAULT '',
+    platform  TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_neighbors_dev ON device_neighbors(device_id);
+
 -- Named RouterOS config snippets applied with change-guard.
 CREATE TABLE IF NOT EXISTS config_templates (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -289,6 +289,52 @@ func (s *Store) UpdateCertInfo(id int64, certName string, expiry *time.Time) err
 	return err
 }
 
+// ---- neighbours ----
+
+func (s *Store) ReplaceNeighbors(deviceID int64, ns []model.Neighbor) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM device_neighbors WHERE device_id=?`, deviceID); err != nil {
+		tx.Rollback()
+		return err
+	}
+	for _, n := range ns {
+		if _, err := tx.Exec(`INSERT INTO device_neighbors(device_id,iface,identity,ip,mac,platform) VALUES(?,?,?,?,?,?)`,
+			deviceID, n.Iface, n.Identity, n.IP, n.MAC, n.Platform); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) Neighbors(deviceID int64) ([]model.Neighbor, error) {
+	return s.neighborRows(`WHERE device_id=?`, deviceID)
+}
+
+func (s *Store) AllNeighbors() ([]model.Neighbor, error) {
+	return s.neighborRows(``)
+}
+
+func (s *Store) neighborRows(where string, args ...any) ([]model.Neighbor, error) {
+	rows, err := s.db.Query(`SELECT device_id,iface,identity,ip,mac,platform FROM device_neighbors `+where, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Neighbor
+	for rows.Next() {
+		var n model.Neighbor
+		if err := rows.Scan(&n.DeviceID, &n.Iface, &n.Identity, &n.IP, &n.MAC, &n.Platform); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
 // ---- config templates ----
 
 func (s *Store) Templates() ([]model.Template, error) {

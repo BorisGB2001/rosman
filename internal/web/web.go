@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -29,7 +30,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.5.0"
+const Version = "0.6.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -98,6 +99,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/fwcheck", s.authed(s.requireRole(model.RoleOperator, s.deviceFwCheck)))
 	mux.Handle("GET /configs/{id}", s.authed(s.configView))
 	mux.Handle("POST /devices/{id}/issuecert", s.authed(s.requireRole(model.RoleOperator, s.deviceIssueCert)))
+	mux.Handle("GET /topology", s.authed(s.topologyPage))
 	mux.Handle("GET /alerts", s.authed(s.alerts))
 	mux.Handle("GET /audit", s.authed(s.auditPage))
 	mux.Handle("GET /templates", s.authed(s.templatesPage))
@@ -320,8 +322,9 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	health, _ := s.a.Store.LatestHealth(id)
 	cfgs, _ := s.a.Store.Configs(id, 20)
+	neighbors, _ := s.a.Store.Neighbors(id)
 	s.render(w, r, "device", map[string]any{"Active": "devices",
-		"D": d, "H": health, "Configs": cfgs,
+		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors,
 		"HasSSH": s.a.HasSSHKey(), "Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
 	})
 }
@@ -385,6 +388,71 @@ func (s *Server) configView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, "config", map[string]any{"Active": "devices", "C": c})
+}
+
+func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
+	devs, _ := s.a.Store.Devices()
+	neigh, _ := s.a.Store.AllNeighbors()
+	byIP := map[string]int64{}
+	byIdent := map[string]int64{}
+	for _, d := range devs {
+		byIP[d.IP] = d.ID
+		if d.Name != "" {
+			byIdent[d.Name] = d.ID
+		}
+	}
+	// Edges between known devices (deduped, undirected).
+	edgeset := map[[2]int64]bool{}
+	for _, n := range neigh {
+		to := byIP[n.IP]
+		if to == 0 {
+			to = byIdent[n.Identity]
+		}
+		if to == 0 || to == n.DeviceID {
+			continue
+		}
+		a, b := n.DeviceID, to
+		if a > b {
+			a, b = b, a
+		}
+		edgeset[[2]int64{a, b}] = true
+	}
+	type Node struct {
+		ID         int64
+		Name       string
+		X, Y       int
+		Status     string // up|down|unknown
+	}
+	const cx, cy, rad = 330, 300, 250
+	pos := map[int64][2]int{}
+	nodes := make([]Node, 0, len(devs))
+	n := len(devs)
+	if n == 0 {
+		n = 1
+	}
+	for i, d := range devs {
+		ang := 2 * math.Pi * float64(i) / float64(n)
+		x := cx + int(float64(rad)*math.Cos(ang))
+		y := cy + int(float64(rad)*math.Sin(ang))
+		pos[d.ID] = [2]int{x, y}
+		st := "unknown"
+		if d.LastSeen != nil {
+			if time.Since(*d.LastSeen) < 3*s.a.Cfg.PollInterval {
+				st = "up"
+			} else {
+				st = "down"
+			}
+		}
+		nodes = append(nodes, Node{ID: d.ID, Name: d.Name, X: x, Y: y, Status: st})
+	}
+	type Edge struct{ X1, Y1, X2, Y2 int }
+	edges := make([]Edge, 0, len(edgeset))
+	for e := range edgeset {
+		a, b := pos[e[0]], pos[e[1]]
+		edges = append(edges, Edge{a[0], a[1], b[0], b[1]})
+	}
+	s.render(w, r, "topology", map[string]any{"Active": "topology",
+		"Nodes": nodes, "Edges": edges, "Count": len(devs)})
 }
 
 func (s *Server) alerts(w http.ResponseWriter, r *http.Request) {

@@ -75,6 +75,16 @@ type Audit struct {
 	Detail string
 }
 
+// Neighbor is a discovered adjacent device (MNDP/LLDP/CDP).
+type Neighbor struct {
+	DeviceID int64
+	Iface    string
+	Identity string
+	IP       string
+	MAC      string
+	Platform string
+}
+
 // Template is a named RouterOS config snippet.
 type Template struct {
 	ID        int64

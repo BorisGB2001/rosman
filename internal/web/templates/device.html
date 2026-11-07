@@ -33,5 +33,15 @@
     </tbody>
   </table></div>
 </div>
+<div class="card">
+  <h3>{{t "dev.neighbors"}}</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "neigh.iface"}}</th><th>Identity</th><th>IP</th><th>MAC</th><th>{{t "neigh.platform"}}</th></tr></thead>
+    <tbody>
+    {{range .Neighbors}}<tr><td>{{.Iface}}</td><td>{{.Identity}}</td><td class="mono">{{.IP}}</td><td class="mono">{{.MAC}}</td><td>{{.Platform}}</td></tr>
+    {{else}}<tr><td colspan="5" class="muted">{{t "dev.no_neighbors"}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
 <p><a href="/">← {{t "dev.back"}}</a></p>
 {{template "tail" .}}{{end}}

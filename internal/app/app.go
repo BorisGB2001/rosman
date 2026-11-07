@@ -98,6 +98,7 @@ func (a *App) PollDevice(d model.Device) error {
 	a.evalCert(d, h.APICertExpiry)
 	_ = a.Store.UpdateFirmware(d.ID, h.FwLatest, h.FwChannel, h.FwStatus)
 	a.evalFirmware(d, h.Version, h.FwLatest)
+	_ = a.Store.ReplaceNeighbors(d.ID, h.Neighbors)
 	return a.Store.UpdateInventory(d.ID, h.Model, h.Serial, h.Version, now)
 }
 
