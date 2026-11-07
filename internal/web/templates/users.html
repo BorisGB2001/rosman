@@ -1,0 +1,54 @@
+{{define "users"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "usr.title"}}</h1></div>
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+
+<div class="card narrow">
+  <h3>{{t "usr.new"}}</h3>
+  <form method="post" action="/users">
+    <label>{{t "login.user"}}<input name="username" placeholder="a-z0-9._- (2–32)" required></label>
+    <label style="margin-top:8px">{{t "login.pass"}}<input name="password" type="password" placeholder="{{t "usr.pw_min"}}" required></label>
+    <label style="margin-top:8px">{{t "usr.role"}}
+      <select name="role">
+        <option value="viewer">viewer</option>
+        <option value="operator">operator</option>
+        <option value="admin">admin</option>
+      </select></label>
+    <div style="margin-top:10px"><button class="btn primary" type="submit">{{t "common.add"}}</button></div>
+  </form>
+  <p class="muted small" style="margin-top:8px">{{t "usr.roles_hint"}}</p>
+</div>
+
+<div class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "login.user"}}</th><th>{{t "usr.role"}}</th><th>2FA</th><th>{{t "ca.created"}}</th><th>{{t "usr.actions"}}</th></tr></thead>
+    <tbody>
+    {{range .Users}}
+      <tr>
+        <td>{{.Username}}{{if eq .ID $.Me}} <span class="badge">{{t "usr.you"}}</span>{{end}}</td>
+        <td>
+          <form class="inline" method="post" action="/users/{{.ID}}/role">
+            <select name="role" onchange="this.form.submit()">
+              <option value="viewer" {{if eq .Role "viewer"}}selected{{end}}>viewer</option>
+              <option value="operator" {{if eq .Role "operator"}}selected{{end}}>operator</option>
+              <option value="admin" {{if eq .Role "admin"}}selected{{end}}>admin</option>
+            </select>
+          </form>
+        </td>
+        <td>{{if .TOTPEnabled}}<span class="badge good">on</span> <form class="inline" method="post" action="/users/{{.ID}}/2fa-disable"><button class="link" type="submit" onclick="return confirm('{{t "usr.2fa_reset_confirm"}}')">{{t "usr.reset"}}</button></form>{{else}}<span class="badge">off</span>{{end}}</td>
+        <td class="muted">{{ts .CreatedAt}}</td>
+        <td>
+          <details><summary class="link" style="display:inline-block">{{t "usr.resetpw"}}</summary>
+            <form class="inline" method="post" action="/users/{{.ID}}/password" style="margin-top:6px">
+              <input name="password" type="password" placeholder="{{t "usr.pw_min"}}" required>
+              <button class="btn sm" type="submit">{{t "usr.resetpw"}}</button>
+            </form>
+          </details>
+          {{if ne .ID $.Me}} · <form class="inline" method="post" action="/users/{{.ID}}/delete"><button class="link" type="submit" onclick="return confirm('{{t "usr.del_confirm"}}')">{{t "site.delete"}}</button></form>{{end}}
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
+{{template "tail" .}}{{end}}

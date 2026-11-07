@@ -43,7 +43,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.23.0"
+const Version = "0.24.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -148,6 +148,12 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /clients", s.authed(s.clientsPage))
 	mux.Handle("GET /security", s.authed(s.securityPage))
 	mux.Handle("GET /devices/{id}/cve", s.authed(s.cvePage))
+	mux.Handle("GET /users", s.authed(s.requireRole(model.RoleAdmin, s.usersPage)))
+	mux.Handle("POST /users", s.authed(s.requireRole(model.RoleAdmin, s.userCreate)))
+	mux.Handle("POST /users/{id}/role", s.authed(s.requireRole(model.RoleAdmin, s.userRole)))
+	mux.Handle("POST /users/{id}/password", s.authed(s.requireRole(model.RoleAdmin, s.userPassword)))
+	mux.Handle("POST /users/{id}/2fa-disable", s.authed(s.requireRole(model.RoleAdmin, s.userDisable2FA)))
+	mux.Handle("POST /users/{id}/delete", s.authed(s.requireRole(model.RoleAdmin, s.userDelete)))
 	mux.Handle("GET /maintenance", s.authed(s.maintenancePage))
 	mux.Handle("POST /maintenance", s.authed(s.requireRole(model.RoleOperator, s.windowCreate)))
 	mux.Handle("POST /maintenance/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.windowDelete)))
@@ -899,6 +905,121 @@ func (s *Server) toolsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.render(w, r, "tools", data)
+}
+
+func validRole(r string) bool {
+	return r == string(model.RoleAdmin) || r == string(model.RoleOperator) || r == string(model.RoleViewer)
+}
+
+var userNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]{2,32}$`)
+
+func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {
+	users, _ := s.a.Store.Users()
+	s.render(w, r, "users", map[string]any{"Active": "users", "Users": users,
+		"Me": userFrom(r).ID, "Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
+}
+
+func (s *Server) userCreate(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.FormValue("username"))
+	pass := r.FormValue("password")
+	role := r.FormValue("role")
+	if !userNameRe.MatchString(name) {
+		http.Redirect(w, r, "/users?err=invalid+username", http.StatusSeeOther)
+		return
+	}
+	if len(pass) < 8 {
+		http.Redirect(w, r, "/users?err=password+min+8+chars", http.StatusSeeOther)
+		return
+	}
+	if !validRole(role) {
+		http.Redirect(w, r, "/users?err=invalid+role", http.StatusSeeOther)
+		return
+	}
+	hash, err := auth.HashPassword(pass)
+	if err != nil {
+		http.Redirect(w, r, "/users?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	if _, err := s.a.Store.CreateUser(model.User{Username: name, PasswordHash: hash, Role: model.Role(role)}); err != nil {
+		http.Redirect(w, r, "/users?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "user_create", name+" ("+role+")")
+	http.Redirect(w, r, "/users?msg=user-created", http.StatusSeeOther)
+}
+
+func (s *Server) userRole(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	role := r.FormValue("role")
+	if !validRole(role) {
+		http.Redirect(w, r, "/users?err=invalid+role", http.StatusSeeOther)
+		return
+	}
+	target, err := s.a.Store.UserByID(id)
+	if err != nil {
+		http.Redirect(w, r, "/users?err=not+found", http.StatusSeeOther)
+		return
+	}
+	// Guard: don't demote the last admin.
+	if target.Role == model.RoleAdmin && role != string(model.RoleAdmin) {
+		if n, _ := s.a.Store.CountAdmins(); n <= 1 {
+			http.Redirect(w, r, "/users?err=cannot+demote+last+admin", http.StatusSeeOther)
+			return
+		}
+	}
+	_ = s.a.Store.UpdateUserRole(id, model.Role(role))
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "user_role", target.Username+" -> "+role)
+	http.Redirect(w, r, "/users?msg=role-updated", http.StatusSeeOther)
+}
+
+func (s *Server) userPassword(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	pass := r.FormValue("password")
+	if len(pass) < 8 {
+		http.Redirect(w, r, "/users?err=password+min+8+chars", http.StatusSeeOther)
+		return
+	}
+	hash, err := auth.HashPassword(pass)
+	if err != nil {
+		http.Redirect(w, r, "/users?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.UpdateUserPassword(id, hash)
+	if t, e := s.a.Store.UserByID(id); e == nil {
+		_ = s.a.Store.AddAudit(userFrom(r).Username, "user_password_reset", t.Username)
+	}
+	http.Redirect(w, r, "/users?msg=password-reset", http.StatusSeeOther)
+}
+
+func (s *Server) userDisable2FA(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	_ = s.a.Store.SetTOTP(id, "", false)
+	if t, e := s.a.Store.UserByID(id); e == nil {
+		_ = s.a.Store.AddAudit(userFrom(r).Username, "user_2fa_reset", t.Username)
+	}
+	http.Redirect(w, r, "/users?msg=2fa-reset", http.StatusSeeOther)
+}
+
+func (s *Server) userDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if id == userFrom(r).ID {
+		http.Redirect(w, r, "/users?err=cannot+delete+yourself", http.StatusSeeOther)
+		return
+	}
+	target, err := s.a.Store.UserByID(id)
+	if err != nil {
+		http.Redirect(w, r, "/users?err=not+found", http.StatusSeeOther)
+		return
+	}
+	if target.Role == model.RoleAdmin {
+		if n, _ := s.a.Store.CountAdmins(); n <= 1 {
+			http.Redirect(w, r, "/users?err=cannot+delete+last+admin", http.StatusSeeOther)
+			return
+		}
+	}
+	_ = s.a.Store.DeleteUser(id)
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "user_delete", target.Username)
+	http.Redirect(w, r, "/users?msg=user-deleted", http.StatusSeeOther)
 }
 
 func (s *Server) maintenancePage(w http.ResponseWriter, r *http.Request) {

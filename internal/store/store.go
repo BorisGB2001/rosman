@@ -92,6 +92,46 @@ func (s *Store) UserByID(id int64) (model.User, error) {
 	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE id=?`, id))
 }
 
+// Users lists all accounts, newest first.
+func (s *Store) Users() ([]model.User, error) {
+	rows, err := s.db.Query(`SELECT ` + userCols + ` FROM users ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.User
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// CountAdmins returns how many admin accounts exist (for the last-admin guard).
+func (s *Store) CountAdmins() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE role='admin'`).Scan(&n)
+	return n, err
+}
+
+func (s *Store) UpdateUserRole(id int64, role model.Role) error {
+	_, err := s.db.Exec(`UPDATE users SET role=? WHERE id=?`, string(role), id)
+	return err
+}
+
+func (s *Store) UpdateUserPassword(id int64, hash string) error {
+	_, err := s.db.Exec(`UPDATE users SET password_hash=? WHERE id=?`, hash, id)
+	return err
+}
+
+func (s *Store) DeleteUser(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM users WHERE id=?`, id)
+	return err
+}
+
 // SetTOTP stores (or clears) a user's encrypted TOTP secret and enabled flag.
 func (s *Store) SetTOTP(userID int64, secretEnc string, enabled bool) error {
 	_, err := s.db.Exec(`UPDATE users SET totp_secret_enc=?, totp_enabled=? WHERE id=?`, secretEnc, enabled, userID)
