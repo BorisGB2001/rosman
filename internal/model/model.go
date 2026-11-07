@@ -75,6 +75,15 @@ type Audit struct {
 	Detail string
 }
 
+// IfaceSample is one per-interface byte-counter reading.
+type IfaceSample struct {
+	Iface   string
+	TS      time.Time
+	RxBytes int64
+	TxBytes int64
+	Running bool
+}
+
 // Neighbor is a discovered adjacent device (MNDP/LLDP/CDP).
 type Neighbor struct {
 	DeviceID int64

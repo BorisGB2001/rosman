@@ -70,6 +70,16 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_state ON alerts(state);
 
+-- Per-interface byte counters sampled at each poll (rates computed on read).
+CREATE TABLE IF NOT EXISTS iface_traffic (
+    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    iface     TEXT NOT NULL,
+    ts        TIMESTAMP NOT NULL,
+    rx_bytes  INTEGER NOT NULL DEFAULT 0,
+    tx_bytes  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_iface_dev_if_ts ON iface_traffic(device_id, iface, ts);
+
 -- Discovered neighbours (MNDP/LLDP/CDP), replaced per poll.
 CREATE TABLE IF NOT EXISTS device_neighbors (
     device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,

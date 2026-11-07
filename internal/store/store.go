@@ -289,6 +289,68 @@ func (s *Store) UpdateCertInfo(id int64, certName string, expiry *time.Time) err
 	return err
 }
 
+// ---- interface traffic ----
+
+func (s *Store) AddIfaceSamples(deviceID int64, ts time.Time, samples []model.IfaceSample) error {
+	if len(samples) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	for _, sm := range samples {
+		if _, err := tx.Exec(`INSERT INTO iface_traffic(device_id,iface,ts,rx_bytes,tx_bytes) VALUES(?,?,?,?,?)`,
+			deviceID, sm.Iface, ts, sm.RxBytes, sm.TxBytes); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) PruneIfaceBefore(t time.Time) error {
+	_, err := s.db.Exec(`DELETE FROM iface_traffic WHERE ts < ?`, t)
+	return err
+}
+
+// IfaceNames lists interfaces with samples in the recent window (active ones).
+func (s *Store) IfaceNames(deviceID int64, since time.Time) ([]string, error) {
+	rows, err := s.db.Query(`SELECT DISTINCT iface FROM iface_traffic WHERE device_id=? AND ts>=? ORDER BY iface`, deviceID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// IfaceSeries returns samples for one interface, oldest first.
+func (s *Store) IfaceSeries(deviceID int64, iface string, since time.Time) ([]model.IfaceSample, error) {
+	rows, err := s.db.Query(`SELECT ts,rx_bytes,tx_bytes FROM iface_traffic WHERE device_id=? AND iface=? AND ts>=? ORDER BY ts`, deviceID, iface, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.IfaceSample
+	for rows.Next() {
+		var sm model.IfaceSample
+		sm.Iface = iface
+		if err := rows.Scan(&sm.TS, &sm.RxBytes, &sm.TxBytes); err != nil {
+			return nil, err
+		}
+		out = append(out, sm)
+	}
+	return out, rows.Err()
+}
+
 // ---- neighbours ----
 
 func (s *Store) ReplaceNeighbors(deviceID int64, ns []model.Neighbor) error {

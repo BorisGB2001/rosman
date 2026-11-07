@@ -34,6 +34,19 @@
   </table></div>
 </div>
 <div class="card">
+  <h3>{{t "dev.traffic"}} <span class="muted small">{{t "dev.traffic_note"}}</span></h3>
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "neigh.iface"}}</th><th>RX</th><th></th><th>TX</th><th></th></tr></thead>
+    <tbody>
+    {{range .Traffic}}
+      <tr><td>{{.Name}}</td><td class="mono nowrap">{{.RxRate}}</td><td>{{.RxSpark}}</td><td class="mono nowrap">{{.TxRate}}</td><td>{{.TxSpark}}</td></tr>
+    {{else}}
+      <tr><td colspan="5" class="muted">{{t "dev.traffic_empty"}}</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
+<div class="card">
   <h3>{{t "dev.neighbors"}}</h3>
   <div class="scroll"><table>
     <thead><tr><th>{{t "neigh.iface"}}</th><th>Identity</th><th>IP</th><th>MAC</th><th>{{t "neigh.platform"}}</th></tr></thead>

@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -30,7 +31,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.6.0"
+const Version = "0.7.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -323,8 +324,9 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 	health, _ := s.a.Store.LatestHealth(id)
 	cfgs, _ := s.a.Store.Configs(id, 20)
 	neighbors, _ := s.a.Store.Neighbors(id)
+	traffic := s.trafficRows(id)
 	s.render(w, r, "device", map[string]any{"Active": "devices",
-		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors,
+		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors, "Traffic": traffic,
 		"HasSSH": s.a.HasSSHKey(), "Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
 	})
 }
@@ -567,6 +569,103 @@ func (s *Server) deviceIssueCert(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "issue_cert", d.Name)
 	http.Redirect(w, r, dst+"?msg=cert-issued", http.StatusSeeOther)
+}
+
+// TrafficRow is one interface's current rates and sparklines for the device page.
+type TrafficRow struct {
+	Name           string
+	RxRate, TxRate string
+	RxSpark        template.HTML
+	TxSpark        template.HTML
+	cur            float64
+}
+
+func (s *Server) trafficRows(deviceID int64) []TrafficRow {
+	since := time.Now().Add(-2 * time.Hour)
+	names, _ := s.a.Store.IfaceNames(deviceID, since)
+	var rows []TrafficRow
+	for _, ifn := range names {
+		samples, _ := s.a.Store.IfaceSeries(deviceID, ifn, since)
+		if len(samples) < 2 {
+			continue
+		}
+		var rx, tx []float64
+		for i := 1; i < len(samples); i++ {
+			dt := samples[i].TS.Sub(samples[i-1].TS).Seconds()
+			if dt <= 0 {
+				continue
+			}
+			drx := float64(samples[i].RxBytes - samples[i-1].RxBytes)
+			dtx := float64(samples[i].TxBytes - samples[i-1].TxBytes)
+			if drx < 0 {
+				drx = 0
+			}
+			if dtx < 0 {
+				dtx = 0
+			}
+			rx = append(rx, drx*8/dt)
+			tx = append(tx, dtx*8/dt)
+		}
+		if len(rx) == 0 {
+			continue
+		}
+		cur := rx[len(rx)-1] + tx[len(tx)-1]
+		rows = append(rows, TrafficRow{
+			Name:    ifn,
+			RxRate:  fmtbps(rx[len(rx)-1]),
+			TxRate:  fmtbps(tx[len(tx)-1]),
+			RxSpark: sparkline(rx, "var(--good)"),
+			TxSpark: sparkline(tx, "var(--accent)"),
+			cur:     cur,
+		})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].cur > rows[j].cur })
+	if len(rows) > 20 {
+		rows = rows[:20]
+	}
+	return rows
+}
+
+func fmtbps(v float64) string {
+	switch {
+	case v >= 1e9:
+		return fmt.Sprintf("%.2f Gbit/s", v/1e9)
+	case v >= 1e6:
+		return fmt.Sprintf("%.1f Mbit/s", v/1e6)
+	case v >= 1e3:
+		return fmt.Sprintf("%.0f Kbit/s", v/1e3)
+	default:
+		return fmt.Sprintf("%.0f bit/s", v)
+	}
+}
+
+func sparkline(series []float64, color string) template.HTML {
+	const wpx, hpx = 120, 28
+	if len(series) == 0 {
+		return ""
+	}
+	max := 1.0
+	for _, v := range series {
+		if v > max {
+			max = v
+		}
+	}
+	n := len(series)
+	var b strings.Builder
+	for i, v := range series {
+		x := 0.0
+		if n > 1 {
+			x = float64(i) / float64(n-1) * wpx
+		}
+		y := hpx - v/max*hpx
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "%.1f,%.1f", x, y)
+	}
+	return template.HTML(fmt.Sprintf(
+		`<svg viewBox="0 0 %d %d" width="%d" height="%d" preserveAspectRatio="none"><polyline fill="none" stroke="%s" stroke-width="1.5" points="%s"/></svg>`,
+		wpx, hpx, wpx, hpx, color, b.String()))
 }
 
 func urlq(s string) string {

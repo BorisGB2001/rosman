@@ -39,6 +39,7 @@ type Health struct {
 	FwChannel     string     // update channel
 	FwStatus      string     // device update status string
 	Neighbors     []model.Neighbor
+	Ifaces        []model.IfaceSample
 }
 
 // parseROSTime parses RouterOS date strings in both the modern ISO form and the
@@ -141,6 +142,21 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 		h.FwChannel = m["channel"]
 		h.FwLatest = m["latest-version"]
 		h.FwStatus = m["status"]
+	}
+	// Per-interface byte counters for traffic graphs.
+	if r, err := c.Run("/interface/print", "=stats="); err == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			if m["disabled"] == "true" {
+				continue
+			}
+			rx, tx := atoi64(m["rx-byte"]), atoi64(m["tx-byte"])
+			if rx == 0 && tx == 0 {
+				continue
+			}
+			h.Ifaces = append(h.Ifaces, model.IfaceSample{
+				Iface: m["name"], RxBytes: rx, TxBytes: tx, Running: m["running"] == "true"})
+		}
 	}
 	// Discovered neighbours (MNDP/LLDP/CDP) for topology.
 	if r, err := c.Run("/ip/neighbor/print"); err == nil {
