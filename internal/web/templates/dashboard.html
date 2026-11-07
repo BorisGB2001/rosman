@@ -1,0 +1,27 @@
+{{define "dashboard"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "nav.dashboard"}}</h1></div>
+<div class="tiles">
+  <a class="tile" href="/"><span>{{t "dash.total"}}</span><b>{{.Total}}</b></a>
+  <div class="tile"><span>{{t "dash.online"}}</span><b style="color:var(--good)">{{.Online}}</b></div>
+  <div class="tile"><span>{{t "dash.offline"}}</span><b style="{{if .Offline}}color:var(--bad){{end}}">{{.Offline}}</b></div>
+  <div class="tile"><span>{{t "dash.unknown"}}</span><b class="muted">{{.Unknown}}</b></div>
+  <a class="tile" href="/alerts"><span>{{t "dash.alerts"}}</span><b style="{{if .AlertCount}}color:var(--bad){{end}}">{{.AlertCount}}</b></a>
+  <a class="tile" href="/firmware"><span>{{t "dash.outdated"}}</span><b style="{{if .Outdated}}color:var(--warn){{end}}">{{.Outdated}}</b></a>
+  <a class="tile" href="/sites"><span>{{t "nav.sites"}}</span><b>{{.SitesN}}</b></a>
+</div>
+<div class="grid2">
+  <div class="card">
+    <h3>{{t "dash.active_alerts"}}</h3>
+    <div class="scroll"><table><tbody>
+    {{range .Alerts}}<tr><td>{{template "sev" .Severity}}</td><td><a href="/devices/{{.DeviceID}}">{{.Device}}</a></td><td class="mono">{{.Rule}}</td><td class="muted">{{.Detail}}</td></tr>
+    {{else}}<tr><td class="ok">{{t "al.none"}}</td></tr>{{end}}
+    </tbody></table></div>
+  </div>
+  <div class="card">
+    <h3>{{t "dash.versions"}}</h3>
+    <div class="scroll"><table><tbody>
+    {{range .Versions}}<tr><td>RouterOS {{.Ver}}</td><td><b>{{.N}}</b></td></tr>{{end}}
+    </tbody></table></div>
+  </div>
+</div>
+{{template "tail" .}}{{end}}

@@ -11,6 +11,7 @@
 <aside class="side">
   <a href="/" class="brand" title="Router Operation System Manager" style="display:inline-flex;align-items:center;padding:2px 6px"><img src="/static/logo.svg" height="26" alt="ROSMan"></a>
   <nav>
+    <a href="/dashboard" class="{{if eq .Active "dashboard"}}on{{end}}">{{t "nav.dashboard"}}</a>
     <a href="/" class="{{if eq .Active "devices"}}on{{end}}">{{t "nav.devices"}}</a>
     <a href="/alerts" class="{{if eq .Active "alerts"}}on{{end}}">{{t "nav.alerts"}}{{if gt (alertCount) 0}} <span class="badge bad">{{alertCount}}</span>{{end}}</a>
     <a href="/sites" class="{{if eq .Active "sites"}}on{{end}}">{{t "nav.sites"}}</a>

@@ -32,7 +32,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.12.0"
+const Version = "0.13.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -106,6 +106,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/issuecert", s.authed(s.requireRole(model.RoleOperator, s.deviceIssueCert)))
 	mux.Handle("POST /devices/{id}/snmp", s.authed(s.requireRole(model.RoleOperator, s.deviceSNMPSave)))
 	mux.Handle("POST /devices/{id}/snmppoll", s.authed(s.requireRole(model.RoleOperator, s.deviceSNMPPoll)))
+	mux.Handle("GET /dashboard", s.authed(s.dashboardPage))
 	mux.Handle("GET /firmware", s.authed(s.firmwarePage))
 	mux.Handle("POST /firmware/upgrade", s.authed(s.requireRole(model.RoleOperator, s.firmwareUpgrade)))
 	mux.Handle("POST /devices/{id}/upgrade", s.authed(s.requireRole(model.RoleOperator, s.deviceUpgrade)))
@@ -340,6 +341,43 @@ func fwFirst(s string) string {
 		return ""
 	}
 	return f[0]
+}
+
+func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
+	devs, _ := s.a.Store.Devices()
+	var online, offline, unknown, outdated int
+	verCount := map[string]int{}
+	for _, d := range devs {
+		switch {
+		case d.LastSeen == nil:
+			unknown++
+		case time.Since(*d.LastSeen) < 3*s.a.Cfg.PollInterval:
+			online++
+		default:
+			offline++
+		}
+		if l := fwFirst(d.FwLatest); l != "" && l != fwFirst(d.ROSVersion) {
+			outdated++
+		}
+		if v := fwFirst(d.ROSVersion); v != "" {
+			verCount[v]++
+		}
+	}
+	type vc struct {
+		Ver string
+		N   int
+	}
+	var vers []vc
+	for v, n := range verCount {
+		vers = append(vers, vc{v, n})
+	}
+	sort.Slice(vers, func(i, j int) bool { return vers[i].N > vers[j].N })
+	alerts, _ := s.a.Store.ActiveAlerts()
+	sites, _ := s.a.Store.Sites()
+	s.render(w, r, "dashboard", map[string]any{"Active": "dashboard",
+		"Total": len(devs), "Online": online, "Offline": offline, "Unknown": unknown,
+		"Outdated": outdated, "SitesN": len(sites), "Alerts": alerts, "AlertCount": len(alerts),
+		"Versions": vers})
 }
 
 func (s *Server) firmwarePage(w http.ResponseWriter, r *http.Request) {
