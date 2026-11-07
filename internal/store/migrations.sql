@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS devices (
     created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     api_ssl_cert    TEXT NOT NULL DEFAULT '',
     api_cert_expiry TIMESTAMP,
+    fw_latest       TEXT NOT NULL DEFAULT '',
+    fw_channel      TEXT NOT NULL DEFAULT '',
+    fw_status       TEXT NOT NULL DEFAULT '',
     UNIQUE(ip, api_port)
 );
 

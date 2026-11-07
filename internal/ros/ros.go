@@ -34,6 +34,9 @@ type Health struct {
 	Uptime   string
 	APISSLCert    string     // cert bound to the api-ssl service
 	APICertExpiry *time.Time // its invalid-after
+	FwLatest      string     // latest RouterOS version the device knows about
+	FwChannel     string     // update channel
+	FwStatus      string     // device update status string
 }
 
 // parseROSTime parses RouterOS date strings in both the modern ISO form and the
@@ -130,7 +133,31 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 			h.APICertExpiry = parseROSTime(r.Re[0].Map["invalid-after"])
 		}
 	}
+	// Firmware: the device's last-known update info (no network check forced here).
+	if r, err := c.Run("/system/package/update/print"); err == nil && len(r.Re) > 0 {
+		m := r.Re[0].Map
+		h.FwChannel = m["channel"]
+		h.FwLatest = m["latest-version"]
+		h.FwStatus = m["status"]
+	}
 	return h, pin, nil
+}
+
+// CheckUpdates forces the device to contact the upgrade server, then reads the
+// result. This is the normal RouterOS update check (read-only; installs nothing).
+func CheckUpdates(d model.Device, pass string, timeout time.Duration) (latest, channel, status string, err error) {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return "", "", "", err
+	}
+	defer c.Close()
+	_, _ = c.Run("/system/package/update/check-for-updates")
+	time.Sleep(2 * time.Second)
+	if r, err := c.Run("/system/package/update/print"); err == nil && len(r.Re) > 0 {
+		m := r.Re[0].Map
+		latest, channel, status = m["latest-version"], m["channel"], m["status"]
+	}
+	return latest, channel, status, nil
 }
 
 // LoadSigner reads an SSH private key (no passphrase) for /export.

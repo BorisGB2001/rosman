@@ -94,7 +94,44 @@ func (a *App) PollDevice(d model.Device) error {
 	_ = a.Store.AddHealth(model.Health{DeviceID: d.ID, TS: now, CPU: h.CPU, FreeMem: h.FreeMem, TotalMem: h.TotalMem, Uptime: h.Uptime})
 	_ = a.Store.UpdateCertInfo(d.ID, h.APISSLCert, h.APICertExpiry)
 	a.evalCert(d, h.APICertExpiry)
+	_ = a.Store.UpdateFirmware(d.ID, h.FwLatest, h.FwChannel, h.FwStatus)
+	a.evalFirmware(d, h.Version, h.FwLatest)
 	return a.Store.UpdateInventory(d.ID, h.Model, h.Serial, h.Version, now)
+}
+
+// RefreshFirmware forces an update check on the device and re-evaluates the alert.
+func (a *App) RefreshFirmware(d model.Device) error {
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return err
+	}
+	latest, channel, status, err := ros.CheckUpdates(d, pass, a.Cfg.APITimeout+5*time.Second)
+	if err != nil {
+		return err
+	}
+	_ = a.Store.UpdateFirmware(d.ID, latest, channel, status)
+	a.evalFirmware(d, d.ROSVersion, latest)
+	return nil
+}
+
+// evalFirmware raises/resolves the firmware_outdated alert.
+func (a *App) evalFirmware(d model.Device, installed, latest string) {
+	const rule = "firmware_outdated"
+	inst := strings.Fields(installed) // drop "(stable)" style suffixes
+	cur := ""
+	if len(inst) > 0 {
+		cur = inst[0]
+	}
+	if latest != "" && cur != "" && latest != cur {
+		prev, _ := a.Store.AlertState(d.ID, rule)
+		_ = a.Store.RaiseAlert(d.ID, rule, "warn",
+			fmt.Sprintf("доступна RouterOS %s (установлена %s)", latest, cur))
+		if prev != "active" {
+			a.Notify.Send("🟡 "+d.Name+": доступна прошивка "+latest, "установлена "+cur)
+		}
+		return
+	}
+	_, _ = a.Store.ResolveAlert(d.ID, rule)
 }
 
 // evalDown raises/resolves the device_down alert and notifies on transitions.

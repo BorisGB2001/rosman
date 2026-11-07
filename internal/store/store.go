@@ -36,6 +36,9 @@ func Open(path string) (*Store, error) {
 	for _, alter := range []string{
 		`ALTER TABLE devices ADD COLUMN api_ssl_cert TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN api_cert_expiry TIMESTAMP`,
+		`ALTER TABLE devices ADD COLUMN fw_latest TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE devices ADD COLUMN fw_channel TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE devices ADD COLUMN fw_status TEXT NOT NULL DEFAULT ''`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -133,7 +136,7 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	var last, exp sql.NullTime
 	err := row.Scan(&d.ID, &d.Name, &d.IP, &d.APIPort, &tls, &d.APIUser, &d.APIPassEnc,
 		&d.SSHUser, &d.APICertPin, &d.SSHHostPin, &d.Model, &d.Serial, &d.ROSVersion, &last, &d.CreatedAt,
-		&d.APISSLCert, &exp)
+		&d.APISSLCert, &exp, &d.FwLatest, &d.FwChannel, &d.FwStatus)
 	d.APITLS = tls != 0
 	if last.Valid {
 		d.LastSeen = &last.Time
@@ -144,7 +147,7 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	return d, err
 }
 
-const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry`
+const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status`
 
 func (s *Store) Device(id int64) (model.Device, error) {
 	d, err := scanDevice(s.db.QueryRow(`SELECT `+deviceCols+` FROM devices WHERE id=?`, id))
@@ -252,6 +255,11 @@ func (s *Store) ConfigContent(id int64) (model.Config, error) {
 
 func (s *Store) UpdateCertInfo(id int64, certName string, expiry *time.Time) error {
 	_, err := s.db.Exec(`UPDATE devices SET api_ssl_cert=?, api_cert_expiry=? WHERE id=?`, certName, expiry, id)
+	return err
+}
+
+func (s *Store) UpdateFirmware(id int64, latest, channel, status string) error {
+	_, err := s.db.Exec(`UPDATE devices SET fw_latest=?, fw_channel=?, fw_status=? WHERE id=?`, latest, channel, status, id)
 	return err
 }
 

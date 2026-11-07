@@ -6,11 +6,13 @@
   {{if canWrite .User}}<div class="badges">
     <form class="inline" method="post" action="/devices/{{.D.ID}}/poll"><button class="btn sm" type="submit">{{t "dev.poll"}}</button></form>
     <form class="inline" method="post" action="/devices/{{.D.ID}}/backup"><button class="btn sm primary" type="submit" {{if not .HasSSH}}disabled title="{{t "dev.need_ssh"}}"{{end}}>{{t "dev.backup"}}</button></form>
+    <form class="inline" method="post" action="/devices/{{.D.ID}}/fwcheck"><button class="btn sm" type="submit">{{t "dev.fw_check"}}</button></form>
   </div>{{end}}
 </div>
 <div class="card"><table>
   <tr><th>{{t "col.model"}}</th><td>{{.D.Model}}</td><th>{{t "dev.serial"}}</th><td>{{.D.Serial}}</td></tr>
   <tr><th>RouterOS</th><td>{{.D.ROSVersion}}</td><th>{{t "col.uptime"}}</th><td>{{.H.Uptime}}</td></tr>
+  <tr><th>{{t "dev.firmware"}}</th><td>{{if .D.FwLatest}}{{.D.FwLatest}} <small class="muted">{{.D.FwChannel}}</small>{{else}}—{{end}}</td><th>{{t "dev.fw_status"}}</th><td class="muted">{{.D.FwStatus}}</td></tr>
   <tr><th>CPU</th><td>{{.H.CPU}}%</td><th>{{t "dev.mem"}}</th><td>{{mb .H.FreeMem}} {{t "dev.free"}} / {{mb .H.TotalMem}}</td></tr>
   <tr><th>api-ssl cert</th><td>{{if .D.APISSLCert}}{{.D.APISSLCert}}{{else}}—{{end}}</td><th>{{t "dev.expires"}}</th><td>{{date .D.APICertExpiry}}</td></tr>
   <tr><th>{{t "col.seen"}}</th><td class="muted">{{ago .D.LastSeen}}</td><th>{{t "dev.sshuser"}}</th><td>{{.D.SSHUser}}</td></tr>

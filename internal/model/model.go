@@ -38,6 +38,9 @@ type Device struct {
 	CreatedAt   time.Time
 	APISSLCert    string     // name of the cert bound to api-ssl
 	APICertExpiry *time.Time // its invalid-after
+	FwLatest      string     // latest RouterOS version known to the device
+	FwChannel     string     // update channel (stable/testing/...)
+	FwStatus      string     // device's update status string
 }
 
 // Health is one health sample.

@@ -29,7 +29,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -94,6 +94,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /devices/{id}", s.authed(s.deviceDetail))
 	mux.Handle("POST /devices/{id}/poll", s.authed(s.requireRole(model.RoleOperator, s.devicePoll)))
 	mux.Handle("POST /devices/{id}/backup", s.authed(s.requireRole(model.RoleOperator, s.deviceBackup)))
+	mux.Handle("POST /devices/{id}/fwcheck", s.authed(s.requireRole(model.RoleOperator, s.deviceFwCheck)))
 	mux.Handle("GET /configs/{id}", s.authed(s.configView))
 	mux.Handle("GET /alerts", s.authed(s.alerts))
 	mux.Handle("GET /audit", s.authed(s.auditPage))
@@ -350,6 +351,21 @@ func (s *Server) deviceBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "backup", d.Name+" ("+msg+")")
 	http.Redirect(w, r, dst+"?msg="+msg, http.StatusSeeOther)
+}
+
+func (s *Server) deviceFwCheck(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	dst := "/devices/" + r.PathValue("id")
+	if err := s.a.RefreshFirmware(d); err != nil {
+		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, dst+"?msg=fwchecked", http.StatusSeeOther)
 }
 
 func (s *Server) configView(w http.ResponseWriter, r *http.Request) {
