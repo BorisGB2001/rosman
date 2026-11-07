@@ -32,7 +32,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.9.0"
+const Version = "0.10.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -72,6 +72,7 @@ func New(a *app.App) (*Server, error) {
 		"upper":   strings.ToUpper,
 		"deref":    func(p *int64) int64 { if p == nil { return 0 }; return *p },
 		"contains": strings.Contains,
+		"fwfirst":  fwFirst,
 		// Per-request overrides are bound in render(); these are parse-time defaults.
 		"t":     func(key string) string { return i18n.T(i18n.Default, key) },
 		"lang":  func() string { return i18n.Default },
@@ -103,6 +104,9 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/fwcheck", s.authed(s.requireRole(model.RoleOperator, s.deviceFwCheck)))
 	mux.Handle("GET /configs/{id}", s.authed(s.configView))
 	mux.Handle("POST /devices/{id}/issuecert", s.authed(s.requireRole(model.RoleOperator, s.deviceIssueCert)))
+	mux.Handle("GET /firmware", s.authed(s.firmwarePage))
+	mux.Handle("POST /firmware/upgrade", s.authed(s.requireRole(model.RoleOperator, s.firmwareUpgrade)))
+	mux.Handle("POST /devices/{id}/upgrade", s.authed(s.requireRole(model.RoleOperator, s.deviceUpgrade)))
 	mux.Handle("GET /sites", s.authed(s.sitesPage))
 	mux.Handle("POST /sites/new", s.authed(s.requireRole(model.RoleOperator, s.siteCreate)))
 	mux.Handle("POST /sites/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.siteDelete)))
@@ -326,6 +330,78 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 	}
 	s.render(w, r, "devices", map[string]any{"Active": "devices", "Devices": rows,
 		"Sites": sites, "AllTags": allTags, "FSite": fSite, "FTag": fTag})
+}
+
+func fwFirst(s string) string {
+	f := strings.Fields(s)
+	if len(f) == 0 {
+		return ""
+	}
+	return f[0]
+}
+
+func (s *Server) firmwarePage(w http.ResponseWriter, r *http.Request) {
+	devs, _ := s.a.Store.Devices()
+	type Row struct {
+		ID                            int64
+		Name, Installed, Latest, Chan string
+		Outdated                      bool
+	}
+	rows := make([]Row, 0, len(devs))
+	for _, d := range devs {
+		inst, lat := fwFirst(d.ROSVersion), fwFirst(d.FwLatest)
+		rows = append(rows, Row{ID: d.ID, Name: d.Name, Installed: inst, Latest: lat, Chan: d.FwChannel,
+			Outdated: lat != "" && lat != inst})
+	}
+	data := map[string]any{"Active": "firmware", "Rows": rows}
+	if job, ok := s.a.Store.LatestFwJob(); ok {
+		items, _ := s.a.Store.FwItems(job.ID)
+		data["Job"] = job
+		data["Items"] = items
+	}
+	s.render(w, r, "firmware", data)
+}
+
+func (s *Server) firmwareUpgrade(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	var ids []int64
+	if r.FormValue("all_outdated") == "on" {
+		devs, _ := s.a.Store.Devices()
+		for _, d := range devs {
+			if l := fwFirst(d.FwLatest); l != "" && l != fwFirst(d.ROSVersion) {
+				ids = append(ids, d.ID)
+			}
+		}
+	} else {
+		for _, v := range r.Form["device_ids"] {
+			if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+				ids = append(ids, n)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		http.Redirect(w, r, "/firmware?err=none", http.StatusSeeOther)
+		return
+	}
+	canary, _ := strconv.Atoi(r.FormValue("canary"))
+	conc, _ := strconv.Atoi(r.FormValue("concurrency"))
+	halt := r.FormValue("halt") == "on"
+	if _, err := s.a.StartUpgrade(ids, canary, conc, halt, userFrom(r).Username); err != nil {
+		http.Redirect(w, r, "/firmware?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "fw_upgrade", fmt.Sprintf("%d devices", len(ids)))
+	http.Redirect(w, r, "/firmware", http.StatusSeeOther)
+}
+
+func (s *Server) deviceUpgrade(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if _, err := s.a.StartUpgrade([]int64{id}, 1, 1, true, userFrom(r).Username); err != nil {
+		http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "fw_upgrade", r.PathValue("id"))
+	http.Redirect(w, r, "/firmware", http.StatusSeeOther)
 }
 
 func (s *Server) sitesPage(w http.ResponseWriter, r *http.Request) {

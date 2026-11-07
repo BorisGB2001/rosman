@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"rosman/internal/config"
@@ -123,6 +124,138 @@ func (a *App) RefreshFirmware(d model.Device) error {
 	_ = a.Store.UpdateFirmware(d.ID, latest, channel, status)
 	a.evalFirmware(d, d.ROSVersion, latest)
 	return nil
+}
+
+// ---- firmware upgrades ----
+
+func firstField(s string) string {
+	f := strings.Fields(s)
+	if len(f) == 0 {
+		return ""
+	}
+	return f[0]
+}
+
+// StartUpgrade creates a firmware upgrade job for the given devices and runs it
+// in the background (canary wave first, then waves of `concurrency`, optionally
+// halting after a failure). Each device is backed up before upgrading.
+func (a *App) StartUpgrade(ids []int64, canary, concurrency int, halt bool, actor string) (int64, error) {
+	if a.signer == nil {
+		return 0, fmt.Errorf("no SSH key configured (ROSMAN_SSH_KEY) — pre-upgrade backup needs SSH")
+	}
+	if len(ids) == 0 {
+		return 0, fmt.Errorf("no devices selected")
+	}
+	job, err := a.Store.CreateFwJob(actor, fmt.Sprintf("%d устр.", len(ids)))
+	if err != nil {
+		return 0, err
+	}
+	for _, id := range ids {
+		d, err := a.Store.Device(id)
+		if err != nil {
+			continue
+		}
+		target := firstField(d.FwLatest)
+		if target == "" {
+			target = firstField(d.ROSVersion)
+		}
+		_, _ = a.Store.AddFwItem(job, id, d.Name, target)
+	}
+	go a.runUpgradeJob(job, canary, concurrency, halt)
+	return job, nil
+}
+
+func (a *App) jobHasFailure(jobID int64) bool {
+	items, _ := a.Store.FwItems(jobID)
+	for _, it := range items {
+		if it.Status == "failed" {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *App) runUpgradeJob(jobID int64, canary, concurrency int, halt bool) {
+	items, _ := a.Store.FwItems(jobID)
+	idx := 0
+	waveSize := canary
+	if waveSize < 1 {
+		waveSize = 1
+	}
+	for idx < len(items) {
+		end := idx + waveSize
+		if end > len(items) {
+			end = len(items)
+		}
+		wave := items[idx:end]
+		var wg sync.WaitGroup
+		for _, it := range wave {
+			wg.Add(1)
+			go func(it model.FwItem) { defer wg.Done(); a.upgradeItem(it) }(it)
+		}
+		wg.Wait()
+		idx = end
+		waveSize = concurrency
+		if waveSize < 1 {
+			waveSize = 1
+		}
+		if halt && a.jobHasFailure(jobID) {
+			for _, it := range items[idx:] {
+				_ = a.Store.SetFwItem(it.ID, "skipped", "остановлено после ошибки")
+			}
+			break
+		}
+	}
+	_ = a.Store.FinishFwJob(jobID, "done")
+}
+
+func (a *App) upgradeItem(it model.FwItem) {
+	d, err := a.Store.Device(it.DeviceID)
+	if err != nil {
+		_ = a.Store.SetFwItem(it.ID, "failed", "устройство не найдено")
+		return
+	}
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		_ = a.Store.SetFwItem(it.ID, "failed", "нет учётных данных")
+		return
+	}
+	_ = a.Store.SetFwItem(it.ID, "backup", "бэкап перед обновлением")
+	if _, err := a.BackupDevice(d, "export"); err != nil {
+		_ = a.Store.SetFwItem(it.ID, "failed", "бэкап не удался: "+err.Error())
+		return
+	}
+	_ = a.Store.SetFwItem(it.ID, "installing", "")
+	rebooting, status, err := ros.FirmwareInstall(d, pass, a.Cfg.APITimeout+10*time.Second)
+	if err != nil {
+		_ = a.Store.SetFwItem(it.ID, "failed", "установка: "+err.Error())
+		return
+	}
+	if !rebooting {
+		_ = a.Store.SetFwItem(it.ID, "done", "уже актуально ("+status+")")
+		return
+	}
+	_ = a.Store.SetFwItem(it.ID, "rebooting", "ожидание перезагрузки")
+	time.Sleep(20 * time.Second)
+	deadline := time.Now().Add(8 * time.Minute)
+	for time.Now().Before(deadline) {
+		if _, e := ros.ServedFingerprint(d, pass, 8*time.Second); e == nil {
+			break
+		}
+		time.Sleep(10 * time.Second)
+	}
+	_ = a.Store.SetFwItem(it.ID, "verifying", "проверка версии")
+	h, _, err := ros.Poll(d, pass, a.Cfg.APITimeout)
+	if err != nil {
+		_ = a.Store.SetFwItem(it.ID, "failed", "не ответил после перезагрузки")
+		return
+	}
+	_ = a.Store.UpdateInventory(d.ID, h.Model, h.Serial, h.Version, time.Now())
+	if firstField(h.Version) == it.Target {
+		_ = a.Store.SetFwItem(it.ID, "done", "обновлено до "+h.Version)
+	} else {
+		_ = a.Store.SetFwItem(it.ID, "failed", "версия "+h.Version+", ожидалась "+it.Target)
+	}
 }
 
 // ---- change-guard ----

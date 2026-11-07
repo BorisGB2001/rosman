@@ -14,6 +14,7 @@
       <button class="btn sm primary" type="submit" {{if not .HasSSH}}disabled title="{{t "dev.need_ssh"}}"{{end}}>{{t "dev.backup"}}</button>
     </form>
     <form class="inline" method="post" action="/devices/{{.D.ID}}/fwcheck"><button class="btn sm" type="submit">{{t "dev.fw_check"}}</button></form>
+    {{if .D.FwLatest}}{{if ne (fwfirst .D.FwLatest) (fwfirst .D.ROSVersion)}}<form class="inline" method="post" action="/devices/{{.D.ID}}/upgrade"><button class="btn sm danger" type="submit" onclick="return confirm('{{t "fw.confirm"}}')">{{t "dev.upgrade"}} {{fwfirst .D.FwLatest}}</button></form>{{end}}{{end}}
     <form class="inline" method="post" action="/devices/{{.D.ID}}/issuecert"><button class="btn sm" type="submit">{{t "dev.issue_cert"}}</button></form>
   </div>{{end}}
 </div>

@@ -46,6 +46,27 @@ type Device struct {
 	Tags          []string   // grouping tags (filled on demand)
 }
 
+// FwJob is a firmware upgrade run.
+type FwJob struct {
+	ID        int64
+	CreatedAt time.Time
+	Actor     string
+	Note      string
+	Status    string
+}
+
+// FwItem is one device's progress within a firmware upgrade job.
+type FwItem struct {
+	ID         int64
+	JobID      int64
+	DeviceID   int64
+	DeviceName string
+	Target     string
+	Status     string
+	Detail     string
+	UpdatedAt  time.Time
+}
+
 // Site is a location grouping devices.
 type Site struct {
 	ID    int64

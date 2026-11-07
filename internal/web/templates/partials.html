@@ -15,6 +15,7 @@
     <a href="/sites" class="{{if eq .Active "sites"}}on{{end}}">{{t "nav.sites"}}</a>
     <a href="/topology" class="{{if eq .Active "topology"}}on{{end}}">{{t "nav.topology"}}</a>
     <a href="/audit" class="{{if eq .Active "audit"}}on{{end}}">{{t "nav.audit"}}</a>
+    <a href="/firmware" class="{{if eq .Active "firmware"}}on{{end}}">{{t "nav.firmware"}}</a>
     {{if canWrite .User}}<a href="/templates" class="{{if eq .Active "templates"}}on{{end}}">{{t "nav.templates"}}</a>{{end}}
     {{if isAdmin .User}}<a href="/ca" class="{{if eq .Active "ca"}}on{{end}}">{{t "nav.ca"}}</a>{{end}}
     {{if isAdmin .User}}<a href="/settings" class="{{if eq .Active "settings"}}on{{end}}">{{t "nav.settings"}}</a>{{end}}

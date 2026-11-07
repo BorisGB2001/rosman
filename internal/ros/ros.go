@@ -199,6 +199,30 @@ func ServedFingerprint(d model.Device, pass string, timeout time.Duration) (stri
 	return fp, nil
 }
 
+// FirmwareInstall checks for updates and, if a newer version exists, installs it
+// (the device downloads and reboots). Returns rebooting=true when an install was
+// kicked off; false when the device is already up to date.
+func FirmwareInstall(d model.Device, pass string, timeout time.Duration) (rebooting bool, status string, err error) {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return false, "", err
+	}
+	_, _ = c.Run("/system/package/update/check-for-updates")
+	time.Sleep(2 * time.Second)
+	var installed, latest string
+	if r, e := c.Run("/system/package/update/print"); e == nil && len(r.Re) > 0 {
+		m := r.Re[0].Map
+		status, installed, latest = m["status"], m["installed-version"], m["latest-version"]
+	}
+	if latest == "" || latest == installed {
+		c.Close()
+		return false, status, nil
+	}
+	_, _ = c.Run("/system/package/update/install") // device reboots; connection drops
+	c.Close()
+	return true, status, nil
+}
+
 // LoadSigner reads an SSH private key (no passphrase) for /export.
 func LoadSigner(path string) (ssh.Signer, error) {
 	raw, err := os.ReadFile(path)

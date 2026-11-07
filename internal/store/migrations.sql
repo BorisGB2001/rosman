@@ -123,6 +123,26 @@ CREATE TABLE IF NOT EXISTS ca (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Firmware upgrade jobs and their per-device items.
+CREATE TABLE IF NOT EXISTS fw_jobs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    actor      TEXT NOT NULL DEFAULT '',
+    note       TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'running'
+);
+CREATE TABLE IF NOT EXISTS fw_job_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id      INTEGER NOT NULL REFERENCES fw_jobs(id) ON DELETE CASCADE,
+    device_id   INTEGER NOT NULL,
+    device_name TEXT NOT NULL DEFAULT '',
+    target      TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'queued',
+    detail      TEXT NOT NULL DEFAULT '',
+    updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_fw_items_job ON fw_job_items(job_id);
+
 -- Simple key/value application settings.
 CREATE TABLE IF NOT EXISTS app_settings (
     key   TEXT PRIMARY KEY,

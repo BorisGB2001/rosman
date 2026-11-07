@@ -509,6 +509,77 @@ func (s *Store) AllAlerts(limit int) ([]model.Alert, error) {
 	return s.listAlerts(`ORDER BY a.updated_at DESC LIMIT ?`, limit)
 }
 
+// ---- firmware jobs ----
+
+func (s *Store) CreateFwJob(actor, note string) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO fw_jobs(actor,note) VALUES(?,?)`, actor, note)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) AddFwItem(jobID, deviceID int64, name, target string) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO fw_job_items(job_id,device_id,device_name,target) VALUES(?,?,?,?)`,
+		jobID, deviceID, name, target)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) SetFwItem(id int64, status, detail string) error {
+	_, err := s.db.Exec(`UPDATE fw_job_items SET status=?, detail=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, status, detail, id)
+	return err
+}
+
+func (s *Store) FinishFwJob(id int64, status string) error {
+	_, err := s.db.Exec(`UPDATE fw_jobs SET status=? WHERE id=?`, status, id)
+	return err
+}
+
+func (s *Store) FwJobs(limit int) ([]model.FwJob, error) {
+	rows, err := s.db.Query(`SELECT id,created_at,actor,note,status FROM fw_jobs ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.FwJob
+	for rows.Next() {
+		var j model.FwJob
+		if err := rows.Scan(&j.ID, &j.CreatedAt, &j.Actor, &j.Note, &j.Status); err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) LatestFwJob() (model.FwJob, bool) {
+	js, err := s.FwJobs(1)
+	if err != nil || len(js) == 0 {
+		return model.FwJob{}, false
+	}
+	return js[0], true
+}
+
+func (s *Store) FwItems(jobID int64) ([]model.FwItem, error) {
+	rows, err := s.db.Query(`SELECT id,job_id,device_id,device_name,target,status,detail,updated_at FROM fw_job_items WHERE job_id=? ORDER BY id`, jobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.FwItem
+	for rows.Next() {
+		var it model.FwItem
+		if err := rows.Scan(&it.ID, &it.JobID, &it.DeviceID, &it.DeviceName, &it.Target, &it.Status, &it.Detail, &it.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
 // ---- settings ----
 
 func (s *Store) GetSetting(key string) (string, bool) {
