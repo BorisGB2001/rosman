@@ -1,0 +1,23 @@
+{{define "lte"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">LTE — {{.D.Name}}</h1></div>
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+{{if .L}}
+{{range .L}}
+<div class="card">
+  <h3>{{.Name}} {{if .Running}}<span class="badge good">running</span>{{else if .Disabled}}<span class="badge">disabled</span>{{else}}<span class="badge">down</span>{{end}}</h3>
+  <table>
+    <tr><th>{{t "lte.status"}}</th><td>{{if .Status}}{{.Status}}{{else}}—{{end}}</td><th>{{t "lte.operator"}}</th><td>{{if .Operator}}{{.Operator}}{{else}}—{{end}}</td></tr>
+    <tr><th>{{t "lte.tech"}}</th><td>{{if .Tech}}<span class="badge">{{.Tech}}</span>{{else}}—{{end}}</td><th>{{t "lte.band"}}</th><td class="mono">{{if .Band}}{{.Band}}{{else}}—{{end}}</td></tr>
+    <tr><th>RSRP</th><td><span class="badge {{rsrpClass .RSRP}}">{{if .RSRP}}{{.RSRP}} dBm{{else}}—{{end}}</span></td><th>RSRQ</th><td class="mono">{{if .RSRQ}}{{.RSRQ}} dB{{else}}—{{end}}</td></tr>
+    <tr><th>SINR</th><td class="mono">{{if .SINR}}{{.SINR}} dB{{else}}—{{end}}</td><th>RSSI</th><td class="mono">{{if .RSSI}}{{.RSSI}} dBm{{else}}—{{end}}</td></tr>
+    <tr><th>{{t "lte.session"}}</th><td>{{if .SessionUptime}}{{.SessionUptime}}{{else}}—{{end}}</td><th>IMEI</th><td class="mono">{{if .IMEI}}{{.IMEI}}{{else}}—{{end}}</td></tr>
+    <tr><th>PIN</th><td colspan="3">{{if .PinStatus}}{{.PinStatus}}{{else}}—{{end}}</td></tr>
+  </table>
+  <p class="muted small">{{t "lte.legend"}}</p>
+</div>
+{{end}}
+{{else}}
+{{if not .Err}}<div class="card"><p class="muted">{{t "lte.none"}}</p></div>{{end}}
+{{end}}
+<p><a href="/devices/{{.D.ID}}">← {{t "dev.back"}}</a></p>
+{{template "tail" .}}{{end}}

@@ -43,7 +43,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.24.0"
+const Version = "0.25.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -96,6 +96,22 @@ func New(a *app.App) (*Server, error) {
 		"contains": strings.Contains,
 		"fwfirst":  fwFirst,
 		"vendor":   oui.Vendor,
+		"rsrpClass": func(s string) string {
+			// RSRP (dBm): ≥ -90 good, -90..-105 fair, < -105 poor.
+			s = strings.TrimSpace(strings.TrimSuffix(strings.Fields(s+" ")[0], "dBm"))
+			v, err := strconv.ParseFloat(s, 64)
+			if err != nil {
+				return ""
+			}
+			switch {
+			case v >= -90:
+				return "good"
+			case v >= -105:
+				return "warn"
+			default:
+				return "bad"
+			}
+		},
 		// Per-request overrides are bound in render(); these are parse-time defaults.
 		"t":     func(key string) string { return i18n.T(i18n.Default, key) },
 		"lang":  func() string { return i18n.Default },
@@ -130,6 +146,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /devices/{id}/capsman", s.authed(s.capsmanPage))
 	mux.Handle("GET /devices/{id}/firewall", s.authed(s.firewallPage))
 	mux.Handle("GET /devices/{id}/tools", s.authed(s.toolsPage))
+	mux.Handle("GET /devices/{id}/lte", s.authed(s.ltePage))
 	mux.Handle("POST /devices/{id}/firewall", s.authed(s.requireRole(model.RoleOperator, s.firewallApply)))
 	mux.Handle("GET /devices/{id}/diff", s.authed(s.diffPage))
 	mux.Handle("POST /configs/{id}/restore", s.authed(s.requireRole(model.RoleOperator, s.configRestore)))
@@ -871,6 +888,22 @@ func (s *Server) capsmanPage(w http.ResponseWriter, r *http.Request) {
 		data["C"] = ci
 	}
 	s.render(w, r, "capsman", data)
+}
+
+func (s *Server) ltePage(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	data := map[string]any{"Active": "devices", "D": d}
+	if ifs, e := s.a.DeviceLTE(d); e != nil {
+		data["Err"] = e.Error()
+	} else {
+		data["L"] = ifs
+	}
+	s.render(w, r, "lte", data)
 }
 
 func (s *Server) toolsPage(w http.ResponseWriter, r *http.Request) {

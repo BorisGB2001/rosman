@@ -538,6 +538,14 @@ func (a *App) DeviceTraceroute(d model.Device, addr string) ([]ros.TraceHop, err
 	return ros.Traceroute(d, pass, addr, a.Cfg.APITimeout)
 }
 
+func (a *App) DeviceLTE(d model.Device) ([]ros.LTEIface, error) {
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return nil, err
+	}
+	return ros.LTE(d, pass, a.Cfg.APITimeout)
+}
+
 // SNMPPollDevice collects an SNMP reading and stores it in the same metrics
 // table, so SNMP-sourced load flows into the device graphs.
 func (a *App) SNMPPollDevice(d model.Device) error {

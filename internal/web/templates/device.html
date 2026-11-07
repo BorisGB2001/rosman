@@ -8,6 +8,7 @@
   <a class="btn sm secondary" href="/devices/{{.D.ID}}/firewall">{{t "fire.title"}}</a>
   <a class="btn sm secondary" href="/devices/{{.D.ID}}/cve">{{t "cve.title"}}</a>
   <a class="btn sm secondary" href="/devices/{{.D.ID}}/tools">{{t "tool.title"}}</a>
+  <a class="btn sm secondary" href="/devices/{{.D.ID}}/lte">LTE</a>
   {{if canWrite .User}}<div class="badges">
     <form class="inline" method="post" action="/devices/{{.D.ID}}/poll"><button class="btn sm" type="submit">{{t "dev.poll"}}</button></form>
     <form class="inline" method="post" action="/devices/{{.D.ID}}/backup">

@@ -419,6 +419,51 @@ func Firewall(d model.Device, pass string, timeout time.Duration) (FirewallInfo,
 	return fi, nil
 }
 
+// LTEIface is a read-only snapshot of one LTE interface and its radio metrics.
+type LTEIface struct {
+	Name, Status, Operator, Tech          string
+	RSRP, RSRQ, SINR, RSSI                string
+	SessionUptime, IMEI, Band, PinStatus string
+	Running, Disabled                     bool
+}
+
+// LTE lists LTE interfaces and reads signal metrics for each via a one-shot
+// monitor. Devices without an LTE interface return an empty slice.
+func LTE(d model.Device, pass string, timeout time.Duration) ([]LTEIface, error) {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+	r, e := c.Run("/interface/lte/print")
+	if e != nil {
+		return nil, e
+	}
+	var out []LTEIface
+	for _, re := range r.Re {
+		m := re.Map
+		li := LTEIface{Name: m["name"], Running: m["running"] == "true", Disabled: m["disabled"] == "true"}
+		if li.Name != "" {
+			if mr, me := c.Run("/interface/lte/monitor", "=numbers="+li.Name, "=once=yes"); me == nil && len(mr.Re) > 0 {
+				mm := mr.Re[0].Map
+				li.Status = mm["status"]
+				li.Operator = firstNonEmpty(mm["current-operator"], mm["operator"])
+				li.Tech = firstNonEmpty(mm["access-technology"], mm["network-mode"])
+				li.RSRP = mm["rsrp"]
+				li.RSRQ = mm["rsrq"]
+				li.SINR = firstNonEmpty(mm["sinr"], mm["cinr"])
+				li.RSSI = mm["rssi"]
+				li.SessionUptime = mm["session-uptime"]
+				li.IMEI = mm["imei"]
+				li.Band = firstNonEmpty(mm["current-cellid"], mm["phy-cellid"], mm["band"])
+				li.PinStatus = mm["pin-status"]
+			}
+		}
+		out = append(out, li)
+	}
+	return out, nil
+}
+
 // hostRe limits ping/traceroute targets to plausible host/IP characters.
 var hostRe = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,120}$`)
 
