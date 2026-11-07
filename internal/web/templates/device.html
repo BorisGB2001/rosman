@@ -5,7 +5,14 @@
   <h1 style="margin:0">{{.D.Name}} <small class="muted">{{.D.IP}}:{{.D.APIPort}}</small></h1>
   {{if canWrite .User}}<div class="badges">
     <form class="inline" method="post" action="/devices/{{.D.ID}}/poll"><button class="btn sm" type="submit">{{t "dev.poll"}}</button></form>
-    <form class="inline" method="post" action="/devices/{{.D.ID}}/backup"><button class="btn sm primary" type="submit" {{if not .HasSSH}}disabled title="{{t "dev.need_ssh"}}"{{end}}>{{t "dev.backup"}}</button></form>
+    <form class="inline" method="post" action="/devices/{{.D.ID}}/backup">
+      <select name="mode">
+        <option value="export" {{if eq .BackupMode "export"}}selected{{end}}>{{t "set.mode_export"}}</option>
+        <option value="binary" {{if eq .BackupMode "binary"}}selected{{end}}>{{t "set.mode_binary"}}</option>
+        <option value="both" {{if eq .BackupMode "both"}}selected{{end}}>{{t "set.mode_both"}}</option>
+      </select>
+      <button class="btn sm primary" type="submit" {{if not .HasSSH}}disabled title="{{t "dev.need_ssh"}}"{{end}}>{{t "dev.backup"}}</button>
+    </form>
     <form class="inline" method="post" action="/devices/{{.D.ID}}/fwcheck"><button class="btn sm" type="submit">{{t "dev.fw_check"}}</button></form>
     <form class="inline" method="post" action="/devices/{{.D.ID}}/issuecert"><button class="btn sm" type="submit">{{t "dev.issue_cert"}}</button></form>
   </div>{{end}}
@@ -23,12 +30,13 @@
 <div class="card">
   <h3>{{t "dev.configs"}} <span class="badge">export</span></h3>
   <div class="scroll"><table>
-    <thead><tr><th>{{t "dev.taken"}}</th><th>SHA-256</th><th></th></tr></thead>
+    <thead><tr><th>{{t "dev.taken"}}</th><th></th><th>SHA-256</th><th></th></tr></thead>
     <tbody>
     {{range .Configs}}
-      <tr><td>{{ts .TakenAt}}</td><td class="mono">{{slice .SHA256 0 16}}…</td><td><a href="/configs/{{.ID}}">{{t "dev.view"}}</a></td></tr>
+      <tr><td>{{ts .TakenAt}}</td><td><span class="badge">{{.Kind}}</span></td><td class="mono">{{slice .SHA256 0 16}}…</td>
+        <td>{{if eq .Kind "export"}}<a href="/configs/{{.ID}}">{{t "dev.view"}}</a> · {{end}}<a href="/configs/{{.ID}}/download">↓ {{t "dev.download"}}</a></td></tr>
     {{else}}
-      <tr><td colspan="3" class="muted">{{t "dev.no_configs"}}{{if not $.HasSSH}} {{t "dev.need_ssh"}}{{end}}</td></tr>
+      <tr><td colspan="4" class="muted">{{t "dev.no_configs"}}{{if not $.HasSSH}} {{t "dev.need_ssh"}}{{end}}</td></tr>
     {{end}}
     </tbody>
   </table></div>

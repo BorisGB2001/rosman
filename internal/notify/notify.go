@@ -5,12 +5,33 @@ package notify
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
+	"mime/multipart"
 	"net/http"
+	"net/smtp"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 )
+
+func join(ss []string) string { return strings.Join(ss, ", ") }
+
+// b64wrap base64-encodes data, wrapped at 76 columns for MIME.
+func b64wrap(data []byte) string {
+	s := base64.StdEncoding.EncodeToString(data)
+	var b strings.Builder
+	for len(s) > 76 {
+		b.WriteString(s[:76])
+		b.WriteString("\r\n")
+		s = s[76:]
+	}
+	b.WriteString(s)
+	return b.String()
+}
 
 type Notifier struct {
 	webhook string
@@ -60,6 +81,85 @@ func (n *Notifier) sendWebhook(subject, text string) {
 		return
 	}
 	resp.Body.Close()
+}
+
+// SendTelegramText sends a plain message to a Telegram chat.
+func SendTelegramText(token, chat, text string) error {
+	form := url.Values{"chat_id": {chat}, "text": {text}}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
+		"https://api.telegram.org/bot"+token+"/sendMessage", bytes.NewBufferString(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+// SendTelegramDoc sends a file to a Telegram chat (sendDocument).
+func SendTelegramDoc(token, chat, filename string, data []byte, caption string) error {
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	_ = mw.WriteField("chat_id", chat)
+	if caption != "" {
+		_ = mw.WriteField("caption", caption)
+	}
+	fw, err := mw.CreateFormFile("document", filename)
+	if err != nil {
+		return err
+	}
+	if _, err := fw.Write(data); err != nil {
+		return err
+	}
+	mw.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
+		"https://api.telegram.org/bot"+token+"/sendDocument", &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("telegram sendDocument: HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// SMTP holds mail-server settings.
+type SMTP struct {
+	Host, Port, User, Pass, From string
+	To                           []string
+}
+
+// SendMail sends a plain-text message with an optional attachment via SMTP.
+func SendMail(c SMTP, subject, bodyText, attachName string, attachData []byte) error {
+	if c.Host == "" || len(c.To) == 0 || c.From == "" {
+		return fmt.Errorf("smtp not configured")
+	}
+	var msg bytes.Buffer
+	boundary := "rosman-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	fmt.Fprintf(&msg, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\n", c.From, join(c.To), subject)
+	if attachData == nil {
+		fmt.Fprintf(&msg, "Content-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n", bodyText)
+	} else {
+		fmt.Fprintf(&msg, "Content-Type: multipart/mixed; boundary=%s\r\n\r\n", boundary)
+		fmt.Fprintf(&msg, "--%s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n", boundary, bodyText)
+		fmt.Fprintf(&msg, "--%s\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename=\"%s\"\r\n\r\n", boundary, attachName)
+		msg.WriteString(b64wrap(attachData))
+		fmt.Fprintf(&msg, "\r\n--%s--\r\n", boundary)
+	}
+	addr := c.Host + ":" + c.Port
+	var auth smtp.Auth
+	if c.User != "" {
+		auth = smtp.PlainAuth("", c.User, c.Pass, c.Host)
+	}
+	return smtp.SendMail(addr, auth, c.From, c.To, msg.Bytes())
 }
 
 func (n *Notifier) sendTelegram(text string) {

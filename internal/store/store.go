@@ -509,6 +509,23 @@ func (s *Store) AllAlerts(limit int) ([]model.Alert, error) {
 	return s.listAlerts(`ORDER BY a.updated_at DESC LIMIT ?`, limit)
 }
 
+// ---- settings ----
+
+func (s *Store) GetSetting(key string) (string, bool) {
+	var v string
+	err := s.db.QueryRow(`SELECT value FROM app_settings WHERE key=?`, key).Scan(&v)
+	if err != nil {
+		return "", false
+	}
+	return v, true
+}
+
+func (s *Store) SetSetting(key, value string) error {
+	_, err := s.db.Exec(`INSERT INTO app_settings(key,value) VALUES(?,?)
+		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value)
+	return err
+}
+
 // ---- audit ----
 
 func (s *Store) AddAudit(actor, action, detail string) error {

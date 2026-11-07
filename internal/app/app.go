@@ -3,10 +3,16 @@
 package app
 
 import (
+	"archive/zip"
+	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -287,7 +293,7 @@ func (a *App) evalFirmware(d model.Device, installed, latest string) {
 		_ = a.Store.RaiseAlert(d.ID, rule, "warn",
 			fmt.Sprintf("доступна RouterOS %s (установлена %s)", latest, cur))
 		if prev != "active" {
-			a.Notify.Send("🟡 "+d.Name+": доступна прошивка "+latest, "установлена "+cur)
+			a.alertNotify("🟡 "+d.Name+": доступна прошивка "+latest, "установлена "+cur)
 		}
 		return
 	}
@@ -301,12 +307,12 @@ func (a *App) evalDown(d model.Device, down bool, detail string) {
 		prev, _ := a.Store.AlertState(d.ID, rule)
 		_ = a.Store.RaiseAlert(d.ID, rule, "crit", "недоступно по API: "+detail)
 		if prev != "active" {
-			a.Notify.Send("🔴 "+d.Name+" недоступно", d.IP+": "+detail)
+			a.alertNotify("🔴 "+d.Name+" недоступно", d.IP+": "+detail)
 		}
 		return
 	}
 	if was, _ := a.Store.ResolveAlert(d.ID, rule); was {
-		a.Notify.Send("🟢 "+d.Name+" снова доступно", d.IP)
+		a.alertNotify("🟢 "+d.Name+" снова доступно", d.IP)
 	}
 }
 
@@ -319,40 +325,195 @@ func (a *App) evalCert(d model.Device, expiry *time.Time) {
 		_ = a.Store.RaiseAlert(d.ID, rule, "warn",
 			fmt.Sprintf("api-ssl сертификат истекает %s (через %d дн.)", expiry.Format("2006-01-02"), days))
 		if prev != "active" {
-			a.Notify.Send("🟡 "+d.Name+": истекает сертификат", expiry.Format("2006-01-02"))
+			a.alertNotify("🟡 "+d.Name+": истекает сертификат", expiry.Format("2006-01-02"))
 		}
 		return
 	}
 	_, _ = a.Store.ResolveAlert(d.ID, rule)
 }
 
-// BackupDevice fetches /export and stores a new version only if it changed.
-func (a *App) BackupDevice(d model.Device) (changed bool, err error) {
+// BackupMode is the configured default backup mode.
+func (a *App) BackupMode() string {
+	if m, ok := a.Store.GetSetting("backup_mode"); ok && m != "" {
+		return m
+	}
+	return "export"
+}
+
+func (a *App) setting(key string) string {
+	v, _ := a.Store.GetSetting(key)
+	return v
+}
+
+func (a *App) settingDecrypt(key string) string {
+	v := a.setting(key)
+	if v == "" {
+		return ""
+	}
+	p, _ := a.Box.Decrypt(v)
+	return p
+}
+
+// BackupDevice backs a device up in the requested mode (export | binary | both),
+// stores a version, and delivers it to the configured destinations. mode=="" uses
+// the configured default.
+func (a *App) BackupDevice(d model.Device, mode string) (changed bool, err error) {
 	if a.signer == nil {
-		return false, fmt.Errorf("no SSH key configured (set ROSMAN_SSH_KEY) — config backup needs SSH")
+		return false, fmt.Errorf("no SSH key configured (set ROSMAN_SSH_KEY) — backup needs SSH")
 	}
-	text, hostPin, err := ros.Export(d, a.signer, a.Cfg.SSHTimeout)
-	if err != nil {
-		return false, err
+	if mode == "" {
+		mode = a.BackupMode()
 	}
-	if d.SSHHostPin == "" && hostPin != "" {
-		_ = a.Store.UpdatePins(d.ID, "", hostPin)
+	ts := time.Now().Format("20060102-150405")
+	base := sanitize(d.Name)
+
+	switch mode {
+	case "binary":
+		data, err := ros.BinaryBackup(d, a.signer, base+"-"+ts, a.settingDecrypt("backup_password_enc"), a.Cfg.SSHTimeout+30*time.Second)
+		if err != nil {
+			return false, err
+		}
+		a.storeBlob(d.ID, "binary", data)
+		a.deliverBackup(d.Name, base+"_"+ts+".backup", data)
+		return true, nil
+	case "both":
+		text, hostPin, err := ros.Export(d, a.signer, a.Cfg.SSHTimeout)
+		if err != nil {
+			return false, err
+		}
+		if d.SSHHostPin == "" && hostPin != "" {
+			_ = a.Store.UpdatePins(d.ID, "", hostPin)
+		}
+		bin, err := ros.BinaryBackup(d, a.signer, base+"-"+ts, a.settingDecrypt("backup_password_enc"), a.Cfg.SSHTimeout+30*time.Second)
+		if err != nil {
+			return false, err
+		}
+		zipData, err := makeZip(base+".rsc", []byte(text), base+".backup", bin)
+		if err != nil {
+			return false, err
+		}
+		a.storeBlob(d.ID, "archive", zipData)
+		a.deliverBackup(d.Name, base+"_"+ts+".zip", zipData)
+		return true, nil
+	default: // export
+		text, hostPin, err := ros.Export(d, a.signer, a.Cfg.SSHTimeout)
+		if err != nil {
+			return false, err
+		}
+		if d.SSHHostPin == "" && hostPin != "" {
+			_ = a.Store.UpdatePins(d.ID, "", hostPin)
+		}
+		sum := sha256.Sum256([]byte(normalizeExport(text)))
+		h := hex.EncodeToString(sum[:])
+		last, _ := a.Store.LatestConfigHash(d.ID, "export")
+		if last == h {
+			return false, nil // unchanged
+		}
+		if _, err := a.Store.AddConfig(model.Config{DeviceID: d.ID, Kind: "export", SHA256: h, Content: text}); err != nil {
+			return false, err
+		}
+		a.deliverBackup(d.Name, base+"_"+ts+".rsc", []byte(text))
+		return true, nil
 	}
-	// Hash a normalized copy: RouterOS /export starts with a volatile
-	// "# <date> by RouterOS <ver>" header, so hashing the raw text would make
-	// every backup look changed. Strip comment lines for change detection; the
-	// full text is still stored verbatim.
-	sum := sha256.Sum256([]byte(normalizeExport(text)))
-	h := hex.EncodeToString(sum[:])
-	last, err := a.Store.LatestConfigHash(d.ID, "export")
-	if err != nil {
-		return false, err
+}
+
+func (a *App) storeBlob(deviceID int64, kind string, data []byte) {
+	sum := sha256.Sum256(data)
+	_, _ = a.Store.AddConfig(model.Config{DeviceID: deviceID, Kind: kind,
+		SHA256: hex.EncodeToString(sum[:]), Content: base64.StdEncoding.EncodeToString(data)})
+}
+
+// deliverBackup sends a produced backup to the configured destinations.
+func (a *App) deliverBackup(dev, filename string, data []byte) {
+	for _, m := range strings.Split(a.setting("backup_deliver"), ",") {
+		switch strings.TrimSpace(m) {
+		case "folder":
+			dir := a.setting("backup_folder")
+			if dir == "" {
+				continue
+			}
+			p := filepath.Join(dir, sanitize(dev))
+			if err := os.MkdirAll(p, 0o700); err != nil {
+				log.Printf("backup folder: %v", err)
+				continue
+			}
+			if err := os.WriteFile(filepath.Join(p, filename), data, 0o600); err != nil {
+				log.Printf("backup folder: %v", err)
+			}
+		case "telegram":
+			tok, chat := a.setting("tg_token"), a.setting("tg_chat")
+			if tok != "" && chat != "" {
+				if err := notify.SendTelegramDoc(tok, chat, filename, data, dev); err != nil {
+					log.Printf("backup telegram: %v", err)
+				}
+			}
+		case "email":
+			if err := notify.SendMail(a.smtp(), "ROSMan backup: "+dev, filename, filename, data); err != nil {
+				log.Printf("backup email: %v", err)
+			}
+		}
 	}
-	if last == h {
-		return false, nil // unchanged — no new version
+}
+
+func (a *App) smtp() notify.SMTP {
+	to := []string{}
+	for _, t := range strings.Split(a.setting("smtp_to"), ",") {
+		if s := strings.TrimSpace(t); s != "" {
+			to = append(to, s)
+		}
 	}
-	_, err = a.Store.AddConfig(model.Config{DeviceID: d.ID, Kind: "export", SHA256: h, Content: text})
-	return err == nil, err
+	return notify.SMTP{
+		Host: a.setting("smtp_host"), Port: a.setting("smtp_port"),
+		User: a.setting("smtp_user"), Pass: a.settingDecrypt("smtp_pass_enc"),
+		From: a.setting("smtp_from"), To: to,
+	}
+}
+
+// alertNotify fans an alert out to env channels plus settings-configured Telegram and email.
+func (a *App) alertNotify(subject, text string) {
+	a.Notify.Send(subject, text)
+	if tok, chat := a.setting("tg_token"), a.setting("tg_chat"); tok != "" && chat != "" {
+		_ = notify.SendTelegramText(tok, chat, subject+"\n"+text)
+	}
+	if a.setting("smtp_host") != "" {
+		_ = notify.SendMail(a.smtp(), subject, text, "", nil)
+	}
+}
+
+func sanitize(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	if b.Len() == 0 {
+		return "device"
+	}
+	return b.String()
+}
+
+func makeZip(n1 string, d1 []byte, n2 string, d2 []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, f := range []struct {
+		n string
+		d []byte
+	}{{n1, d1}, {n2, d2}} {
+		w, err := zw.Create(f.n)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := w.Write(f.d); err != nil {
+			return nil, err
+		}
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // normalizeExport drops comment lines (which include the volatile export

@@ -1,0 +1,37 @@
+{{define "settings"}}{{template "head" .}}
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+<div class="cardhead"><h1 style="margin:0">{{t "set.title"}}</h1></div>
+<form method="post" action="/settings">
+<div class="card narrow">
+  <h3>{{t "set.backup"}}</h3>
+  <label>{{t "set.mode"}}
+    <select name="backup_mode">
+      <option value="export" {{if eq (index .V "backup_mode") "export"}}selected{{end}}>{{t "set.mode_export"}}</option>
+      <option value="binary" {{if eq (index .V "backup_mode") "binary"}}selected{{end}}>{{t "set.mode_binary"}}</option>
+      <option value="both" {{if eq (index .V "backup_mode") "both"}}selected{{end}}>{{t "set.mode_both"}}</option>
+    </select>
+  </label>
+  <label>{{t "set.password"}} {{if .BpwSet}}<span class="muted small">({{t "set.secret_keep"}})</span>{{end}}<input name="backup_password" type="password"></label>
+  <div style="margin:10px 0 4px" class="muted">{{t "set.deliver"}}:</div>
+  <label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="deliver" value="folder" {{if contains (index .V "backup_deliver") "folder"}}checked{{end}}> {{t "set.folder"}}</label>
+  <input name="backup_folder" value="{{index .V "backup_folder"}}" placeholder="/opt/rosman/backups">
+  <label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="deliver" value="telegram" {{if contains (index .V "backup_deliver") "telegram"}}checked{{end}}> {{t "set.telegram"}}</label>
+  <label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="deliver" value="email" {{if contains (index .V "backup_deliver") "email"}}checked{{end}}> {{t "set.email"}}</label>
+</div>
+<div class="card narrow">
+  <h3>Telegram <span class="muted small">({{t "set.notify_too"}})</span></h3>
+  <label>{{t "set.tg_token"}}<input name="tg_token" value="{{index .V "tg_token"}}"></label>
+  <label>{{t "set.tg_chat"}}<input name="tg_chat" value="{{index .V "tg_chat"}}"></label>
+</div>
+<div class="card narrow">
+  <h3>{{t "set.smtp"}} <span class="muted small">({{t "set.notify_too"}})</span></h3>
+  <label>{{t "set.smtp_host"}}<input name="smtp_host" value="{{index .V "smtp_host"}}"></label>
+  <label>{{t "set.smtp_port"}}<input name="smtp_port" value="{{index .V "smtp_port"}}" placeholder="587"></label>
+  <label>{{t "set.smtp_user"}}<input name="smtp_user" value="{{index .V "smtp_user"}}"></label>
+  <label>{{t "set.smtp_pass"}} {{if .SmtpPwSet}}<span class="muted small">({{t "set.secret_keep"}})</span>{{end}}<input name="smtp_pass" type="password"></label>
+  <label>{{t "set.smtp_from"}}<input name="smtp_from" value="{{index .V "smtp_from"}}"></label>
+  <label>{{t "set.smtp_to"}}<input name="smtp_to" value="{{index .V "smtp_to"}}" placeholder="a@x.com, b@y.com"></label>
+</div>
+<div class="card narrow"><button class="btn primary" type="submit">{{t "set.save"}}</button></div>
+</form>
+{{template "tail" .}}{{end}}

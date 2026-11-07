@@ -74,7 +74,7 @@ func runBackup(a *app.App) {
 		if err != nil {
 			return
 		}
-		changed, err := a.BackupDevice(d)
+		changed, err := a.BackupDevice(d, "")
 		if err != nil {
 			log.Printf("backup %s (%s): %v", d.Name, d.IP, err)
 			return

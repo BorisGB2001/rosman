@@ -6,6 +6,7 @@ package web
 import (
 	"context"
 	"embed"
+	"encoding/base64"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -31,7 +32,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.8.0"
+const Version = "0.9.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -69,7 +70,8 @@ func New(a *app.App) (*Server, error) {
 		"langs":   func() []string { return i18n.Langs() },
 		"qesc":    url.QueryEscape,
 		"upper":   strings.ToUpper,
-		"deref":   func(p *int64) int64 { if p == nil { return 0 }; return *p },
+		"deref":    func(p *int64) int64 { if p == nil { return 0 }; return *p },
+		"contains": strings.Contains,
 		// Per-request overrides are bound in render(); these are parse-time defaults.
 		"t":     func(key string) string { return i18n.T(i18n.Default, key) },
 		"lang":  func() string { return i18n.Default },
@@ -113,6 +115,9 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /templates/new", s.authed(s.requireRole(model.RoleOperator, s.templateCreate)))
 	mux.Handle("POST /templates/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.templateDelete)))
 	mux.Handle("POST /templates/{id}/apply", s.authed(s.requireRole(model.RoleOperator, s.templateApply)))
+	mux.Handle("GET /settings", s.authed(s.requireRole(model.RoleAdmin, s.settingsPage)))
+	mux.Handle("POST /settings", s.authed(s.requireRole(model.RoleAdmin, s.settingsSave)))
+	mux.Handle("GET /configs/{id}/download", s.authed(s.configDownload))
 	mux.Handle("GET /ca", s.authed(s.requireRole(model.RoleAdmin, s.caPage)))
 	mux.Handle("POST /ca/generate", s.authed(s.requireRole(model.RoleAdmin, s.caGenerate)))
 	mux.Handle("POST /ca/import", s.authed(s.requireRole(model.RoleAdmin, s.caImport)))
@@ -412,7 +417,7 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 	devTags, _ := s.a.Store.DeviceTags(id)
 	s.render(w, r, "device", map[string]any{"Active": "devices",
 		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors, "Traffic": traffic,
-		"Sites": sites, "DevTags": devTags,
+		"Sites": sites, "DevTags": devTags, "BackupMode": s.a.BackupMode(),
 		"HasSSH": s.a.HasSSHKey(), "Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
 	})
 }
@@ -440,7 +445,7 @@ func (s *Server) deviceBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dst := "/devices/" + r.PathValue("id")
-	changed, err := s.a.BackupDevice(d)
+	changed, err := s.a.BackupDevice(d, r.FormValue("mode"))
 	if err != nil {
 		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
 		return
@@ -616,6 +621,66 @@ func (s *Server) templateApply(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "template_apply", t.Name+" -> "+d.Name)
 	http.Redirect(w, r, dst+"?msg=template-applied", http.StatusSeeOther)
+}
+
+func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
+	get := func(k string) string { v, _ := s.a.Store.GetSetting(k); return v }
+	s.render(w, r, "settings", map[string]any{"Active": "settings",
+		"V": map[string]string{
+			"backup_mode": get("backup_mode"), "backup_deliver": get("backup_deliver"),
+			"backup_folder": get("backup_folder"), "tg_token": get("tg_token"), "tg_chat": get("tg_chat"),
+			"smtp_host": get("smtp_host"), "smtp_port": get("smtp_port"), "smtp_user": get("smtp_user"),
+			"smtp_from": get("smtp_from"), "smtp_to": get("smtp_to"),
+		},
+		"BpwSet": get("backup_password_enc") != "", "SmtpPwSet": get("smtp_pass_enc") != "",
+		"Msg": r.URL.Query().Get("msg"),
+	})
+}
+
+func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	set := func(k, v string) { _ = s.a.Store.SetSetting(k, v) }
+	set("backup_mode", r.FormValue("backup_mode"))
+	set("backup_deliver", strings.Join(r.Form["deliver"], ","))
+	for _, k := range []string{"backup_folder", "tg_token", "tg_chat", "smtp_host", "smtp_port", "smtp_user", "smtp_from", "smtp_to"} {
+		set(k, strings.TrimSpace(r.FormValue(k)))
+	}
+	if v := r.FormValue("backup_password"); v != "" {
+		if enc, err := s.a.Box.Encrypt(v); err == nil {
+			set("backup_password_enc", enc)
+		}
+	}
+	if v := r.FormValue("smtp_pass"); v != "" {
+		if enc, err := s.a.Box.Encrypt(v); err == nil {
+			set("smtp_pass_enc", enc)
+		}
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "settings_save", "")
+	http.Redirect(w, r, "/settings?msg=saved", http.StatusSeeOther)
+}
+
+func (s *Server) configDownload(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	c, err := s.a.Store.ConfigContent(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	var data []byte
+	var ext, ct string
+	switch c.Kind {
+	case "binary":
+		data, _ = base64.StdEncoding.DecodeString(c.Content)
+		ext, ct = "backup", "application/octet-stream"
+	case "archive":
+		data, _ = base64.StdEncoding.DecodeString(c.Content)
+		ext, ct = "zip", "application/zip"
+	default:
+		data, ext, ct = []byte(c.Content), "rsc", "text/plain; charset=utf-8"
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="config-%d.%s"`, c.ID, ext))
+	_, _ = w.Write(data)
 }
 
 func (s *Server) caPage(w http.ResponseWriter, r *http.Request) {

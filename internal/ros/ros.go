@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -326,6 +327,39 @@ func scriptFailed(out string) bool {
 		}
 	}
 	return false
+}
+
+// BinaryBackup runs /system backup save (password-protected) and downloads the
+// resulting .backup file over SFTP, then removes it from the device.
+func BinaryBackup(d model.Device, signer ssh.Signer, name, password string, timeout time.Duration) ([]byte, error) {
+	client, _, err := dialSSH(d, signer, timeout)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	cmd := fmt.Sprintf(`/system backup save name=%s`, name)
+	if password != "" {
+		cmd += fmt.Sprintf(` password="%s"`, password)
+	}
+	if out, err := run(client, cmd); err != nil {
+		return nil, fmt.Errorf("backup save: %v (%s)", err, out)
+	}
+	sc, err := sftp.NewClient(client)
+	if err != nil {
+		return nil, fmt.Errorf("sftp: %w", err)
+	}
+	defer sc.Close()
+	f, err := sc.Open(name + ".backup")
+	if err != nil {
+		return nil, fmt.Errorf("open backup: %w", err)
+	}
+	data, err := io.ReadAll(f)
+	f.Close()
+	if err != nil {
+		return nil, fmt.Errorf("read backup: %w", err)
+	}
+	_, _ = run(client, fmt.Sprintf(`/file remove [find where name="%s.backup"]`, name))
+	return data, nil
 }
 
 // InstallServerCert uploads the CA + leaf certificate and key over SFTP, imports

@@ -17,6 +17,7 @@
     <a href="/audit" class="{{if eq .Active "audit"}}on{{end}}">{{t "nav.audit"}}</a>
     {{if canWrite .User}}<a href="/templates" class="{{if eq .Active "templates"}}on{{end}}">{{t "nav.templates"}}</a>{{end}}
     {{if isAdmin .User}}<a href="/ca" class="{{if eq .Active "ca"}}on{{end}}">{{t "nav.ca"}}</a>{{end}}
+    {{if isAdmin .User}}<a href="/settings" class="{{if eq .Active "settings"}}on{{end}}">{{t "nav.settings"}}</a>{{end}}
     {{if canWrite .User}}<a href="/devices/new" class="{{if eq .Active "new"}}on{{end}}">{{t "nav.add"}}</a>{{end}}
   </nav>
   <div class="me">
