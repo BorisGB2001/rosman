@@ -199,3 +199,38 @@
 - Иконки — из набора под MIT (Tabler/Lucide), похожего на WinBox; **не** встраивать
   проприетарную графику/логотип/favicon MikroTik в распространяемый продукт (риск trademark).
 - i18n: RU/EN (переключатель готов; подключение строк — ближайшая задача).
+
+---
+
+## 8. Паритет с MikroTik Manager — чек-лист (цель: всё то же, но на лёгком Go-стеке)
+
+Легенда: ✅ есть в ROSMan · 🟡 частично · ⬜ впереди.
+
+**Готово (v0.1–v0.9)**
+- ✅ Инвентарь, добавление по API-SSL с TOFU-пином, health-опрос
+- ✅ Бэкапы: export + полный (с паролем) + оба в zip; доставка в папку/Telegram/почту; версии + скачивание
+- ✅ Алерты: down, cert-expiry, firmware-outdated; каналы webhook/Telegram/email
+- ✅ Аудит-лог, RBAC (admin/operator/viewer), секреты AES-256-GCM, self-signed TLS
+- ✅ Мониторинг прошивок (версия/канал/статус)
+- ✅ PKI/api-ssl: ROSMan как CA (генерация/импорт), выпуск+раскатка серверных сертификатов
+- ✅ Change-guard: шаблоны + применение с авто-откатом (одно/массово)
+- ✅ Топология (MNDP/LLDP), графики трафика по интерфейсам
+- ✅ Локации (сайты) + теги, фильтры; i18n RU/EN; темы светлая/тёмная/системная; стиль WAFISP
+
+**Впереди — крупные блоки MTM**
+- ⬜ Прошивки: выполнение обновления волнами (канарейка, pre-backup, reboot, health-check, halt-on-failure)
+- ⬜ CAPsMAN: панель контроллера, радио, провижининг (read-only для начала)
+- ⬜ Свитч-панель (faceplate), VLAN CRUD по портам, оптика, PoE power-cycle
+- ⬜ Беспроводка: SSID CRUD, RF-health, сканы, rogue/evil-twin AP, гостевой Wi-Fi + ваучеры
+- ⬜ Firewall-билдер (правила/NAT-визарды/address-lists/счётчики), Security Center, lockout-prediction
+- ⬜ Сетевые сервисы: DHCP (сервера/пулы/лизы), DNS, NTP, WireGuard, Logging/syslog, SNMP/discovery
+- ⬜ NetFlow-коллектор (v9/IPFIX, UDP 2055), top talkers, app-breakdown
+- ⬜ Клиенты: трекинг, fingerprint по OUI, детальная карточка
+- ⬜ CVE-сканер (NVD + CISA KEV + release-notes), security-posture
+- ⬜ User-Manager (RADIUS, read-only), LTE/cellular (сигнал, CA-бэнды, SMS data-cap)
+- ⬜ Config: side-by-side diff + rollback; config-health (L2-мисконфиги)
+- ⬜ Доступ: 2FA (TOTP), OIDC/SSO, scoped API-токены, HMAC-вебхуки, плановые email-отчёты
+- ⬜ Операции: adoption factory-default устройств, bulk-команды волнами, CSV-импорт, job-очередь
+- ⬜ Дашборд (счётчики, доступность 30 дней, аномалии), maintenance windows, RoMON, per-device tools (ping/traceroute/pcap/WoL)
+
+Принцип: один Go-бинарник + SQLite, без Redis/Influx/Postgres/nginx — та же функциональность кратно легче.
