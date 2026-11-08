@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.63.0"
+const Version = "0.64.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -77,6 +77,7 @@ func New(a *app.App) (*Server, error) {
 		"tsp":      func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02 15:04:05") },
 		"dateT":    func(t time.Time) string { if t.IsZero() { return "—" }; return t.Format("2006-01-02") },
 		"sub":      func(a, b int) int { return a - b },
+		"pct":      func(a, b int) int { if b <= 0 { return 0 }; return a * 100 / b },
 		"ipbase":   func(a string) string { if i := strings.IndexByte(a, '/'); i >= 0 { return a[:i] }; return a },
 		"modelImg":  func(m string) string { return modelImgPath(a.Cfg.DataDir, m) },
 		"date":     func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02") },
@@ -188,6 +189,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/site", s.authed(s.requireRole(model.RoleOperator, s.deviceSetSite)))
 	mux.Handle("POST /devices/{id}/tag", s.authed(s.requireRole(model.RoleOperator, s.deviceTag)))
 	mux.Handle("GET /clients", s.authed(s.clientsPage))
+	mux.Handle("GET /ports", s.authed(s.portsPage))
 	mux.Handle("GET /reports", s.authed(s.reportsPage))
 	mux.Handle("GET /reports/fleet.csv", s.authed(s.fleetCSV))
 	mux.Handle("GET /reports/fleet", s.authed(s.fleetReport))
@@ -2079,6 +2081,57 @@ func (s *Server) fleetRows() ([]fleetRow, map[string]int) {
 			LastSeen: ls, Outdated: outdated, CVE: n})
 	}
 	return rows, sum
+}
+
+// portsPage shows per-device physical-port capacity (used / free / disabled)
+// across the fleet, with the names of the free ports.
+func (s *Server) portsPage(w http.ResponseWriter, r *http.Request) {
+	devs, _ := s.a.Store.Devices()
+	type row struct {
+		ID                          int64
+		Name, Model                 string
+		Total, Up, Free, Disabled   int
+		FreePorts                   []string
+	}
+	rows := make([]row, 0, len(devs))
+	var tTotal, tUp, tFree, tDis int
+	for _, d := range devs {
+		ports, _ := s.a.Store.DevicePorts(d.ID)
+		rr := row{ID: d.ID, Name: d.Name, Model: d.Model}
+		for _, p := range ports {
+			if physicalPort(p.Name) == "" { // only physical ethernet-like ports
+				continue
+			}
+			rr.Total++
+			switch {
+			case p.Disabled:
+				rr.Disabled++
+			case p.Running:
+				rr.Up++
+			default:
+				rr.Free++
+				if len(rr.FreePorts) < 24 {
+					rr.FreePorts = append(rr.FreePorts, p.Name)
+				}
+			}
+		}
+		if rr.Total == 0 {
+			continue
+		}
+		tTotal += rr.Total
+		tUp += rr.Up
+		tFree += rr.Free
+		tDis += rr.Disabled
+		rows = append(rows, rr)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Free != rows[j].Free {
+			return rows[i].Free > rows[j].Free
+		}
+		return rows[i].Name < rows[j].Name
+	})
+	s.render(w, r, "ports", map[string]any{"Active": "ports", "Rows": rows,
+		"TTotal": tTotal, "TUp": tUp, "TFree": tFree, "TDis": tDis})
 }
 
 func (s *Server) reportsPage(w http.ResponseWriter, r *http.Request) {

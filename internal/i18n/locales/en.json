@@ -551,5 +551,13 @@
   "thr.note": "Raise a warning alert when a poll exceeds these. Empty or 0 disables the check.",
   "thr.cpu": "CPU load, % ≥",
   "thr.temp": "Temperature, °C ≥",
-  "thr.mem": "RAM used, % ≥"
+  "thr.mem": "RAM used, % ≥",
+  "cap.title": "Port capacity",
+  "cap.subtitle": "Physical-port usage across the fleet — where free ports are",
+  "cap.total": "Total",
+  "cap.used": "Used",
+  "cap.free": "Free",
+  "cap.disabled": "Disabled",
+  "cap.free_ports": "Free ports",
+  "cap.note": "A port counts as used when its link is up, free when down (and not disabled). Only physical ethernet/SFP ports are counted."
 }
