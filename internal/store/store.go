@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"rosman/internal/model"
@@ -615,6 +616,61 @@ func (s *Store) CountClients() int {
 }
 
 // ---- ports (faceplate) ----
+
+// UpdateDeviceIP changes a device's primary IP (used for API connections).
+func (s *Store) UpdateDeviceIP(id int64, ip string) error {
+	_, err := s.db.Exec(`UPDATE devices SET ip=? WHERE id=?`, ip, id)
+	return err
+}
+
+// AllManagedAddrs returns every IP address known on any managed device
+// (primary IPs plus all configured addresses, masks stripped).
+func (s *Store) AllManagedAddrs() (map[string]bool, error) {
+	set := map[string]bool{}
+	rows, err := s.db.Query(`SELECT ip FROM devices`)
+	if err == nil {
+		for rows.Next() {
+			var ip string
+			if rows.Scan(&ip) == nil && ip != "" {
+				set[ip] = true
+			}
+		}
+		rows.Close()
+	}
+	rows, err = s.db.Query(`SELECT address FROM device_addrs`)
+	if err == nil {
+		for rows.Next() {
+			var a string
+			if rows.Scan(&a) == nil {
+				if i := strings.IndexByte(a, '/'); i >= 0 {
+					a = a[:i]
+				}
+				if a != "" {
+					set[a] = true
+				}
+			}
+		}
+		rows.Close()
+	}
+	return set, nil
+}
+
+// AllManagedMacs returns every interface MAC known on any managed device.
+func (s *Store) AllManagedMacs() (map[string]bool, error) {
+	set := map[string]bool{}
+	rows, err := s.db.Query(`SELECT mac FROM device_macs`)
+	if err != nil {
+		return set, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var m string
+		if rows.Scan(&m) == nil && m != "" {
+			set[strings.ToUpper(m)] = true
+		}
+	}
+	return set, rows.Err()
+}
 
 // AllNeighborSightings returns every discovered neighbour across all managed
 // devices, with the name of the device that saw it.

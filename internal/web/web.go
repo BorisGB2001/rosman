@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.46.0"
+const Version = "0.47.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -74,6 +74,7 @@ func New(a *app.App) (*Server, error) {
 		"tsp":      func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02 15:04:05") },
 		"dateT":    func(t time.Time) string { if t.IsZero() { return "—" }; return t.Format("2006-01-02") },
 		"sub":      func(a, b int) int { return a - b },
+		"ipbase":   func(a string) string { if i := strings.IndexByte(a, '/'); i >= 0 { return a[:i] }; return a },
 		"date":     func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02") },
 		"canWrite": func(u model.User) bool { return roleRank(u.Role) >= roleRank(model.RoleOperator) },
 		"isAdmin":  func(u model.User) bool { return u.Role == model.RoleAdmin },
@@ -144,6 +145,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/delete", s.authed(s.requireRole(model.RoleAdmin, s.deviceDelete)))
 	mux.Handle("POST /devices/{id}/type", s.authed(s.requireRole(model.RoleOperator, s.deviceSetType)))
 	mux.Handle("POST /devices/{id}/pollinterval", s.authed(s.requireRole(model.RoleOperator, s.deviceSetPollInterval)))
+	mux.Handle("POST /devices/{id}/setip", s.authed(s.requireRole(model.RoleOperator, s.deviceSetIP)))
 	mux.Handle("GET /devices/import", s.authed(s.requireRole(model.RoleOperator, s.importForm)))
 	mux.Handle("POST /devices/import", s.authed(s.requireRole(model.RoleOperator, s.importRun)))
 	mux.Handle("GET /devices/{id}", s.authed(s.deviceDetail))
@@ -715,19 +717,19 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		}
 		rows = append(rows, rr)
 	}
-	// Discovered neighbours (combined /ip/neighbor view across all devices).
-	managedIP := map[string]bool{}
-	for _, d := range devs {
-		managedIP[d.IP] = true
-	}
-	type disc struct {
-		Identity, IP, MAC, Platform, SeenBy string
-		Managed                             bool
-	}
+	// Discovered neighbours (combined /ip/neighbor view). Neighbours that are
+	// already one of our managed devices — matched by ANY of their interface
+	// IPs or MACs — are hidden, since they are already added.
+	managedIP, _ := s.a.Store.AllManagedAddrs()
+	managedMAC, _ := s.a.Store.AllManagedMacs()
+	type disc struct{ Identity, IP, MAC, Platform, SeenBy string }
 	aggm := map[string]*disc{}
 	var dorder []string
 	if sight, e := s.a.Store.AllNeighborSightings(); e == nil {
 		for _, n := range sight {
+			if (n.IP != "" && managedIP[n.IP]) || (n.MAC != "" && managedMAC[strings.ToUpper(n.MAC)]) {
+				continue // already managed
+			}
 			key := n.MAC
 			if key == "" {
 				key = n.IP
@@ -760,9 +762,7 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 	}
 	discovered := make([]disc, 0, len(dorder))
 	for _, k := range dorder {
-		d := aggm[k]
-		d.Managed = d.IP != "" && managedIP[d.IP]
-		discovered = append(discovered, *d)
+		discovered = append(discovered, *aggm[k])
 	}
 	s.render(w, r, "devices", map[string]any{"Active": "devices", "Devices": rows,
 		"Sites": sites, "AllTags": allTags, "FSite": fSite, "FTag": fTag, "FType": fType,
@@ -1000,6 +1000,21 @@ func (s *Server) deviceSetType(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.SetDeviceType(id, t)
 	http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?msg=type-saved", http.StatusSeeOther)
+}
+
+func (s *Server) deviceSetIP(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	ip := strings.TrimSpace(r.FormValue("ip"))
+	if i := strings.IndexByte(ip, '/'); i >= 0 {
+		ip = ip[:i]
+	}
+	if !ros.ValidTarget(ip) {
+		http.Redirect(w, r, "/?err=invalid+ip", http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.UpdateDeviceIP(id, ip)
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "device_setip", ip)
+	http.Redirect(w, r, "/?msg=default-ip-set", http.StatusSeeOther)
 }
 
 func (s *Server) deviceSetPollInterval(w http.ResponseWriter, r *http.Request) {

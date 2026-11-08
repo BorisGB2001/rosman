@@ -44,7 +44,7 @@
       <tr>
         {{if canWrite $.User}}<td><input class="dchk" type="checkbox" name="ids" value="{{.ID}}"></td>{{end}}
         <td><a href="/devices/{{.ID}}">{{.Name}}</a></td>
-        <td class="mono">{{if gt (len .Addrs) 1}}<details class="celldd"><summary>{{.IP}} <span class="muted small">+{{sub (len .Addrs) 1}}</span></summary><div class="ddlist">{{range .Addrs}}{{.Address}} <span class="muted">{{.Iface}}</span><br>{{end}}</div></details>{{else}}{{.IP}}{{end}}</td>
+        <td class="mono">{{$dev := .}}{{if .Addrs}}<details class="celldd"><summary title="{{range .Addrs}}{{.Address}} ({{.Iface}})&#10;{{end}}">{{.IP}}{{if gt (len .Addrs) 1}} <span class="muted small">+{{sub (len .Addrs) 1}}</span>{{end}}</summary><div class="ddlist">{{range .Addrs}}{{if canWrite $.User}}<form class="inline" method="post" action="/devices/{{$dev.ID}}/setip"><input type="hidden" name="ip" value="{{.Address}}"><button class="link" type="submit" title="{{t "ip.setdefault"}}">{{.Address}}</button></form>{{else}}{{.Address}}{{end}} <span class="muted">{{.Iface}}</span>{{if eq (ipbase .Address) $dev.IP}} <span class="badge good">default</span>{{end}}<br>{{end}}</div></details>{{else}}{{.IP}}{{end}}</td>
         <td class="mono">{{if .Macs}}<details class="celldd"><summary>{{(index .Macs 0).Mac}}{{if gt (len .Macs) 1}} <span class="muted small">+{{sub (len .Macs) 1}}</span>{{end}}</summary><div class="ddlist">{{range .Macs}}{{.Mac}} <span class="muted">{{.Iface}}</span><br>{{end}}</div></details>{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="muted">{{.SiteName}}</td>
         <td>{{range .DevTags}}<span class="badge">{{.}}</span> {{end}}</td>
@@ -79,17 +79,16 @@
 <div class="card">
   <p class="muted small">{{t "disc.note"}}</p>
   <div class="scroll"><table class="dtable">
-    <thead><tr><th>Identity</th><th>IP</th><th>MAC</th><th>{{t "neigh.platform"}}</th><th>{{t "disc.seenby"}}</th><th>{{t "al.state"}}</th><th></th></tr></thead>
+    <thead><tr><th>Identity</th><th>IP</th><th>MAC</th><th>{{t "neigh.platform"}}</th><th>{{t "disc.seenby"}}</th><th></th></tr></thead>
     <tbody>
     {{range .Discovered}}
-      <tr {{if .Managed}}style="opacity:.6"{{end}}>
+      <tr>
         <td>{{if .Identity}}{{.Identity}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="mono">{{if .IP}}{{.IP}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="mono muted">{{.MAC}}</td>
         <td class="muted">{{.Platform}}</td>
         <td class="muted">{{.SeenBy}}</td>
-        <td>{{if .Managed}}<span class="badge good">{{t "disc.managed"}}</span>{{else}}<span class="badge">{{t "disc.new"}}</span>{{end}}</td>
-        <td>{{if and (not .Managed) .IP (canWrite $.User)}}<a class="btn sm primary" href="/devices/new?ip={{.IP}}&name={{qesc .Identity}}">+ {{t "nav.add"}}</a>{{end}}</td>
+        <td>{{if and .IP (canWrite $.User)}}<a class="btn sm primary" href="/devices/new?ip={{.IP}}&name={{qesc .Identity}}">+ {{t "nav.add"}}</a>{{end}}</td>
       </tr>
     {{end}}
     </tbody>
