@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.66.0"
+const Version = "0.67.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -190,7 +190,9 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/tag", s.authed(s.requireRole(model.RoleOperator, s.deviceTag)))
 	mux.Handle("GET /clients", s.authed(s.clientsPage))
 	mux.Handle("GET /ports", s.authed(s.portsPage))
+	mux.Handle("GET /ports.csv", s.authed(s.portsCSV))
 	mux.Handle("GET /vlans", s.authed(s.vlansPage))
+	mux.Handle("GET /vlans.csv", s.authed(s.vlansCSV))
 	mux.Handle("GET /reports", s.authed(s.reportsPage))
 	mux.Handle("GET /reports/fleet.csv", s.authed(s.fleetCSV))
 	mux.Handle("GET /reports/fleet", s.authed(s.fleetReport))
@@ -2164,6 +2166,75 @@ func (s *Server) vlansPage(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
 	s.render(w, r, "vlans", map[string]any{"Active": "vlans", "Rows": rows, "VlanCount": len(rows)})
+}
+
+// portsCSV exports per-device port capacity.
+func (s *Server) portsCSV(w http.ResponseWriter, r *http.Request) {
+	devs, _ := s.a.Store.Devices()
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="rosman-ports-%s.csv"`, time.Now().Format("2006-01-02")))
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"device", "model", "total", "used", "free", "disabled", "free_ports"})
+	for _, d := range devs {
+		ports, _ := s.a.Store.DevicePorts(d.ID)
+		var total, up, free, dis int
+		var freeP []string
+		for _, p := range ports {
+			if physicalPort(p.Name) == "" {
+				continue
+			}
+			total++
+			switch {
+			case p.Disabled:
+				dis++
+			case p.Running:
+				up++
+			default:
+				free++
+				freeP = append(freeP, p.Name)
+			}
+		}
+		if total == 0 {
+			continue
+		}
+		_ = cw.Write([]string{d.Name, d.Model, strconv.Itoa(total), strconv.Itoa(up), strconv.Itoa(free), strconv.Itoa(dis), strings.Join(freeP, " ")})
+	}
+	cw.Flush()
+}
+
+// vlansCSV exports one row per VLAN id per device with its tagged/untagged ports.
+func (s *Server) vlansCSV(w http.ResponseWriter, r *http.Request) {
+	vrows, _ := s.a.Store.AllVLANs()
+	devs, _ := s.a.Store.Devices()
+	name := map[int64]string{}
+	for _, d := range devs {
+		name[d.ID] = d.Name
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="rosman-vlans-%s.csv"`, time.Now().Format("2006-01-02")))
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"vlan", "device", "untagged", "tagged", "bridge"})
+	type kv struct {
+		id  int
+		dev string
+		vr  model.BridgeVLAN
+	}
+	var all []kv
+	for _, vr := range vrows {
+		for _, id := range expandVlanIDs(vr.VlanIDs) {
+			all = append(all, kv{id, name[vr.DeviceID], vr})
+		}
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].id != all[j].id {
+			return all[i].id < all[j].id
+		}
+		return all[i].dev < all[j].dev
+	})
+	for _, e := range all {
+		_ = cw.Write([]string{strconv.Itoa(e.id), e.dev, e.vr.Untagged, e.vr.Tagged, e.vr.Bridge})
+	}
+	cw.Flush()
 }
 
 // portsPage shows per-device physical-port capacity (used / free / disabled)
