@@ -28,7 +28,6 @@
     <a href="/map" class="{{if eq .Active "map"}}on{{end}}">{{template "ico" "site"}}{{t "map.title"}}</a>
     <a href="/firmware" class="{{if eq .Active "firmware"}}on{{end}}">{{template "ico" "fw"}}{{t "nav.firmware"}}</a>
 
-    {{if canWrite .User}}<a href="/bulk" class="{{if eq .Active "bulk"}}on{{end}}">{{template "ico" "bulk"}}{{t "nav.bulk"}}</a>{{end}}
 
     <div class="navsep">{{t "nav.sec_config"}}</div>
     {{if canWrite .User}}<a href="/templates" class="{{if eq .Active "templates"}}on{{end}}">{{template "ico" "tpl"}}{{t "nav.templates"}}</a>{{end}}

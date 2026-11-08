@@ -26,23 +26,27 @@
     <a class="btn primary sm" href="/devices/new">+ {{t "nav.add"}}</a>{{end}}
   </div>
 </div>
-<form method="post" action="/bulk">
 <div class="card">
   {{if canWrite .User}}
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+  <form id="bulkform" method="post" action="/bulk" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
     <span class="muted small">{{t "bulk.selected"}}</span>
     <button class="btn sm" type="submit" name="action" value="poll" onclick="return confirm('{{t "bulk.confirm"}}')">{{t "dev.poll"}}</button>
     <button class="btn sm" type="submit" name="action" value="backup" onclick="return confirm('{{t "bulk.confirm"}}')">{{t "dev.backup"}}</button>
     <button class="btn sm" type="submit" name="action" value="fwcheck" onclick="return confirm('{{t "bulk.confirm"}}')">{{t "dev.fw_check"}}</button>
-    <a class="btn sm secondary" href="/bulk">{{t "bulk.more"}}</a>
-  </div>
+    {{if .Templates}}
+    <span class="muted">·</span>
+    <select name="template_id" style="max-width:160px">{{range .Templates}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+    <input name="guard" value="120" style="width:70px" title="{{t "tpl.guard"}}">
+    <button class="btn sm" type="submit" name="action" value="template" onclick="return confirm('{{t "bulk.confirm"}}')">{{t "tpl.apply"}}</button>
+    {{end}}
+  </form>
   {{end}}
   <div class="scroll"><table id="devtable" class="dtable">
-    <thead><tr>{{if canWrite .User}}<th data-nosort style="width:28px"><input type="checkbox" onclick="document.querySelectorAll('.dchk').forEach(c=>c.checked=this.checked)"></th>{{end}}<th data-col="name" data-label="{{t "col.name"}}">{{t "col.name"}}</th><th data-col="ip" data-label="IP">IP</th><th data-col="mac" data-label="MAC">MAC</th><th data-col="site" data-label="{{t "col.site"}}">{{t "col.site"}}</th><th data-col="tags" data-label="{{t "col.tags"}}">{{t "col.tags"}}</th><th data-col="type" data-label="{{t "col.type"}}">{{t "col.type"}}</th><th data-col="model" data-label="{{t "col.model"}}">{{t "col.model"}}</th><th data-col="ros" data-label="RouterOS">RouterOS</th><th data-col="latest" data-label="{{t "fw.latest"}}">{{t "fw.latest"}}</th><th data-col="alerts" data-label="{{t "nav.alerts"}}">{{t "nav.alerts"}}</th><th data-col="serial" data-label="{{t "dev.serial"}}">{{t "dev.serial"}}</th><th data-col="cpu" data-label="CPU">CPU</th><th data-col="poll" data-label="{{t "col.poll"}}">{{t "col.poll"}}</th><th data-col="lte" data-label="LTE">LTE</th><th data-col="seen" data-label="{{t "col.seen"}}">{{t "col.seen"}}</th><th data-col="added" data-label="{{t "col.added"}}">{{t "col.added"}}</th><th data-col="lastfail" data-label="{{t "col.lastfail"}}">{{t "col.lastfail"}}</th><th data-nosort data-col="actions" data-label="{{t "col.actions"}}">{{t "col.actions"}}</th></tr></thead>
+    <thead><tr>{{if canWrite .User}}<th data-nosort style="width:28px"><input type="checkbox" form="bulkform" onclick="document.querySelectorAll('.dchk').forEach(c=>c.checked=this.checked)"></th>{{end}}<th data-col="name" data-label="{{t "col.name"}}">{{t "col.name"}}</th><th data-col="ip" data-label="IP">IP</th><th data-col="mac" data-label="MAC">MAC</th><th data-col="site" data-label="{{t "col.site"}}">{{t "col.site"}}</th><th data-col="tags" data-label="{{t "col.tags"}}">{{t "col.tags"}}</th><th data-col="type" data-label="{{t "col.type"}}">{{t "col.type"}}</th><th data-col="model" data-label="{{t "col.model"}}">{{t "col.model"}}</th><th data-col="ros" data-label="RouterOS">RouterOS</th><th data-col="latest" data-label="{{t "fw.latest"}}">{{t "fw.latest"}}</th><th data-col="alerts" data-label="{{t "nav.alerts"}}">{{t "nav.alerts"}}</th><th data-col="serial" data-label="{{t "dev.serial"}}">{{t "dev.serial"}}</th><th data-col="cpu" data-label="CPU">CPU</th><th data-col="poll" data-label="{{t "col.poll"}}">{{t "col.poll"}}</th><th data-col="lte" data-label="LTE">LTE</th><th data-col="seen" data-label="{{t "col.seen"}}">{{t "col.seen"}}</th><th data-col="added" data-label="{{t "col.added"}}">{{t "col.added"}}</th><th data-col="lastfail" data-label="{{t "col.lastfail"}}">{{t "col.lastfail"}}</th><th data-nosort data-col="actions" data-label="{{t "col.actions"}}">{{t "col.actions"}}</th></tr></thead>
     <tbody>
     {{range .Devices}}
       <tr>
-        {{if canWrite $.User}}<td><input class="dchk" type="checkbox" name="ids" value="{{.ID}}"></td>{{end}}
+        {{if canWrite $.User}}<td><input class="dchk" type="checkbox" name="ids" value="{{.ID}}" form="bulkform"></td>{{end}}
         <td><a href="/devices/{{.ID}}">{{.Name}}</a></td>
         <td class="mono">{{$dev := .}}{{if .Addrs}}<details class="celldd"><summary title="{{range .Addrs}}{{.Address}} ({{.Iface}})&#10;{{end}}">{{.IP}}{{if gt (len .Addrs) 1}} <span class="muted small">+{{sub (len .Addrs) 1}}</span>{{end}}</summary><div class="ddlist">{{range .Addrs}}{{if canWrite $.User}}<form class="inline" method="post" action="/devices/{{$dev.ID}}/setip"><input type="hidden" name="ip" value="{{.Address}}"><button class="link" type="submit" title="{{t "ip.setdefault"}}">{{.Address}}</button></form>{{else}}{{.Address}}{{end}} <span class="muted">{{.Iface}}</span>{{if eq (ipbase .Address) $dev.IP}} <span class="badge good">default</span>{{end}}<br>{{end}}</div></details>{{else}}{{.IP}}{{end}}</td>
         <td class="mono">{{if .Macs}}<details class="celldd"><summary>{{(index .Macs 0).Mac}}{{if gt (len .Macs) 1}} <span class="muted small">+{{sub (len .Macs) 1}}</span>{{end}}</summary><div class="ddlist">{{range .Macs}}{{.Mac}} <span class="muted">{{.Iface}}</span><br>{{end}}</div></details>{{else}}<span class="muted">—</span>{{end}}</td>
@@ -72,7 +76,6 @@
     </tbody>
   </table></div>
 </div>
-</form>
 
 {{if .Discovered}}
 <div class="cardhead" style="margin-top:6px"><h2 style="margin:0;font-size:16px">{{t "disc.title"}}</h2>

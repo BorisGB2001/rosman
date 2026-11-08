@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.47.1"
+const Version = "0.48.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -657,6 +657,7 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sites, _ := s.a.Store.Sites()
+	tpls, _ := s.a.Store.Templates()
 	siteName := map[int64]string{}
 	for _, st := range sites {
 		siteName[st.ID] = st.Name
@@ -771,7 +772,7 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 	}
 	s.render(w, r, "devices", map[string]any{"Active": "devices", "Devices": rows,
 		"Sites": sites, "AllTags": allTags, "FSite": fSite, "FTag": fTag, "FType": fType,
-		"Discovered": discovered, "ShowAllNeigh": showAllNeigh,
+		"Discovered": discovered, "ShowAllNeigh": showAllNeigh, "Templates": tpls,
 		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
 }
 
