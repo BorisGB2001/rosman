@@ -36,6 +36,13 @@
   <label>{{t "set.smtp_to"}}<input name="smtp_to" value="{{index .V "smtp_to"}}" placeholder="a@x.com, b@y.com"></label>
 </div>
 <div class="card narrow">
+  <h3>{{t "thr.title"}}</h3>
+  <p class="muted small">{{t "thr.note"}}</p>
+  <label>{{t "thr.cpu"}}<input name="alert_cpu" value="{{index .V "alert_cpu"}}" placeholder="90" style="width:90px"></label>
+  <label>{{t "thr.temp"}}<input name="alert_temp" value="{{index .V "alert_temp"}}" placeholder="70" style="width:90px"></label>
+  <label>{{t "thr.mem"}}<input name="alert_mem" value="{{index .V "alert_mem"}}" placeholder="90" style="width:90px"></label>
+</div>
+<div class="card narrow">
   <h3>{{t "ret.title"}}</h3>
   <p class="muted small">{{t "ret.note"}}</p>
   <label>{{t "ret.days"}}<input name="metrics_retention_days" value="{{.Retention}}" style="width:90px"></label>

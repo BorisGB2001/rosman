@@ -125,6 +125,7 @@ func (a *App) PollDevice(d model.Device) error {
 	_ = a.Store.SetDeviceVPN(d.ID, h.VPNCount, h.VPNInfo)
 	_ = a.Store.UpdateCertInfo(d.ID, h.APISSLCert, h.APICertExpiry)
 	a.evalCert(d, h.APICertExpiry)
+	a.evalThresholds(d, h)
 	_ = a.Store.UpdateFirmware(d.ID, h.FwLatest, h.FwChannel, h.FwStatus)
 	a.evalFirmware(d, h.Version, h.FwLatest)
 	_ = a.Store.ReplaceNeighbors(d.ID, h.Neighbors)
@@ -587,6 +588,46 @@ func (a *App) evalFirmware(d model.Device, installed, latest string) {
 		return
 	}
 	_, _ = a.Store.ResolveAlert(d.ID, rule)
+}
+
+// settingIntDefault reads an integer setting, returning def when unset/invalid.
+func (a *App) settingIntDefault(key string, def int) int {
+	if v := a.setting(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
+
+// evalThresholds raises or clears CPU / temperature / memory alerts against the
+// operator-configured thresholds (settings alert_cpu / alert_temp / alert_mem,
+// each 0 = disabled). Notifications fire only on the active/clear transition.
+func (a *App) evalThresholds(d model.Device, h ros.Health) {
+	check := func(rule, label string, val, thresh int, unit string) {
+		if thresh <= 0 {
+			_, _ = a.Store.ResolveAlert(d.ID, rule)
+			return
+		}
+		if val >= thresh {
+			prev, _ := a.Store.AlertState(d.ID, rule)
+			detail := fmt.Sprintf("%s %d%s ≥ %d%s", label, val, unit, thresh, unit)
+			_ = a.Store.RaiseAlert(d.ID, rule, "warn", detail)
+			if prev != "active" {
+				a.alertNotifyDev(d, "⚠️ "+d.Name+": "+label, detail)
+			}
+		} else if ok, _ := a.Store.ResolveAlert(d.ID, rule); ok {
+			a.alertNotifyDev(d, "✅ "+d.Name+": "+label+" OK", fmt.Sprintf("%d%s < %d%s", val, unit, thresh, unit))
+		}
+	}
+	check("cpu_high", "CPU", h.CPU, a.settingIntDefault("alert_cpu", 0), "%")
+	if h.Temp > 0 {
+		check("temp_high", "Temp", int(h.Temp+0.5), a.settingIntDefault("alert_temp", 0), "°C")
+	}
+	if h.TotalMem > 0 {
+		used := int(float64(h.TotalMem-h.FreeMem) / float64(h.TotalMem) * 100)
+		check("mem_high", "RAM", used, a.settingIntDefault("alert_mem", 0), "%")
+	}
 }
 
 // DeviceServices reads DNS/DHCP/NTP from the device over the API (live).

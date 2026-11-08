@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.62.0"
+const Version = "0.63.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -2855,6 +2855,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 			"smtp_from": get("smtp_from"), "smtp_to": get("smtp_to"),
 			"git_dir": get("git_dir"), "git_remote": get("git_remote"), "git_branch": get("git_branch"),
 			"git_last": get("git_last"),
+			"alert_cpu": get("alert_cpu"), "alert_temp": get("alert_temp"), "alert_mem": get("alert_mem"),
 		},
 		"BpwSet": get("backup_password_enc") != "", "SmtpPwSet": get("smtp_pass_enc") != "",
 		"GitEnabled": get("git_enabled") == "on",
@@ -2912,7 +2913,7 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
 	set := func(k, v string) { _ = s.a.Store.SetSetting(k, v) }
 	set("backup_mode", r.FormValue("backup_mode"))
 	set("backup_deliver", strings.Join(r.Form["deliver"], ","))
-	for _, k := range []string{"backup_folder", "tg_token", "tg_chat", "smtp_host", "smtp_port", "smtp_user", "smtp_from", "smtp_to", "git_dir", "git_remote", "git_branch", "metrics_retention_days"} {
+	for _, k := range []string{"backup_folder", "tg_token", "tg_chat", "smtp_host", "smtp_port", "smtp_user", "smtp_from", "smtp_to", "git_dir", "git_remote", "git_branch", "metrics_retention_days", "alert_cpu", "alert_temp", "alert_mem"} {
 		set(k, strings.TrimSpace(r.FormValue(k)))
 	}
 	if r.FormValue("git_enabled") == "on" {

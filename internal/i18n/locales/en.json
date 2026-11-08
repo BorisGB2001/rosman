@@ -546,5 +546,10 @@
   "port.note": "from the bridge FDB, MNDP neighbours and the client table",
   "port.neighbor": "Neighbour device",
   "port.macs": "MACs behind",
-  "port.hosts": "Sample hosts"
+  "port.hosts": "Sample hosts",
+  "thr.title": "Alert thresholds",
+  "thr.note": "Raise a warning alert when a poll exceeds these. Empty or 0 disables the check.",
+  "thr.cpu": "CPU load, % ≥",
+  "thr.temp": "Temperature, °C ≥",
+  "thr.mem": "RAM used, % ≥"
 }
