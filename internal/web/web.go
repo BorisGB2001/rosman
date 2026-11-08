@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.79.0"
+const Version = "0.80.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -353,6 +353,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 			}
 			return code
 		},
+		"version": func() string { return Version },
 	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.ExecuteTemplate(w, name, data); err != nil {
