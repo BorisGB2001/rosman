@@ -6,7 +6,7 @@
 
 {{if .Results}}
 <div class="card"><h3>{{t "tpl.results"}}</h3>
-<div class="scroll"><table><thead><tr><th>{{t "al.device"}}</th><th>{{t "al.state"}}</th><th>{{t "al.detail"}}</th></tr></thead><tbody>
+<div class="scroll"><table class="dtable"><thead><tr><th>{{t "al.device"}}</th><th>{{t "al.state"}}</th><th>{{t "al.detail"}}</th></tr></thead><tbody>
 {{range .Results}}<tr><td>{{.Device}}</td><td>{{if .OK}}<span class="badge good">ok</span>{{else}}<span class="badge bad">fail</span>{{end}}</td><td class="muted">{{.Detail}}</td></tr>{{end}}
 </tbody></table></div></div>
 {{end}}

@@ -8,7 +8,7 @@
   <p class="muted small">{{t "sec.dbnote"}} ({{.DBCount}})</p>
 </div>
 <div class="card">
-  <div class="scroll"><table>
+  <div class="scroll"><table class="dtable">
     <thead><tr><th>{{t "col.name"}}</th><th>RouterOS</th><th>{{t "sec.severity"}}</th><th>{{t "sec.count"}}</th><th></th></tr></thead>
     <tbody>
     {{range .Rows}}

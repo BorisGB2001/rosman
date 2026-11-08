@@ -34,19 +34,19 @@
 {{with .F}}
 <div class="card">
   <h3>{{t "fire.filter"}} <span class="muted small">(filter)</span></h3>
-  <div class="scroll"><table><thead><tr><th>#</th><th>{{t "fire.chain"}}</th><th>{{t "fire.action"}}</th><th>{{t "fire.proto"}}</th><th>{{t "fire.src"}}</th><th>{{t "fire.dst"}}</th><th>{{t "fire.dstport"}}</th><th>{{t "neigh.iface"}}</th><th>{{t "fire.comment"}}</th></tr></thead><tbody>
+  <div class="scroll"><table class="dtable"><thead><tr><th>#</th><th>{{t "fire.chain"}}</th><th>{{t "fire.action"}}</th><th>{{t "fire.proto"}}</th><th>{{t "fire.src"}}</th><th>{{t "fire.dst"}}</th><th>{{t "fire.dstport"}}</th><th>{{t "neigh.iface"}}</th><th>{{t "fire.comment"}}</th></tr></thead><tbody>
   {{range $i, $r := .Filter}}<tr {{if $r.Disabled}}style="opacity:.45"{{end}}><td class="muted">{{$i}}</td><td>{{$r.Chain}}</td><td><span class="badge{{if eq $r.Action "accept"}} good{{else if or (eq $r.Action "drop") (eq $r.Action "reject")}} bad{{end}}">{{$r.Action}}</span></td><td>{{$r.Protocol}}</td><td class="mono">{{$r.SrcAddr}}</td><td class="mono">{{$r.DstAddr}}</td><td class="mono">{{$r.DstPort}}</td><td class="muted">{{$r.InIface}}{{if $r.OutIface}}→{{$r.OutIface}}{{end}}</td><td class="muted">{{$r.Comment}}{{if $r.Dynamic}} <span class="badge">dyn</span>{{end}}</td></tr>{{else}}<tr><td colspan="9" class="muted">—</td></tr>{{end}}
   </tbody></table></div>
 </div>
 <div class="card">
   <h3>NAT</h3>
-  <div class="scroll"><table><thead><tr><th>{{t "fire.chain"}}</th><th>{{t "fire.action"}}</th><th>{{t "fire.proto"}}</th><th>{{t "fire.dstport"}}</th><th>{{t "fire.toaddr"}}</th><th>{{t "fire.toports"}}</th><th>{{t "fire.comment"}}</th></tr></thead><tbody>
+  <div class="scroll"><table class="dtable"><thead><tr><th>{{t "fire.chain"}}</th><th>{{t "fire.action"}}</th><th>{{t "fire.proto"}}</th><th>{{t "fire.dstport"}}</th><th>{{t "fire.toaddr"}}</th><th>{{t "fire.toports"}}</th><th>{{t "fire.comment"}}</th></tr></thead><tbody>
   {{range .NAT}}<tr {{if .Disabled}}style="opacity:.45"{{end}}><td>{{.Chain}}</td><td><span class="badge">{{.Action}}</span></td><td>{{.Protocol}}</td><td class="mono">{{.DstPort}}</td><td class="mono">{{.ToAddr}}</td><td class="mono">{{.ToPorts}}</td><td class="muted">{{.Comment}}</td></tr>{{else}}<tr><td colspan="7" class="muted">—</td></tr>{{end}}
   </tbody></table></div>
 </div>
 <div class="card">
   <h3>{{t "fire.addrlist"}}</h3>
-  <div class="scroll"><table><thead><tr><th>{{t "fire.list"}}</th><th>{{t "fire.address"}}</th><th>{{t "fire.comment"}}</th></tr></thead><tbody>
+  <div class="scroll"><table class="dtable"><thead><tr><th>{{t "fire.list"}}</th><th>{{t "fire.address"}}</th><th>{{t "fire.comment"}}</th></tr></thead><tbody>
   {{range .AddrList}}<tr><td>{{.List}}</td><td class="mono">{{.Address}}</td><td class="muted">{{.Comment}}{{if .Dynamic}} <span class="badge">dyn</span>{{end}}</td></tr>{{else}}<tr><td colspan="3" class="muted">—</td></tr>{{end}}
   </tbody></table></div>
 </div>

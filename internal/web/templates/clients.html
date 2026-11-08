@@ -1,7 +1,7 @@
 {{define "clients"}}{{template "head" .}}
 <div class="cardhead"><h1 style="margin:0">{{t "nav.clients"}}</h1></div>
 <div class="card">
-  <div class="scroll"><table>
+  <div class="scroll"><table class="dtable">
     <thead><tr><th>IP</th><th>MAC</th><th>{{t "cl.vendor"}}</th><th>{{t "cl.hostname"}}</th><th>{{t "al.device"}}</th><th>{{t "neigh.iface"}}</th><th>{{t "cl.source"}}</th></tr></thead>
     <tbody>
     {{range .Clients}}
