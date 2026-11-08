@@ -810,6 +810,38 @@ func Export(d model.Device, signer ssh.Signer, timeout time.Duration) (text, hos
 	return out, seen, nil
 }
 
+// RunCommand runs an ad-hoc CLI command (or multi-line script) over SSH and
+// returns the combined output. It is used by the command runner; connectivity
+// safety for config-changing commands is provided separately via ArmGuard.
+func RunCommand(d model.Device, signer ssh.Signer, command string, timeout time.Duration) (out, hostPin string, err error) {
+	client, seen, err := dialSSH(d, signer, timeout)
+	if err != nil {
+		return "", seen, err
+	}
+	defer client.Close()
+	o, rerr := run(client, command)
+	return o, seen, rerr
+}
+
+// ArmGuard saves a binary backup and arms a scheduler that reloads it after
+// guardSeconds (a reboot that fully reverts). It returns the unique base name
+// used for both; disarm with DisarmGuard once the change is verified safe.
+func ArmGuard(d model.Device, signer ssh.Signer, guardSeconds int, timeout time.Duration) (base string, err error) {
+	client, _, err := dialSSH(d, signer, timeout)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+	base = fmt.Sprintf("rosman-run-%d", time.Now().UnixNano())
+	if out, err := run(client, fmt.Sprintf("/system backup save name=%s", base)); err != nil {
+		return "", fmt.Errorf("backup save: %v (%s)", err, out)
+	}
+	if out, err := run(client, fmt.Sprintf(`/system scheduler add name=%s interval=%d on-event="/system backup load name=%s"`, base, guardSeconds, base)); err != nil {
+		return "", fmt.Errorf("arm guard: %v (%s)", err, out)
+	}
+	return base, nil
+}
+
 // ApplyWithGuard applies a RouterOS script with an automatic rollback safety net:
 // it saves a binary backup, arms a scheduler that reloads that backup after
 // guardSeconds (which reboots and fully reverts), then runs the script. If the

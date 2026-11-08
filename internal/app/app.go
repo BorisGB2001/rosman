@@ -382,6 +382,77 @@ func (a *App) ApplyTemplate(d model.Device, script string, guardSeconds int) err
 	return nil
 }
 
+// CmdResult is the outcome of running an ad-hoc command on one device.
+type CmdResult struct {
+	Device string
+	IP     string
+	OK     bool
+	Output string
+	Detail string
+}
+
+// RunCommand runs an ad-hoc command on one device. When guardSeconds > 0 it
+// arms a rollback guard first and disarms it only after confirming the device
+// is still reachable over the API; a command that cuts access leaves the guard
+// armed so the device rolls itself back. guardSeconds == 0 runs the command
+// directly (the right choice for read-only commands such as /…/print).
+func (a *App) RunCommand(d model.Device, command string, guardSeconds int) (string, error) {
+	if a.signer == nil {
+		return "", fmt.Errorf("no SSH key configured (ROSMAN_SSH_KEY) — command runner needs SSH")
+	}
+	var base string
+	if guardSeconds > 0 {
+		if guardSeconds < 30 {
+			guardSeconds = 30
+		} else if guardSeconds > 3600 {
+			guardSeconds = 3600
+		}
+		b, err := ros.ArmGuard(d, a.signer, guardSeconds, a.Cfg.SSHTimeout+20*time.Second)
+		if err != nil {
+			return "", err
+		}
+		base = b
+	}
+	out, _, runErr := ros.RunCommand(d, a.signer, command, a.Cfg.SSHTimeout+20*time.Second)
+	if guardSeconds > 0 {
+		// A command error (e.g. a syntax error) is not a connectivity break, so
+		// verify reachability over the API and disarm when the device answers —
+		// a typo must not reboot the router.
+		reachable := false
+		if pass, derr := a.Box.Decrypt(d.APIPassEnc); derr == nil {
+			if _, e := ros.ServedFingerprint(d, pass, a.Cfg.APITimeout); e == nil {
+				reachable = true
+			}
+		}
+		if reachable {
+			_ = ros.DisarmGuard(d, a.signer, base, a.Cfg.SSHTimeout)
+		} else {
+			return out, fmt.Errorf("команда выполнена, но устройство недоступно по API — автооткат через %d с (планировщик %s)", guardSeconds, base)
+		}
+	}
+	return out, runErr
+}
+
+// RunCommandOn runs an ad-hoc command on each of the given devices sequentially
+// and returns a per-device result with captured output.
+func (a *App) RunCommandOn(ids []int64, command string, guardSeconds int) []CmdResult {
+	results := make([]CmdResult, 0, len(ids))
+	for _, id := range ids {
+		d, err := a.Store.Device(id)
+		if err != nil {
+			continue
+		}
+		res := CmdResult{Device: d.Name, IP: d.IP, OK: true}
+		out, rerr := a.RunCommand(d, command, guardSeconds)
+		res.Output = out
+		if rerr != nil {
+			res.OK, res.Detail = false, rerr.Error()
+		}
+		results = append(results, res)
+	}
+	return results
+}
+
 // ApplyTemplateAll applies a script to every device, sequentially, each guarded.
 func (a *App) ApplyTemplateAll(script string, guardSeconds int) []ApplyResult {
 	devs, _ := a.Store.Devices()

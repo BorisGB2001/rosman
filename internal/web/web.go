@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.51.0"
+const Version = "0.52.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -183,6 +183,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /reports/fleet", s.authed(s.fleetReport))
 	mux.Handle("GET /bulk", s.authed(s.bulkPage))
 	mux.Handle("POST /bulk", s.authed(s.requireRole(model.RoleOperator, s.bulkRun)))
+	mux.Handle("GET /run", s.authed(s.requireRole(model.RoleOperator, s.runPage)))
+	mux.Handle("POST /run", s.authed(s.requireRole(model.RoleOperator, s.runExec)))
 	mux.Handle("GET /compliance", s.authed(s.compliancePage))
 	mux.Handle("POST /compliance", s.authed(s.requireRole(model.RoleOperator, s.complianceCreate)))
 	mux.Handle("POST /compliance/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.complianceDelete)))
@@ -1960,6 +1962,67 @@ func (s *Server) bulkRun(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "bulk_"+action, fmt.Sprintf("%d devices (%s)", len(results), detail))
 	s.renderBulk(w, r, results, action, "")
+}
+
+func (s *Server) runPage(w http.ResponseWriter, r *http.Request) {
+	s.renderRun(w, r, nil, "", "", "", 0)
+}
+
+func (s *Server) renderRun(w http.ResponseWriter, r *http.Request, results []app.CmdResult, command, errMsg string, sel string, guard int) {
+	devs, _ := s.a.Store.Devices()
+	preset := map[string]bool{}
+	for _, id := range r.URL.Query()["ids"] {
+		preset[id] = true
+	}
+	for _, id := range strings.Fields(sel) {
+		preset[id] = true
+	}
+	s.render(w, r, "run", map[string]any{"Active": "run", "Devices": devs,
+		"Results": results, "Command": command, "Err": errMsg,
+		"HasSSH": s.a.HasSSHKey(), "Preset": preset, "Guard": guard})
+}
+
+func (s *Server) runExec(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	command := strings.TrimRight(r.FormValue("command"), "\r\n ")
+	ids := r.Form["ids"]
+	sel := strings.Join(ids, " ")
+	guard := 0
+	if r.FormValue("guard_on") != "" {
+		guard, _ = strconv.Atoi(r.FormValue("guard"))
+		if guard == 0 {
+			guard = 120
+		}
+	}
+	if strings.TrimSpace(command) == "" {
+		s.renderRun(w, r, nil, command, i18n.T(langOf(r), "run.err_empty"), sel, guard)
+		return
+	}
+	if len(ids) == 0 {
+		s.renderRun(w, r, nil, command, i18n.T(langOf(r), "run.err_nodev"), sel, guard)
+		return
+	}
+	nids := make([]int64, 0, len(ids))
+	for _, sid := range ids {
+		if id, err := strconv.ParseInt(sid, 10, 64); err == nil {
+			nids = append(nids, id)
+		}
+	}
+	results := s.a.RunCommandOn(nids, command, guard)
+	gnote := "no-guard"
+	if guard > 0 {
+		gnote = fmt.Sprintf("guard=%ds", guard)
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "run_command",
+		fmt.Sprintf("%d devices, %s: %s", len(results), gnote, firstLine(command)))
+	s.renderRun(w, r, results, command, "", sel, guard)
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i] + " …"
+	}
+	return s
 }
 
 func (s *Server) compliancePage(w http.ResponseWriter, r *http.Request) {
