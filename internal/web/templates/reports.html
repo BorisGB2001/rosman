@@ -1,0 +1,17 @@
+{{define "reports"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "rep.title"}}</h1></div>
+<div class="card">
+  <p class="muted small">{{t "rep.note"}}</p>
+  <div style="display:flex;gap:24px;flex-wrap:wrap;margin:10px 0">
+    <div><div class="muted small">{{t "dash.total"}}</div><div style="font-size:1.4em">{{.N}}</div></div>
+    <div><div class="muted small">{{t "dash.online"}}</div><div style="font-size:1.4em">{{index .Sum "online"}}</div></div>
+    <div><div class="muted small">{{t "dash.outdated"}}</div><div style="font-size:1.4em">{{index .Sum "outdated"}}</div></div>
+    <div><div class="muted small">CVE</div><div style="font-size:1.4em">{{index .Sum "cve"}}</div></div>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <a class="btn primary" href="/reports/fleet.csv">{{t "rep.csv"}}</a>
+    <a class="btn" href="/reports/fleet" target="_blank" rel="noopener">{{t "rep.pdf"}}</a>
+  </div>
+  <p class="muted small" style="margin-top:8px">{{t "rep.pdf_hint"}}</p>
+</div>
+{{template "tail" .}}{{end}}

@@ -39,6 +39,7 @@
     <a href="/alerts" class="{{if eq .Active "alerts"}}on{{end}}">{{template "ico" "alert"}}{{t "nav.alerts"}}{{if gt (alertCount) 0}} <span class="badge bad">{{alertCount}}</span>{{end}}</a>
     <a href="/clients" class="{{if eq .Active "clients"}}on{{end}}">{{template "ico" "clients"}}{{t "nav.clients"}}</a>
     <a href="/security" class="{{if eq .Active "security"}}on{{end}}">{{template "ico" "sec"}}{{t "nav.security"}}{{if gt (cveCount) 0}} <span class="badge bad">{{cveCount}}</span>{{end}}</a>
+    <a href="/reports" class="{{if eq .Active "reports"}}on{{end}}">{{template "ico" "audit"}}{{t "rep.title"}}</a>
     <a href="/audit" class="{{if eq .Active "audit"}}on{{end}}">{{template "ico" "audit"}}{{t "nav.audit"}}</a>
 
     <div class="navsep">{{t "nav.sec_system"}}</div>

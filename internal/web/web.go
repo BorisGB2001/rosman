@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.32.0"
+const Version = "0.33.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -169,6 +169,9 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/site", s.authed(s.requireRole(model.RoleOperator, s.deviceSetSite)))
 	mux.Handle("POST /devices/{id}/tag", s.authed(s.requireRole(model.RoleOperator, s.deviceTag)))
 	mux.Handle("GET /clients", s.authed(s.clientsPage))
+	mux.Handle("GET /reports", s.authed(s.reportsPage))
+	mux.Handle("GET /reports/fleet.csv", s.authed(s.fleetCSV))
+	mux.Handle("GET /reports/fleet", s.authed(s.fleetReport))
 	mux.Handle("GET /bulk", s.authed(s.bulkPage))
 	mux.Handle("POST /bulk", s.authed(s.requireRole(model.RoleOperator, s.bulkRun)))
 	mux.Handle("GET /security", s.authed(s.securityPage))
@@ -1443,6 +1446,75 @@ func (s *Server) cvePage(w http.ResponseWriter, r *http.Request) {
 	fs := cve.Scan(d.ROSVersion)
 	s.render(w, r, "cve", map[string]any{"Active": "devices", "D": d,
 		"Findings": fs, "Worst": cve.Worst(fs), "DBCount": len(cve.Data)})
+}
+
+// fleetRow is one device line in a report.
+type fleetRow struct {
+	Name, IP, Model, Serial, ROS, FwLatest, Site, Status, LastSeen string
+	Outdated                                                       bool
+	CVE                                                            int
+}
+
+func (s *Server) fleetRows() ([]fleetRow, map[string]int) {
+	devs, _ := s.a.Store.Devices()
+	rows := make([]fleetRow, 0, len(devs))
+	sum := map[string]int{"total": len(devs)}
+	for _, d := range devs {
+		status := "unknown"
+		switch {
+		case d.LastSeen == nil:
+			status = "unknown"
+			sum["unknown"]++
+		case time.Since(*d.LastSeen) < 3*s.a.Cfg.PollInterval:
+			status = "online"
+			sum["online"]++
+		default:
+			status = "offline"
+			sum["offline"]++
+		}
+		outdated := false
+		if l := fwFirst(d.FwLatest); l != "" && l != fwFirst(d.ROSVersion) {
+			outdated = true
+			sum["outdated"]++
+		}
+		n := len(cve.Scan(d.ROSVersion))
+		sum["cve"] += n
+		ls := "—"
+		if d.LastSeen != nil {
+			ls = d.LastSeen.Format("2006-01-02 15:04")
+		}
+		rows = append(rows, fleetRow{Name: d.Name, IP: d.IP, Model: d.Model, Serial: d.Serial,
+			ROS: d.ROSVersion, FwLatest: d.FwLatest, Site: d.SiteName, Status: status,
+			LastSeen: ls, Outdated: outdated, CVE: n})
+	}
+	return rows, sum
+}
+
+func (s *Server) reportsPage(w http.ResponseWriter, r *http.Request) {
+	rows, sum := s.fleetRows()
+	s.render(w, r, "reports", map[string]any{"Active": "reports", "Sum": sum, "N": len(rows)})
+}
+
+func (s *Server) fleetCSV(w http.ResponseWriter, r *http.Request) {
+	rows, _ := s.fleetRows()
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="rosman-fleet-%s.csv"`, time.Now().Format("2006-01-02")))
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"name", "ip", "model", "serial", "routeros", "fw_latest", "outdated", "site", "status", "last_seen", "cve_count"})
+	for _, d := range rows {
+		od := "no"
+		if d.Outdated {
+			od = "yes"
+		}
+		_ = cw.Write([]string{d.Name, d.IP, d.Model, d.Serial, d.ROS, d.FwLatest, od, d.Site, d.Status, d.LastSeen, strconv.Itoa(d.CVE)})
+	}
+	cw.Flush()
+}
+
+func (s *Server) fleetReport(w http.ResponseWriter, r *http.Request) {
+	rows, sum := s.fleetRows()
+	s.render(w, r, "report", map[string]any{"Rows": rows, "Sum": sum,
+		"Now": time.Now().Format("2006-01-02 15:04"), "Version": Version})
 }
 
 func (s *Server) bulkPage(w http.ResponseWriter, r *http.Request) {
