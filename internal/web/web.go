@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.76.0"
+const Version = "0.77.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -906,6 +906,9 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 		}
 		if l := fwFirst(d.FwLatest); l != "" && l != fwFirst(d.ROSVersion) {
 			reasons = append(reasons, "update "+l)
+		}
+		if d.RBUpgradeFw != "" && d.RBUpgradeFw != d.RBCurrentFw {
+			reasons = append(reasons, "board FW "+d.RBUpgradeFw)
 		}
 		if ncve > 0 {
 			reasons = append(reasons, fmt.Sprintf("%d CVE", ncve))
