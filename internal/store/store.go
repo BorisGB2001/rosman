@@ -616,6 +616,27 @@ func (s *Store) CountClients() int {
 
 // ---- ports (faceplate) ----
 
+// AllNeighborSightings returns every discovered neighbour across all managed
+// devices, with the name of the device that saw it.
+func (s *Store) AllNeighborSightings() ([]model.NeighborSighting, error) {
+	rows, err := s.db.Query(`SELECT n.iface,n.identity,n.ip,n.mac,n.platform,d.name
+		FROM device_neighbors n JOIN devices d ON d.id=n.device_id
+		ORDER BY n.identity, n.ip`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.NeighborSighting
+	for rows.Next() {
+		var n model.NeighborSighting
+		if err := rows.Scan(&n.Iface, &n.Identity, &n.IP, &n.MAC, &n.Platform, &n.SeenBy); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
 // SetDeviceLTE upserts the per-device LTE summary.
 func (s *Store) SetDeviceLTE(deviceID int64, l model.LTEInfo) error {
 	_, err := s.db.Exec(`INSERT INTO device_lte(device_id,present,info,rsrp,fw_upgrade) VALUES(?,?,?,?,?)

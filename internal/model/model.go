@@ -201,6 +201,12 @@ type NetMac struct {
 	Mac   string
 }
 
+// NeighborSighting is one neighbour row with the managed device that saw it.
+type NeighborSighting struct {
+	Neighbor
+	SeenBy string // managed device name that discovered it
+}
+
 // LTEInfo is a per-device LTE summary for the device list.
 type LTEInfo struct {
 	Present    bool

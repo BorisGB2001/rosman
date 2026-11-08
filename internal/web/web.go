@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.45.0"
+const Version = "0.46.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -715,9 +715,59 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		}
 		rows = append(rows, rr)
 	}
+	// Discovered neighbours (combined /ip/neighbor view across all devices).
+	managedIP := map[string]bool{}
+	for _, d := range devs {
+		managedIP[d.IP] = true
+	}
+	type disc struct {
+		Identity, IP, MAC, Platform, SeenBy string
+		Managed                             bool
+	}
+	aggm := map[string]*disc{}
+	var dorder []string
+	if sight, e := s.a.Store.AllNeighborSightings(); e == nil {
+		for _, n := range sight {
+			key := n.MAC
+			if key == "" {
+				key = n.IP
+			}
+			if key == "" {
+				key = n.Identity
+			}
+			if key == "" {
+				continue
+			}
+			d := aggm[key]
+			if d == nil {
+				d = &disc{Identity: n.Identity, IP: n.IP, MAC: n.MAC, Platform: n.Platform}
+				aggm[key] = d
+				dorder = append(dorder, key)
+			}
+			if d.IP == "" {
+				d.IP = n.IP
+			}
+			if d.Identity == "" {
+				d.Identity = n.Identity
+			}
+			if n.SeenBy != "" && !strings.Contains(d.SeenBy, n.SeenBy) {
+				if d.SeenBy != "" {
+					d.SeenBy += ", "
+				}
+				d.SeenBy += n.SeenBy
+			}
+		}
+	}
+	discovered := make([]disc, 0, len(dorder))
+	for _, k := range dorder {
+		d := aggm[k]
+		d.Managed = d.IP != "" && managedIP[d.IP]
+		discovered = append(discovered, *d)
+	}
 	s.render(w, r, "devices", map[string]any{"Active": "devices", "Devices": rows,
 		"Sites": sites, "AllTags": allTags, "FSite": fSite, "FTag": fTag, "FType": fType,
-		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
+		"Discovered": discovered,
+		"Msg":        r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
 }
 
 func fwFirst(s string) string {
@@ -938,7 +988,8 @@ func (s *Server) deviceTag(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) newDeviceForm(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, "new_device", map[string]any{"Active": "devices"})
+	s.render(w, r, "new_device", map[string]any{"Active": "devices",
+		"IP": r.URL.Query().Get("ip"), "Name": r.URL.Query().Get("name")})
 }
 
 func (s *Server) deviceSetType(w http.ResponseWriter, r *http.Request) {
