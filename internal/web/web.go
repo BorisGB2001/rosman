@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.72.0"
+const Version = "0.73.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -179,6 +179,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/snmppoll", s.authed(s.requireRole(model.RoleOperator, s.deviceSNMPPoll)))
 	mux.Handle("GET /dashboard", s.authed(s.dashboardPage))
 	mux.Handle("GET /firmware", s.authed(s.firmwarePage))
+	mux.Handle("GET /firmware/progress", s.authed(s.firmwareProgress))
 	mux.Handle("POST /firmware/upgrade", s.authed(s.requireRole(model.RoleOperator, s.firmwareUpgrade)))
 	mux.Handle("POST /devices/{id}/upgrade", s.authed(s.requireRole(model.RoleOperator, s.deviceUpgrade)))
 	mux.Handle("GET /sites", s.authed(s.sitesPage))
@@ -964,6 +965,44 @@ func (s *Server) firmwarePage(w http.ResponseWriter, r *http.Request) {
 		data["FwActive"] = job.Status != "done" && done < len(items) && time.Since(job.CreatedAt) < 30*time.Minute
 	}
 	s.render(w, r, "firmware", data)
+}
+
+// firmwareProgress returns the live state of the latest firmware job as JSON so
+// the page can update the progress bar and per-device rows in place, without a
+// full reload that would flicker and lose the scroll position.
+func (s *Server) firmwareProgress(w http.ResponseWriter, r *http.Request) {
+	job, ok := s.a.Store.LatestFwJob()
+	if !ok {
+		writeJSON(w, 200, map[string]any{"job": false})
+		return
+	}
+	items, _ := s.a.Store.FwItems(job.ID)
+	done := 0
+	type it struct {
+		DeviceName, Target, Status, Detail string
+	}
+	out := make([]it, 0, len(items))
+	for _, i := range items {
+		if i.Status == "done" || i.Status == "failed" || i.Status == "skipped" {
+			done++
+		}
+		out = append(out, it{i.DeviceName, i.Target, i.Status, i.Detail})
+	}
+	pct := 0
+	if len(items) > 0 {
+		pct = done * 100 / len(items)
+	}
+	active := job.Status != "done" && done < len(items) && time.Since(job.CreatedAt) < 30*time.Minute
+	writeJSON(w, 200, map[string]any{
+		"job":    true,
+		"id":     job.ID,
+		"status": job.Status,
+		"done":   done,
+		"total":  len(items),
+		"pct":    pct,
+		"active": active,
+		"items":  out,
+	})
 }
 
 func (s *Server) firmwareUpgrade(w http.ResponseWriter, r *http.Request) {

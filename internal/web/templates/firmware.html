@@ -9,13 +9,13 @@
     {{if .FwActive}}<span class="muted small" id="fw-auto"> · {{t "fw.auto_refresh"}} <span class="fwspin">⟳</span></span>{{end}}</h3>
   <div style="margin:6px 0 12px">
     <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line)">
-      <div style="background:{{if .FwActive}}var(--accent){{else}}var(--good){{end}};width:{{.FwPct}}%;transition:width .4s"></div>
+      <div id="fw-bar" style="background:{{if .FwActive}}var(--accent){{else}}var(--good){{end}};width:{{.FwPct}}%;transition:width .4s"></div>
     </div>
-    <div class="muted small" style="margin-top:4px">{{.FwDone}} / {{.FwTotal}} · {{.FwPct}}%</div>
+    <div class="muted small" style="margin-top:4px" id="fw-count">{{.FwDone}} / {{.FwTotal}} · {{.FwPct}}%</div>
   </div>
   <div class="scroll"><table>
     <thead><tr><th>{{t "al.device"}}</th><th>{{t "fw.latest"}}</th><th>{{t "fw.status"}}</th><th>{{t "al.detail"}}</th></tr></thead>
-    <tbody>
+    <tbody id="fw-items">
     {{range .Items}}<tr><td>{{.DeviceName}}</td><td>{{.Target}}</td><td>{{template "fwstatus" .Status}}</td><td class="muted">{{.Detail}}</td></tr>{{end}}
     </tbody>
   </table></div>
@@ -57,9 +57,36 @@
 </form>
 <script>
 (function(){
-  if(document.querySelector('[data-fw-active="1"]')){
-    setTimeout(function(){ location.reload(); }, 5000);
-  }
+  if(!document.querySelector('[data-fw-active="1"]')) return;
+  var esc=function(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;};
+  var badge=function(st){
+    var cls=st==='done'?'good':st==='failed'?'bad':st==='skipped'?'':'info';
+    return '<span class="badge '+cls+'">'+esc(st)+'</span>';
+  };
+  var tick=function(){
+    fetch('/firmware/progress',{headers:{'Accept':'application/json'}})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(!d.job) return;
+        var bar=document.getElementById('fw-bar');
+        if(bar){bar.style.width=d.pct+'%'; if(!d.active) bar.style.background='var(--good)';}
+        var cnt=document.getElementById('fw-count');
+        if(cnt) cnt.textContent=d.done+' / '+d.total+' · '+d.pct+'%';
+        var tb=document.getElementById('fw-items');
+        if(tb&&d.items){
+          tb.innerHTML=d.items.map(function(i){
+            return '<tr><td>'+esc(i.DeviceName)+'</td><td>'+esc(i.Target)+'</td><td>'+badge(i.Status)+'</td><td class="muted">'+esc(i.Detail)+'</td></tr>';
+          }).join('');
+        }
+        if(!d.active){
+          var a=document.getElementById('fw-auto'); if(a) a.remove();
+          return; // job finished — stop polling, no reload needed
+        }
+        setTimeout(tick,4000);
+      })
+      .catch(function(){ setTimeout(tick,8000); }); // transient error — back off and retry
+  };
+  setTimeout(tick,4000);
 })();
 </script>
 <style>.fwspin{display:inline-block;animation:fwsp 1.1s linear infinite}@keyframes fwsp{to{transform:rotate(360deg)}}</style>
