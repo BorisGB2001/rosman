@@ -266,3 +266,14 @@ CREATE TABLE IF NOT EXISTS device_vpn (
     count     INTEGER NOT NULL DEFAULT 0,
     info      TEXT NOT NULL DEFAULT ''
 );
+
+-- Config compliance rules checked against each device's latest /export.
+CREATE TABLE IF NOT EXISTS compliance_rules (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL DEFAULT '',
+    severity   TEXT NOT NULL DEFAULT 'warn',  -- warn | crit
+    kind       TEXT NOT NULL DEFAULT 'require',-- require | forbid | require_re | forbid_re
+    pattern    TEXT NOT NULL,
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

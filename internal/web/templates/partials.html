@@ -31,6 +31,7 @@
 
     <div class="navsep">{{t "nav.sec_config"}}</div>
     {{if canWrite .User}}<a href="/templates" class="{{if eq .Active "templates"}}on{{end}}">{{template "ico" "tpl"}}{{t "nav.templates"}}</a>{{end}}
+    {{if canWrite .User}}<a href="/compliance" class="{{if eq .Active "compliance"}}on{{end}}">{{template "ico" "ca"}}{{t "comp.title"}}</a>{{end}}
     {{if isAdmin .User}}<a href="/ca" class="{{if eq .Active "ca"}}on{{end}}">{{template "ico" "ca"}}{{t "nav.ca"}}</a>{{end}}
 
     <div class="navsep">{{t "nav.sec_monitor"}}</div>

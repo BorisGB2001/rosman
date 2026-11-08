@@ -148,6 +148,43 @@ func (s *Store) SetTOTP(userID int64, secretEnc string, enabled bool) error {
 	return err
 }
 
+// ---- compliance rules ----
+
+func (s *Store) CreateComplianceRule(r model.ComplianceRule) error {
+	_, err := s.db.Exec(`INSERT INTO compliance_rules(name,severity,kind,pattern,enabled) VALUES(?,?,?,?,1)`,
+		r.Name, r.Severity, r.Kind, r.Pattern)
+	return err
+}
+
+func (s *Store) ComplianceRules() ([]model.ComplianceRule, error) {
+	rows, err := s.db.Query(`SELECT id,name,severity,kind,pattern,enabled,created_at FROM compliance_rules ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.ComplianceRule
+	for rows.Next() {
+		var r model.ComplianceRule
+		var en int
+		if err := rows.Scan(&r.ID, &r.Name, &r.Severity, &r.Kind, &r.Pattern, &en, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		r.Enabled = en != 0
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteComplianceRule(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM compliance_rules WHERE id=?`, id)
+	return err
+}
+
+func (s *Store) SetComplianceEnabled(id int64, enabled bool) error {
+	_, err := s.db.Exec(`UPDATE compliance_rules SET enabled=? WHERE id=?`, b2i(enabled), id)
+	return err
+}
+
 // ---- cron jobs ----
 
 const cronCols = `id,name,action,target,template_id,guard,kind,interval_min,at_hour,at_min,weekday,enabled,last_run,last_status,next_run,created_at`

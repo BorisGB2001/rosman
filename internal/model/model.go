@@ -21,6 +21,18 @@ type User struct {
 	TOTPEnabled   bool
 }
 
+// ComplianceRule checks a device's /export config for a required or forbidden
+// pattern (substring or regex).
+type ComplianceRule struct {
+	ID        int64
+	Name      string
+	Severity  string // warn | crit
+	Kind      string // require | forbid | require_re | forbid_re
+	Pattern   string
+	Enabled   bool
+	CreatedAt time.Time
+}
+
 // CronJob is a scheduled task run by the scheduler.
 type CronJob struct {
 	ID          int64

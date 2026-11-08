@@ -28,7 +28,7 @@
 </div>
 <div class="card">
   {{if canWrite .User}}
-  <form id="bulkform" method="post" action="/bulk" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+  <form id="bulkform" method="post" action="/bulk" style="display:flex;flex-direction:row;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
     <span class="muted small">{{t "bulk.selected"}}</span>
     <button class="btn sm" type="submit" name="action" value="poll" onclick="return confirm('{{t "bulk.confirm"}}')">{{t "dev.poll"}}</button>
     <button class="btn sm" type="submit" name="action" value="backup" onclick="return confirm('{{t "bulk.confirm"}}')">{{t "dev.backup"}}</button>

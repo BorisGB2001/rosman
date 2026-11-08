@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.50.0"
+const Version = "0.51.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -183,6 +183,10 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /reports/fleet", s.authed(s.fleetReport))
 	mux.Handle("GET /bulk", s.authed(s.bulkPage))
 	mux.Handle("POST /bulk", s.authed(s.requireRole(model.RoleOperator, s.bulkRun)))
+	mux.Handle("GET /compliance", s.authed(s.compliancePage))
+	mux.Handle("POST /compliance", s.authed(s.requireRole(model.RoleOperator, s.complianceCreate)))
+	mux.Handle("POST /compliance/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.complianceDelete)))
+	mux.Handle("POST /compliance/{id}/toggle", s.authed(s.requireRole(model.RoleOperator, s.complianceToggle)))
 	mux.Handle("GET /security", s.authed(s.securityPage))
 	mux.Handle("GET /devices/{id}/cve", s.authed(s.cvePage))
 	mux.Handle("GET /cron", s.authed(s.requireRole(model.RoleAdmin, s.cronPage)))
@@ -1956,6 +1960,68 @@ func (s *Server) bulkRun(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "bulk_"+action, fmt.Sprintf("%d devices (%s)", len(results), detail))
 	s.renderBulk(w, r, results, action, "")
+}
+
+func (s *Server) compliancePage(w http.ResponseWriter, r *http.Request) {
+	rules, _ := s.a.Store.ComplianceRules()
+	report, _ := s.a.ComplianceCheck()
+	okN, failN := 0, 0
+	for _, row := range report {
+		if row.OK() {
+			okN++
+		} else if !row.NoConfig {
+			failN++
+		}
+	}
+	s.render(w, r, "compliance", map[string]any{"Active": "compliance", "Rules": rules,
+		"Report": report, "OkN": okN, "FailN": failN,
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
+}
+
+func (s *Server) complianceCreate(w http.ResponseWriter, r *http.Request) {
+	kind := r.FormValue("kind")
+	ok := map[string]bool{"require": true, "forbid": true, "require_re": true, "forbid_re": true}
+	if !ok[kind] {
+		http.Redirect(w, r, "/compliance?err=invalid+kind", http.StatusSeeOther)
+		return
+	}
+	pat := r.FormValue("pattern")
+	if strings.TrimSpace(pat) == "" {
+		http.Redirect(w, r, "/compliance?err=empty+pattern", http.StatusSeeOther)
+		return
+	}
+	sev := r.FormValue("severity")
+	if sev != "crit" {
+		sev = "warn"
+	}
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		name = kind + ": " + pat
+	}
+	if err := s.a.Store.CreateComplianceRule(model.ComplianceRule{Name: name, Severity: sev, Kind: kind, Pattern: pat}); err != nil {
+		http.Redirect(w, r, "/compliance?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "compliance_add", name)
+	http.Redirect(w, r, "/compliance?msg=rule-created", http.StatusSeeOther)
+}
+
+func (s *Server) complianceDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	_ = s.a.Store.DeleteComplianceRule(id)
+	http.Redirect(w, r, "/compliance?msg=rule-removed", http.StatusSeeOther)
+}
+
+func (s *Server) complianceToggle(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	rules, _ := s.a.Store.ComplianceRules()
+	for _, rl := range rules {
+		if rl.ID == id {
+			_ = s.a.Store.SetComplianceEnabled(id, !rl.Enabled)
+			break
+		}
+	}
+	http.Redirect(w, r, "/compliance?msg=toggled", http.StatusSeeOther)
 }
 
 func (s *Server) securityPage(w http.ResponseWriter, r *http.Request) {
