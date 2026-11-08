@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.48.0"
+const Version = "0.49.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -815,10 +815,67 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(vers, func(i, j int) bool { return vers[i].N > vers[j].N })
 	alerts, _ := s.a.Store.ActiveAlerts()
 	sites, _ := s.a.Store.Sites()
+
+	alertByDev := map[int64]int{}
+	for _, a := range alerts {
+		alertByDev[a.DeviceID]++
+	}
+	type cpuRow struct {
+		ID   int64
+		Name string
+		CPU  int
+	}
+	type attnRow struct {
+		ID      int64
+		Name    string
+		Reasons string
+	}
+	var topCPU []cpuRow
+	var attention []attnRow
+	cveAffected := 0
+	for _, d := range devs {
+		cpu := 0
+		if h, err := s.a.Store.LatestHealth(d.ID); err == nil {
+			cpu = h.CPU
+		}
+		topCPU = append(topCPU, cpuRow{d.ID, d.Name, cpu})
+		ncve := len(cve.Scan(d.ROSVersion))
+		if ncve > 0 {
+			cveAffected++
+		}
+		var reasons []string
+		if d.LastSeen == nil {
+			reasons = append(reasons, "no data")
+		} else if time.Since(*d.LastSeen) >= 3*s.a.Cfg.PollInterval {
+			reasons = append(reasons, "offline")
+		}
+		if alertByDev[d.ID] > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d alert(s)", alertByDev[d.ID]))
+		}
+		if l := fwFirst(d.FwLatest); l != "" && l != fwFirst(d.ROSVersion) {
+			reasons = append(reasons, "update "+l)
+		}
+		if ncve > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d CVE", ncve))
+		}
+		if len(reasons) > 0 {
+			attention = append(attention, attnRow{d.ID, d.Name, strings.Join(reasons, " · ")})
+		}
+	}
+	sort.Slice(topCPU, func(i, j int) bool { return topCPU[i].CPU > topCPU[j].CPU })
+	if len(topCPU) > 8 {
+		topCPU = topCPU[:8]
+	}
+	onlinePct := 0
+	if len(devs) > 0 {
+		onlinePct = online * 100 / len(devs)
+	}
+
 	s.render(w, r, "dashboard", map[string]any{"Active": "dashboard",
 		"Total": len(devs), "Online": online, "Offline": offline, "Unknown": unknown,
 		"Outdated": outdated, "SitesN": len(sites), "Alerts": alerts, "AlertCount": len(alerts),
-		"Versions": vers})
+		"Versions": vers, "CVEAffected": cveAffected, "TopCPU": topCPU,
+		"Attention": attention, "OnlinePct": onlinePct})
 }
 
 func (s *Server) firmwarePage(w http.ResponseWriter, r *http.Request) {
