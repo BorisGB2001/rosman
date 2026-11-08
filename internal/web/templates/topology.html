@@ -1,16 +1,30 @@
 {{define "topology"}}{{template "head" .}}
-<div class="cardhead"><h1 style="margin:0">{{t "topo.title"}}</h1></div>
+<div class="cardhead"><h1 style="margin:0">{{t "topo.title"}}</h1>
+  <span class="muted small">{{.Count}} {{t "nav.devices"}} · {{.EdgeCount}} {{t "topo.links"}}</span></div>
 <div class="card">
   {{if .Nodes}}
+  <div class="topo-legend muted small" style="margin-bottom:8px">
+    <span class="badge good">●</span> {{t "topo.online"}}
+    <span class="badge bad" style="margin-left:10px">●</span> {{t "topo.offline"}}
+    <span class="badge" style="margin-left:10px">●</span> {{t "topo.unknown"}}
+    {{if .CanWrite}}<span style="margin-left:14px">{{t "topo.drag_hint"}}</span>{{end}}
+  </div>
   <div class="scroll">
-  <svg viewBox="0 0 660 600" width="100%" style="max-width:660px;height:auto">
-    {{range .Edges}}<line x1="{{.X1}}" y1="{{.Y1}}" x2="{{.X2}}" y2="{{.Y2}}" stroke="var(--line)" stroke-width="2"/>{{end}}
-    {{range .Nodes}}
-    <a href="/devices/{{.ID}}">
-      <circle cx="{{.X}}" cy="{{.Y}}" r="24" fill="var(--surface)" stroke="{{if eq .Status "up"}}var(--good){{else if eq .Status "down"}}var(--bad){{else}}var(--muted){{end}}" stroke-width="3"/>
-      <text x="{{.X}}" y="{{.Y}}" text-anchor="middle" dominant-baseline="central" font-size="9" fill="var(--fg)">{{.Name}}</text>
-    </a>
-    {{end}}
+  <svg id="topo" viewBox="0 0 1000 720" width="100%" style="min-width:680px;height:auto;touch-action:none;user-select:none"
+       data-canwrite="{{if .CanWrite}}1{{end}}">
+    <g id="topo-edges">
+    {{range .Edges}}<g class="tedge" data-a="{{.A}}" data-b="{{.B}}">
+      <line stroke="var(--line)" stroke-width="2"/>
+      {{if .Port}}<text font-size="9" fill="var(--muted)" text-anchor="middle" dominant-baseline="central">{{.Port}}</text>{{end}}
+    </g>{{end}}
+    </g>
+    <g id="topo-nodes">
+    {{range .Nodes}}<g class="tnode" data-id="{{.ID}}" transform="translate({{printf "%.1f" .X}},{{printf "%.1f" .Y}})" style="cursor:pointer">
+      <circle r="26" fill="var(--surface)" stroke="{{if eq .Status "up"}}var(--good){{else if eq .Status "down"}}var(--bad){{else}}var(--muted){{end}}" stroke-width="3"/>
+      <circle r="6" cx="18" cy="-18" fill="{{if eq .Status "up"}}var(--good){{else if eq .Status "down"}}var(--bad){{else}}var(--muted){{end}}"/>
+      <text text-anchor="middle" dominant-baseline="central" font-size="9" fill="var(--fg)" style="pointer-events:none">{{.Name}}</text>
+    </g>{{end}}
+    </g>
   </svg>
   </div>
   <p class="muted small">{{t "topo.legend"}}</p>
@@ -18,4 +32,58 @@
   <p class="muted">{{t "topo.empty"}}</p>
   {{end}}
 </div>
+<script>
+(function(){
+  var svg=document.getElementById('topo'); if(!svg) return;
+  var canWrite=svg.dataset.canwrite==='1';
+  var pos={}; // id -> {x,y}
+  var nodes=Array.prototype.slice.call(svg.querySelectorAll('.tnode'));
+  nodes.forEach(function(g){
+    var t=g.getAttribute('transform').match(/translate\(([-\d.]+),([-\d.]+)\)/);
+    pos[g.dataset.id]={x:parseFloat(t[1]),y:parseFloat(t[2])};
+  });
+  var edges=Array.prototype.slice.call(svg.querySelectorAll('.tedge'));
+  function layoutEdges(){
+    edges.forEach(function(e){
+      var a=pos[e.dataset.a], b=pos[e.dataset.b]; if(!a||!b) return;
+      var ln=e.querySelector('line'); ln.setAttribute('x1',a.x); ln.setAttribute('y1',a.y);
+      ln.setAttribute('x2',b.x); ln.setAttribute('y2',b.y);
+      var tx=e.querySelector('text'); if(tx){ tx.setAttribute('x',(a.x+b.x)/2); tx.setAttribute('y',(a.y+b.y)/2); }
+    });
+  }
+  layoutEdges();
+  function svgPoint(evt){
+    var p=svg.createSVGPoint(); p.x=evt.clientX; p.y=evt.clientY;
+    return p.matrixTransform(svg.getScreenCTM().inverse());
+  }
+  var drag=null, moved=false;
+  nodes.forEach(function(g){
+    g.addEventListener('pointerdown', function(evt){
+      evt.preventDefault();
+      var pt=svgPoint(evt); var id=g.dataset.id;
+      drag={g:g,id:id,dx:pos[id].x-pt.x,dy:pos[id].y-pt.y}; moved=false;
+      g.setPointerCapture(evt.pointerId);
+    });
+    g.addEventListener('pointermove', function(evt){
+      if(!drag||drag.g!==g) return;
+      var pt=svgPoint(evt);
+      var nx=pt.x+drag.dx, ny=pt.y+drag.dy;
+      if(Math.abs(nx-pos[drag.id].x)>2||Math.abs(ny-pos[drag.id].y)>2) moved=true;
+      pos[drag.id]={x:nx,y:ny};
+      g.setAttribute('transform','translate('+nx.toFixed(1)+','+ny.toFixed(1)+')');
+      layoutEdges();
+    });
+    g.addEventListener('pointerup', function(evt){
+      if(!drag||drag.g!==g) return;
+      var id=drag.id, p=pos[id]; drag=null;
+      try{ g.releasePointerCapture(evt.pointerId); }catch(e){}
+      if(!moved){ window.location='/devices/'+id; return; }
+      if(canWrite){
+        var body='id='+encodeURIComponent(id)+'&x='+p.x.toFixed(1)+'&y='+p.y.toFixed(1);
+        fetch('/topology/pos',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).catch(function(){});
+      }
+    });
+  });
+})();
+</script>
 {{template "tail" .}}{{end}}

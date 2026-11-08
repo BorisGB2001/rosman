@@ -267,6 +267,13 @@ CREATE TABLE IF NOT EXISTS device_vpn (
     info      TEXT NOT NULL DEFAULT ''
 );
 
+-- Saved topology node positions (manual drag layout).
+CREATE TABLE IF NOT EXISTS topo_pos (
+    device_id INTEGER PRIMARY KEY,
+    x         REAL NOT NULL,
+    y         REAL NOT NULL
+);
+
 -- Config compliance rules checked against each device's latest /export.
 CREATE TABLE IF NOT EXISTS compliance_rules (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

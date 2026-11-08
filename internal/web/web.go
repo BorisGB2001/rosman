@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.57.0"
+const Version = "0.58.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -223,6 +223,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/security", s.apiAuth(s.apiSecurity))
 	mux.HandleFunc("GET /metrics", s.apiAuth(s.metricsEndpoint))
 	mux.Handle("GET /topology", s.authed(s.topologyPage))
+	mux.Handle("POST /topology/pos", s.authed(s.requireRole(model.RoleOperator, s.topoSavePos)))
 	mux.Handle("GET /alerts", s.authed(s.alerts))
 	mux.Handle("GET /audit", s.authed(s.auditPage))
 	mux.Handle("GET /templates", s.authed(s.templatesPage))
@@ -2226,18 +2227,38 @@ func (s *Server) clientsPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 	devs, _ := s.a.Store.Devices()
 	neigh, _ := s.a.Store.AllNeighbors()
-	byIP := map[string]int64{}
+	addrOwner, _ := s.a.Store.AddrOwners()
+	macOwner, _ := s.a.Store.MacOwners()
+	saved, _ := s.a.Store.TopoPositions()
 	byIdent := map[string]int64{}
 	for _, d := range devs {
-		byIP[d.IP] = d.ID
 		if d.Name != "" {
 			byIdent[d.Name] = d.ID
 		}
 	}
-	// Edges between known devices (deduped, undirected).
-	edgeset := map[[2]int64]bool{}
+	ipbase := func(a string) string {
+		if i := strings.IndexByte(a, '/'); i >= 0 {
+			return a[:i]
+		}
+		return a
+	}
+	// Resolve each neighbour sighting to a managed device by MAC, then IP, then
+	// identity, and record an undirected edge labelled with the physical port it
+	// was seen on. On a flat L2 network /ip/neighbor floods every device onto the
+	// management VLAN, so we keep only sightings seen on a real physical port
+	// (etherX / sfp* / qsfp* / combo* / wlan*) and drop bridge/vlan/vxlan-only
+	// ones — those are the hairball, not physical adjacency.
+	type ekey [2]int64
+	edgePort := map[ekey]string{}
 	for _, n := range neigh {
-		to := byIP[n.IP]
+		port := physicalPort(n.Iface)
+		if port == "" {
+			continue
+		}
+		to := macOwner[strings.ToUpper(n.MAC)]
+		if to == 0 {
+			to = addrOwner[ipbase(n.IP)]
+		}
 		if to == 0 {
 			to = byIdent[n.Identity]
 		}
@@ -2248,26 +2269,30 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 		if a > b {
 			a, b = b, a
 		}
-		edgeset[[2]int64{a, b}] = true
+		k := ekey{a, b}
+		if _, ok := edgePort[k]; !ok {
+			edgePort[k] = port
+		}
 	}
 	type Node struct {
-		ID         int64
-		Name       string
-		X, Y       int
-		Status     string // up|down|unknown
+		ID     int64
+		Name   string
+		X, Y   float64
+		Status string // up|down|unknown
 	}
-	const cx, cy, rad = 330, 300, 250
-	pos := map[int64][2]int{}
+	const cx, cy, rad = 500.0, 360.0, 300.0
+	nn := len(devs)
+	if nn == 0 {
+		nn = 1
+	}
 	nodes := make([]Node, 0, len(devs))
-	n := len(devs)
-	if n == 0 {
-		n = 1
-	}
 	for i, d := range devs {
-		ang := 2 * math.Pi * float64(i) / float64(n)
-		x := cx + int(float64(rad)*math.Cos(ang))
-		y := cy + int(float64(rad)*math.Sin(ang))
-		pos[d.ID] = [2]int{x, y}
+		ang := 2 * math.Pi * float64(i) / float64(nn)
+		x := cx + rad*math.Cos(ang)
+		y := cy + rad*math.Sin(ang)
+		if p, ok := saved[d.ID]; ok {
+			x, y = p[0], p[1]
+		}
 		st := "unknown"
 		if d.LastSeen != nil {
 			if time.Since(*d.LastSeen) < 3*s.a.Cfg.PollInterval {
@@ -2278,14 +2303,48 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 		}
 		nodes = append(nodes, Node{ID: d.ID, Name: d.Name, X: x, Y: y, Status: st})
 	}
-	type Edge struct{ X1, Y1, X2, Y2 int }
-	edges := make([]Edge, 0, len(edgeset))
-	for e := range edgeset {
-		a, b := pos[e[0]], pos[e[1]]
-		edges = append(edges, Edge{a[0], a[1], b[0], b[1]})
+	type Edge struct {
+		A, B int64
+		Port string
 	}
-	s.render(w, r, "topology", map[string]any{"Active": "topology",
-		"Nodes": nodes, "Edges": edges, "Count": len(devs)})
+	edges := make([]Edge, 0, len(edgePort))
+	for k, port := range edgePort {
+		edges = append(edges, Edge{A: k[0], B: k[1], Port: port})
+	}
+	s.render(w, r, "topology", map[string]any{"Active": "topology", "CanWrite": roleRank(userFrom(r).Role) >= roleRank(model.RoleOperator),
+		"Nodes": nodes, "Edges": edges, "Count": len(devs), "EdgeCount": len(edges)})
+}
+
+// physicalPort returns the first physical interface in a RouterOS neighbour
+// interface list (e.g. "ether1,bridgeLan" → "ether1"), or "" when the neighbour
+// was seen only on a bridge/vlan/virtual interface (L2 flooding, not adjacency).
+func physicalPort(ifaces string) string {
+	for _, part := range strings.Split(ifaces, ",") {
+		p := strings.TrimSpace(part)
+		for _, pfx := range []string{"ether", "sfp", "qsfp", "combo", "wlan"} {
+			if strings.HasPrefix(p, pfx) {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
+// topoSavePos persists one node's dragged position.
+func (s *Server) topoSavePos(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	id, _ := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	x, _ := strconv.ParseFloat(r.FormValue("x"), 64)
+	y, _ := strconv.ParseFloat(r.FormValue("y"), 64)
+	if id == 0 {
+		http.Error(w, "bad id", 400)
+		return
+	}
+	if err := s.a.Store.SaveTopoPos(id, x, y); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) alerts(w http.ResponseWriter, r *http.Request) {

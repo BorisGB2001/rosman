@@ -422,7 +422,7 @@ func (s *Store) DeleteDevice(id int64) error {
 		return err
 	}
 	for _, t := range []string{"metrics", "configs", "alerts", "device_tags", "device_ports",
-		"device_clients", "device_neighbors", "iface_traffic"} {
+		"device_clients", "device_neighbors", "iface_traffic", "topo_pos"} {
 		if _, err := tx.Exec(`DELETE FROM `+t+` WHERE device_id=?`, id); err != nil {
 			tx.Rollback()
 			return err
@@ -713,6 +713,83 @@ func (s *Store) AllManagedMacs() (map[string]bool, error) {
 		}
 	}
 	return set, rows.Err()
+}
+
+// AddrOwners maps every managed IP (interface addresses stripped of any /mask,
+// plus each device's primary IP) to its owning device id.
+func (s *Store) AddrOwners() (map[string]int64, error) {
+	m := map[string]int64{}
+	if rows, err := s.db.Query(`SELECT device_id,address FROM device_addrs`); err == nil {
+		for rows.Next() {
+			var id int64
+			var a string
+			if rows.Scan(&id, &a) == nil {
+				if i := strings.IndexByte(a, '/'); i >= 0 {
+					a = a[:i]
+				}
+				if a != "" {
+					m[a] = id
+				}
+			}
+		}
+		rows.Close()
+	}
+	if rows, err := s.db.Query(`SELECT id,ip FROM devices`); err == nil {
+		for rows.Next() {
+			var id int64
+			var ip string
+			if rows.Scan(&id, &ip) == nil && ip != "" {
+				if _, ok := m[ip]; !ok {
+					m[ip] = id
+				}
+			}
+		}
+		rows.Close()
+	}
+	return m, nil
+}
+
+// MacOwners maps every managed interface MAC (upper-case) to its device id.
+func (s *Store) MacOwners() (map[string]int64, error) {
+	m := map[string]int64{}
+	rows, err := s.db.Query(`SELECT device_id,mac FROM device_macs`)
+	if err != nil {
+		return m, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var mac string
+		if rows.Scan(&id, &mac) == nil && mac != "" {
+			m[strings.ToUpper(mac)] = id
+		}
+	}
+	return m, rows.Err()
+}
+
+// TopoPositions returns saved manual topology node positions by device id.
+func (s *Store) TopoPositions() (map[int64][2]float64, error) {
+	m := map[int64][2]float64{}
+	rows, err := s.db.Query(`SELECT device_id,x,y FROM topo_pos`)
+	if err != nil {
+		return m, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var x, y float64
+		if rows.Scan(&id, &x, &y) == nil {
+			m[id] = [2]float64{x, y}
+		}
+	}
+	return m, rows.Err()
+}
+
+// SaveTopoPos upserts one node's manual position.
+func (s *Store) SaveTopoPos(id int64, x, y float64) error {
+	_, err := s.db.Exec(`INSERT INTO topo_pos(device_id,x,y) VALUES(?,?,?)
+		ON CONFLICT(device_id) DO UPDATE SET x=excluded.x, y=excluded.y`, id, x, y)
+	return err
 }
 
 // AllNeighborSightings returns every discovered neighbour across all managed
