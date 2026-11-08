@@ -565,5 +565,11 @@
   "vlan.devices": "Devices",
   "vlan.ports": "Devices & ports (U = untagged, T = tagged)",
   "vlan.none": "No VLAN data yet (collected from the bridge VLAN table on poll).",
-  "vlan.note": "From each device's /interface/bridge/vlan table. U = untagged (access) ports, T = tagged (trunk) ports."
+  "vlan.note": "From each device's /interface/bridge/vlan table. U = untagged (access) ports, T = tagged (trunk) ports.",
+  "find.title": "Find host",
+  "find.subtitle": "Locate any MAC / IP / hostname across the fleet — device, port, vendor",
+  "find.ph": "MAC, IP or hostname…",
+  "find.note": "Searches every device's clients (ARP/DHCP/wireless) and bridge FDB. The port is the exact physical port the host sits behind.",
+  "find.is_device": "managed",
+  "find.none": "Not found in any device's clients or forwarding database."
 }

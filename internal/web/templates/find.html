@@ -1,0 +1,41 @@
+{{define "find"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "find.title"}}</h1>
+  <span class="muted small">{{t "find.subtitle"}}</span></div>
+
+<div class="card">
+  <form method="get" action="/find" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <input type="search" name="q" value="{{.Q}}" placeholder="{{t "find.ph"}}" autofocus
+      style="flex:1;min-width:240px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">
+    <button class="btn primary" type="submit">{{t "cs.search"}}</button>
+  </form>
+  <p class="muted small" style="margin:8px 0 0">{{t "find.note"}}</p>
+</div>
+
+{{if .Searched}}
+<div class="card">
+  {{if .Hits}}
+  <div class="scroll"><table class="dtable">
+    <thead><tr>
+      <th>{{t "al.device"}}</th><th>{{t "neigh.iface"}}</th><th>MAC</th><th>{{t "cl.vendor"}}</th>
+      <th>IP</th><th>{{t "cl.hostname"}}</th><th>{{t "cl.source"}}</th>
+    </tr></thead>
+    <tbody>
+    {{range .Hits}}
+      <tr>
+        <td><a href="/devices/{{.DeviceID}}">{{.Device}}</a>{{if .Managed}} <span class="badge good">{{t "find.is_device"}}</span>{{end}}</td>
+        <td class="mono">{{if .Port}}{{.Port}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td class="mono">{{if .MAC}}{{.MAC}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td class="muted small">{{.Vendor}}</td>
+        <td class="mono">{{if .IP}}{{.IP}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>{{.Hostname}}</td>
+        <td class="muted small">{{.Source}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}
+  <p class="muted">{{t "find.none"}}</p>
+  {{end}}
+</div>
+{{end}}
+{{template "tail" .}}{{end}}

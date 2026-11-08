@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.67.0"
+const Version = "0.68.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -189,6 +189,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/site", s.authed(s.requireRole(model.RoleOperator, s.deviceSetSite)))
 	mux.Handle("POST /devices/{id}/tag", s.authed(s.requireRole(model.RoleOperator, s.deviceTag)))
 	mux.Handle("GET /clients", s.authed(s.clientsPage))
+	mux.Handle("GET /find", s.authed(s.findPage))
 	mux.Handle("GET /ports", s.authed(s.portsPage))
 	mux.Handle("GET /ports.csv", s.authed(s.portsCSV))
 	mux.Handle("GET /vlans", s.authed(s.vlansPage))
@@ -2166,6 +2167,122 @@ func (s *Server) vlansPage(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
 	s.render(w, r, "vlans", map[string]any{"Active": "vlans", "Rows": rows, "VlanCount": len(rows)})
+}
+
+// HostHit is one location where a searched host was found.
+type HostHit struct {
+	DeviceID            int64
+	Device, Port        string
+	MAC, Vendor         string
+	IP, Hostname        string
+	Source              string
+	Managed             bool
+}
+
+// findPage is a fleet-wide host finder: given a MAC / IP / hostname it reports
+// every device (and physical port) where the host is seen, with vendor/hostname.
+func (s *Server) findPage(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	data := map[string]any{"Active": "find", "Q": q}
+	if q == "" {
+		s.render(w, r, "find", data)
+		return
+	}
+	lq := strings.ToLower(q)
+	uq := strings.ToUpper(q)
+	devName := map[int64]string{}
+	devs, _ := s.a.Store.Devices()
+	for _, d := range devs {
+		devName[d.ID] = d.Name
+	}
+	var hits []HostHit
+	seen := map[string]bool{}
+	add := func(h HostHit) {
+		key := fmt.Sprintf("%d|%s|%s", h.DeviceID, h.MAC, h.IP)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		hits = append(hits, h)
+	}
+
+	// Is the query itself a managed device?
+	if macOwner, _ := s.a.Store.MacOwners(); macOwner[uq] != 0 {
+		id := macOwner[uq]
+		add(HostHit{DeviceID: id, Device: devName[id], MAC: uq, Vendor: oui.Vendor(uq), Managed: true})
+	}
+	if addrOwner, _ := s.a.Store.AddrOwners(); addrOwner[q] != 0 {
+		id := addrOwner[q]
+		add(HostHit{DeviceID: id, Device: devName[id], IP: q, Managed: true})
+	}
+	for _, d := range devs {
+		if strings.EqualFold(d.Name, q) {
+			add(HostHit{DeviceID: d.ID, Device: d.Name, IP: d.IP, Managed: true})
+		}
+	}
+
+	// Client / endpoint matches (ARP/DHCP/wireless), with the exact FDB port.
+	clients, _ := s.a.Store.AllClients(100000)
+	for _, c := range clients {
+		match := strings.EqualFold(c.MAC, q) || c.IP == q ||
+			(len(lq) >= 2 && strings.Contains(strings.ToLower(c.Hostname), lq)) ||
+			(len(lq) >= 3 && strings.Contains(strings.ToLower(c.IP), lq))
+		if !match {
+			continue
+		}
+		port := physicalPort(c.Iface)
+		devID := c.DeviceID
+		if c.MAC != "" {
+			if fdbDev, fdbPort := s.bestFDBAttach(c.MAC); fdbDev != 0 {
+				devID, port = fdbDev, fdbPort
+			}
+		}
+		if port == "" {
+			port = c.Iface
+		}
+		add(HostHit{DeviceID: devID, Device: devName[devID], Port: port,
+			MAC: strings.ToUpper(c.MAC), Vendor: oui.Vendor(c.MAC),
+			IP: c.IP, Hostname: c.Hostname, Source: c.Source})
+	}
+
+	// Pure L2 host present only in a bridge FDB (no ARP/DHCP entry). Skip when a
+	// client hit already placed this MAC (that row is richer).
+	if looksLikeMAC(q) {
+		alreadyByMAC := false
+		for _, h := range hits {
+			if h.MAC == uq {
+				alreadyByMAC = true
+				break
+			}
+		}
+		if !alreadyByMAC {
+			if fdb, _ := s.a.Store.BridgeHostsByMac(q); len(fdb) > 0 {
+				if dev, port := s.bestFDBAttach(q); dev != 0 {
+					add(HostHit{DeviceID: dev, Device: devName[dev], Port: port,
+						MAC: uq, Vendor: oui.Vendor(q), Source: "fdb"})
+				}
+			}
+		}
+	}
+
+	data["Hits"] = hits
+	data["Searched"] = true
+	s.render(w, r, "find", data)
+}
+
+// looksLikeMAC reports whether a string is shaped like a MAC address.
+func looksLikeMAC(s string) bool {
+	n := 0
+	for _, r := range s {
+		switch {
+		case (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F'):
+			n++
+		case r == ':' || r == '-':
+		default:
+			return false
+		}
+	}
+	return n == 12
 }
 
 // portsCSV exports per-device port capacity.

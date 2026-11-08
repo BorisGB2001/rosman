@@ -565,5 +565,11 @@
   "vlan.devices": "Устройств",
   "vlan.ports": "Устройства и порты (U = untagged, T = tagged)",
   "vlan.none": "Пока нет данных о VLAN (собираются из таблицы bridge VLAN при опросе).",
-  "vlan.note": "Из таблицы /interface/bridge/vlan каждого устройства. U = untagged (access) порты, T = tagged (trunk) порты."
+  "vlan.note": "Из таблицы /interface/bridge/vlan каждого устройства. U = untagged (access) порты, T = tagged (trunk) порты.",
+  "find.title": "Поиск хоста",
+  "find.subtitle": "Найти любой MAC / IP / имя по ферме — устройство, порт, вендор",
+  "find.ph": "MAC, IP или имя хоста…",
+  "find.note": "Ищет по клиентам (ARP/DHCP/Wi-Fi) и таблице коммутации (FDB) всех устройств. Порт — точный физический порт, за которым находится хост.",
+  "find.is_device": "управляемое",
+  "find.none": "Не найдено в клиентах или таблицах коммутации устройств."
 }
