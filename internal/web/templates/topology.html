@@ -155,6 +155,12 @@
   };
   var fi=document.getElementById('topo-find');
   if(fi) fi.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); window.topoFind(); } });
+  // Deep link: /topology?find=<mac|ip|name> pre-fills and runs the search, so a
+  // highlighted device + its green path from ROSMan can be shared by URL.
+  (function(){
+    var m=/[?&]find=([^&]+)/.exec(location.search);
+    if(m && fi){ fi.value=decodeURIComponent(m[1].replace(/\+/g,' ')); window.topoFind(); }
+  })();
   // right-click a device node to hide / unhide it on the map (operators only)
   if(canWrite){
     nodes.forEach(function(g){

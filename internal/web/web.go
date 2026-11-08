@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.83.0"
+const Version = "0.84.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -3121,6 +3121,27 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	macByDev, _ := s.a.Store.DeviceMacMap()
+	// Augment MNDP adjacency with bridge-FDB attachments: for each managed device,
+	// the managed device (if any) on whose access port its own MAC is learned.
+	// This links switch groups that /ip/neighbor misses (e.g. across the mgmt
+	// VLAN), using one fewest-MAC access-port edge per device so the graph stays
+	// tree-like rather than a full-mesh hairball.
+	for _, d := range devs {
+		mac := macByDev[d.ID]
+		if mac == "" {
+			continue
+		}
+		if attachDev, port := s.bestFDBAttach(mac); attachDev != 0 && attachDev != d.ID {
+			a, b := d.ID, attachDev
+			if a > b {
+				a, b = b, a
+			}
+			k := ekey{a, b}
+			if _, ok := edgePort[k]; !ok {
+				edgePort[k] = port
+			}
+		}
+	}
 	type Node struct {
 		ID                     int64
 		Name, IP, MAC, Model, ROS string
