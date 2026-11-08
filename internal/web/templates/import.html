@@ -1,0 +1,28 @@
+{{define "import"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "imp.title"}}</h1></div>
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+{{if .Results}}<div class="note ok">{{t "imp.done"}}: {{.Added}}</div>{{end}}
+<div class="card">
+  <p class="muted small">{{t "imp.note"}}</p>
+  <pre class="mono" style="white-space:pre-wrap;font-size:.85em">ip,api_user,api_pass,name,api_port,ssh_user
+10.0.0.1,admin,secret,gw-main,8729,admin
+10.0.0.2,admin,secret</pre>
+  <form method="post" action="/devices/import">
+    <textarea name="csv" rows="10" style="width:100%;font-family:monospace" placeholder="ip,api_user,api_pass,name,api_port,ssh_user" required>{{.CSV}}</textarea>
+    <div style="margin-top:10px"><button class="btn primary" type="submit">{{t "imp.run"}}</button>
+      <a href="/devices/new" class="btn sm secondary" style="margin-left:8px">{{t "nav.add"}}</a></div>
+  </form>
+</div>
+{{if .Results}}
+<div class="card">
+  <h3>{{t "tpl.results"}}</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "al.device"}}</th><th>{{t "al.state"}}</th><th>{{t "al.detail"}}</th></tr></thead>
+    <tbody>
+    {{range .Results}}<tr><td>{{.Device}}</td><td>{{if .OK}}<span class="badge good">ok</span>{{else}}<span class="badge bad">fail</span>{{end}}</td><td class="muted">{{.Detail}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+{{end}}
+<p><a href="/">← {{t "dev.back"}}</a></p>
+{{template "tail" .}}{{end}}

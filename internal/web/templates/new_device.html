@@ -1,5 +1,6 @@
 {{define "new_device"}}{{template "head" .}}
-<div class="cardhead"><h1 style="margin:0">{{t "newdev.title"}}</h1></div>
+<div class="cardhead"><h1 style="margin:0">{{t "newdev.title"}}</h1>
+  <a class="btn sm secondary" href="/devices/import">{{t "imp.title"}}</a></div>
 <div class="card narrow">
   <p class="muted">{{t "newdev.desc"}}</p>
   {{if .Err}}<div class="note err">{{.Err}}</div>{{end}}

@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"embed"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -43,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.31.0"
+const Version = "0.32.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -137,6 +138,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /{$}", s.authed(s.devices))
 	mux.Handle("GET /devices/new", s.authed(s.requireRole(model.RoleOperator, s.newDeviceForm)))
 	mux.Handle("POST /devices/new", s.authed(s.requireRole(model.RoleOperator, s.newDeviceSubmit)))
+	mux.Handle("GET /devices/import", s.authed(s.requireRole(model.RoleOperator, s.importForm)))
+	mux.Handle("POST /devices/import", s.authed(s.requireRole(model.RoleOperator, s.importRun)))
 	mux.Handle("GET /devices/{id}", s.authed(s.deviceDetail))
 	mux.Handle("POST /devices/{id}/poll", s.authed(s.requireRole(model.RoleOperator, s.devicePoll)))
 	mux.Handle("POST /devices/{id}/backup", s.authed(s.requireRole(model.RoleOperator, s.deviceBackup)))
@@ -895,6 +898,68 @@ func (s *Server) deviceTag(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) newDeviceForm(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "new_device", map[string]any{"Active": "devices"})
+}
+
+func (s *Server) importForm(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, "import", map[string]any{"Active": "devices"})
+}
+
+func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
+	raw := strings.TrimSpace(r.FormValue("csv"))
+	if raw == "" {
+		s.render(w, r, "import", map[string]any{"Active": "devices", "Err": "empty input"})
+		return
+	}
+	rd := csv.NewReader(strings.NewReader(raw))
+	rd.FieldsPerRecord = -1 // tolerate ragged rows
+	rd.TrimLeadingSpace = true
+	rows, err := rd.ReadAll()
+	if err != nil {
+		s.render(w, r, "import", map[string]any{"Active": "devices", "Err": "parse: " + err.Error(), "CSV": raw})
+		return
+	}
+	var results []app.ApplyResult
+	added := 0
+	for i, row := range rows {
+		if len(row) == 0 || (len(row) == 1 && strings.TrimSpace(row[0]) == "") {
+			continue
+		}
+		// Skip an optional header line.
+		if i == 0 && (strings.EqualFold(strings.TrimSpace(row[0]), "ip") || strings.EqualFold(strings.TrimSpace(row[0]), "name")) {
+			continue
+		}
+		col := func(n int) string {
+			if n < len(row) {
+				return strings.TrimSpace(row[n])
+			}
+			return ""
+		}
+		ip, user, pass := col(0), col(1), col(2)
+		name, portS, sshUser := col(3), col(4), col(5)
+		label := ip
+		if name != "" {
+			label = name + " (" + ip + ")"
+		}
+		if ip == "" || user == "" || pass == "" {
+			results = append(results, app.ApplyResult{Device: label, OK: false, Detail: "need ip,user,pass"})
+			continue
+		}
+		port, _ := strconv.Atoi(portS)
+		if port == 0 {
+			port = 8729
+		}
+		if sshUser == "" {
+			sshUser = user
+		}
+		if _, err := s.a.AddDevice(name, ip, port, user, pass, sshUser); err != nil {
+			results = append(results, app.ApplyResult{Device: label, OK: false, Detail: err.Error()})
+			continue
+		}
+		added++
+		results = append(results, app.ApplyResult{Device: label, OK: true, Detail: "added"})
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "import_devices", fmt.Sprintf("%d added", added))
+	s.render(w, r, "import", map[string]any{"Active": "devices", "Results": results, "Added": added})
 }
 
 func (s *Server) newDeviceSubmit(w http.ResponseWriter, r *http.Request) {
