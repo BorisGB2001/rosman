@@ -613,6 +613,14 @@ func (a *App) DeviceFirewall(d model.Device) (ros.FirewallInfo, error) {
 	return ros.Firewall(d, pass, a.Cfg.APITimeout)
 }
 
+func (a *App) DeviceNet(d model.Device) (ros.NetInfo, error) {
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return ros.NetInfo{}, err
+	}
+	return ros.NetTables(d, pass, a.Cfg.APITimeout)
+}
+
 func (a *App) DevicePing(d model.Device, addr string, count int) (ros.PingReply, error) {
 	pass, err := a.Box.Decrypt(d.APIPassEnc)
 	if err != nil {

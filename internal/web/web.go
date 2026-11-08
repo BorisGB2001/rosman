@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.55.0"
+const Version = "0.56.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -159,6 +159,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /devices/{id}/tools", s.authed(s.toolsPage))
 	mux.Handle("GET /devices/{id}/lte", s.authed(s.ltePage))
 	mux.Handle("GET /devices/{id}/vpn", s.authed(s.vpnPage))
+	mux.Handle("GET /devices/{id}/net", s.authed(s.netPage))
 	mux.Handle("GET /devices/{id}/history", s.authed(s.historyPage))
 	mux.Handle("POST /devices/{id}/firewall", s.authed(s.requireRole(model.RoleOperator, s.firewallApply)))
 	mux.Handle("GET /devices/{id}/diff", s.authed(s.diffPage))
@@ -1705,6 +1706,24 @@ func (s *Server) windowDelete(w http.ResponseWriter, r *http.Request) {
 	_ = s.a.Store.DeleteWindow(id)
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "maintenance_delete", r.PathValue("id"))
 	http.Redirect(w, r, "/maintenance?msg=window-removed", http.StatusSeeOther)
+}
+
+func (s *Server) netPage(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	data := map[string]any{"Active": "devices", "D": d,
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")}
+	ni, nerr := s.a.DeviceNet(d)
+	if nerr != nil {
+		data["Err"] = nerr.Error()
+	} else {
+		data["N"] = ni
+	}
+	s.render(w, r, "net", data)
 }
 
 func (s *Server) firewallPage(w http.ResponseWriter, r *http.Request) {

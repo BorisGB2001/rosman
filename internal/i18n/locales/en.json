@@ -506,5 +506,18 @@
   "cs.none": "No device config matched.",
   "cs.bad_regex": "Invalid regular expression",
   "cron.command": "Command (for the Run-command action)",
-  "cron.command_note": "Used only when the action is Run command. Runs over SSH on the target devices; set a guard above to auto-roll-back a config change that cuts access."
+  "cron.command_note": "Used only when the action is Run command. Runs over SSH on the target devices; set a guard above to auto-roll-back a config change that cuts access.",
+  "net.title": "Network",
+  "net.refresh": "Refresh",
+  "net.dhcp": "DHCP leases",
+  "net.host": "Host name",
+  "net.server": "Server",
+  "net.expires": "Expires after",
+  "net.empty": "empty",
+  "net.arp": "ARP table",
+  "net.routes": "Routes",
+  "net.routes_capped": "Showing the first 500 routes only.",
+  "net.dst": "Destination",
+  "net.gateway": "Gateway",
+  "net.distance": "Dist"
 }

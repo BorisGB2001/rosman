@@ -1,0 +1,56 @@
+{{define "net"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "net.title"}} — {{.D.Name}}</h1>
+  <a class="btn sm secondary" href="/devices/{{.D.ID}}/net">↻ {{t "net.refresh"}}</a></div>
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+
+{{with .N}}
+<div class="card">
+  <h3 style="margin-top:0">{{t "net.dhcp"}} <span class="muted small">({{len .Leases}})</span></h3>
+  <div class="scroll"><table class="dtable">
+    <thead><tr><th data-col="addr" data-label="IP">IP</th><th data-col="mac" data-label="MAC">MAC</th><th data-col="host" data-label="{{t "net.host"}}">{{t "net.host"}}</th><th data-col="server" data-label="{{t "net.server"}}">{{t "net.server"}}</th><th data-col="expires" data-label="{{t "net.expires"}}">{{t "net.expires"}}</th><th data-col="status" data-label="{{t "al.state"}}">{{t "al.state"}}</th></tr></thead>
+    <tbody>
+    {{range .Leases}}<tr>
+      <td class="mono">{{.Address}}</td><td class="mono">{{.MAC}}</td>
+      <td>{{if .Host}}{{.Host}}{{else}}<span class="muted">—</span>{{end}}</td>
+      <td class="muted">{{.Server}}</td><td class="muted">{{if .Expires}}{{.Expires}}{{else}}—{{end}}</td>
+      <td>{{if eq .Status "bound"}}<span class="badge good">bound</span>{{else}}<span class="badge">{{.Status}}</span>{{end}}{{if .Dynamic}} <span class="badge" title="dynamic">dyn</span>{{end}}</td>
+    </tr>{{else}}<tr><td colspan="6" class="muted">{{t "net.empty"}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">{{t "net.arp"}} <span class="muted small">({{len .ARP}})</span></h3>
+  <div class="scroll"><table class="dtable">
+    <thead><tr><th data-col="addr" data-label="IP">IP</th><th data-col="mac" data-label="MAC">MAC</th><th data-col="iface" data-label="{{t "neigh.iface"}}">{{t "neigh.iface"}}</th><th data-col="status" data-label="{{t "al.state"}}">{{t "al.state"}}</th></tr></thead>
+    <tbody>
+    {{range .ARP}}<tr>
+      <td class="mono">{{.Address}}</td>
+      <td class="mono">{{if .MAC}}{{.MAC}}{{else}}<span class="muted">—</span>{{end}}</td>
+      <td class="muted">{{.Iface}}</td>
+      <td>{{if .Complete}}<span class="badge good">complete</span>{{else if .Status}}<span class="badge">{{.Status}}</span>{{else}}<span class="muted">—</span>{{end}}{{if .Dynamic}} <span class="badge" title="dynamic">dyn</span>{{end}}</td>
+    </tr>{{else}}<tr><td colspan="4" class="muted">{{t "net.empty"}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">{{t "net.routes"}} <span class="muted small">({{len .Routes}}{{if .RoutesCapped}}+{{end}})</span></h3>
+  {{if .RoutesCapped}}<p class="muted small" style="margin-top:0">{{t "net.routes_capped"}}</p>{{end}}
+  <div class="scroll"><table class="dtable">
+    <thead><tr><th data-col="dst" data-label="{{t "net.dst"}}">{{t "net.dst"}}</th><th data-col="gw" data-label="{{t "net.gateway"}}">{{t "net.gateway"}}</th><th data-col="dist" data-label="{{t "net.distance"}}">{{t "net.distance"}}</th><th data-col="kind" data-label="{{t "col.type"}}">{{t "col.type"}}</th><th data-col="active" data-label="{{t "al.state"}}">{{t "al.state"}}</th></tr></thead>
+    <tbody>
+    {{range .Routes}}<tr {{if not .Active}}style="opacity:.5"{{end}}>
+      <td class="mono">{{.Dst}}</td>
+      <td class="mono">{{if .Gateway}}{{.Gateway}}{{else}}<span class="muted">—</span>{{end}}</td>
+      <td class="muted">{{.Distance}}</td>
+      <td>{{if .Dynamic}}<span class="badge">dyn</span>{{else if .Conn}}<span class="badge good">connected</span>{{else}}<span class="badge">static</span>{{end}}</td>
+      <td>{{if .Active}}<span class="badge good">active</span>{{else}}<span class="muted">—</span>{{end}}</td>
+    </tr>{{else}}<tr><td colspan="5" class="muted">{{t "net.empty"}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+{{end}}
+<p><a href="/devices/{{.D.ID}}">← {{t "dev.back"}}</a></p>
+{{template "tail" .}}{{end}}

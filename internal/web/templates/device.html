@@ -10,6 +10,7 @@
   <a class="btn sm secondary" href="/devices/{{.D.ID}}/tools">{{t "tool.title"}}</a>
   <a class="btn sm secondary" href="/devices/{{.D.ID}}/lte">LTE</a>
   <a class="btn sm secondary" href="/devices/{{.D.ID}}/vpn">VPN</a>
+  <a class="btn sm secondary" href="/devices/{{.D.ID}}/net">{{t "net.title"}}</a>
   {{if canWrite .User}}<div class="badges">
     <form class="inline" method="post" action="/devices/{{.D.ID}}/poll"><button class="btn sm" type="submit">{{t "dev.poll"}}</button></form>
     <form class="inline" method="post" action="/devices/{{.D.ID}}/backup">

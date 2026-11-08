@@ -536,6 +536,76 @@ func Firewall(d model.Device, pass string, timeout time.Duration) (FirewallInfo,
 	return fi, nil
 }
 
+// DHCPLease is one /ip/dhcp-server lease.
+type DHCPLease struct {
+	Address, MAC, Host, Status, Server, Expires string
+	Dynamic                                     bool
+}
+
+// ARPEntry is one /ip/arp row.
+type ARPEntry struct {
+	Address, MAC, Iface, Status string
+	Dynamic, Complete           bool
+}
+
+// RouteEntry is one /ip/route row.
+type RouteEntry struct {
+	Dst, Gateway, Distance        string
+	Active, Dynamic, Static, Conn bool
+}
+
+// NetInfo is a live snapshot of a device's DHCP leases, ARP table and routes.
+type NetInfo struct {
+	Leases       []DHCPLease
+	ARP          []ARPEntry
+	Routes       []RouteEntry
+	RoutesCapped bool
+}
+
+const netRouteCap = 500
+
+// NetTables reads DHCP leases, the ARP table and the routing table over the API.
+// The route list is capped at netRouteCap rows (RoutesCapped reports a cut).
+func NetTables(d model.Device, pass string, timeout time.Duration) (NetInfo, error) {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return NetInfo{}, err
+	}
+	defer c.Close()
+	var ni NetInfo
+	if r, e := c.Run("/ip/dhcp-server/lease/print"); e == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			ni.Leases = append(ni.Leases, DHCPLease{
+				Address: m["address"], MAC: m["mac-address"], Host: m["host-name"],
+				Status: m["status"], Server: m["server"], Expires: m["expires-after"],
+				Dynamic: m["dynamic"] == "true"})
+		}
+	}
+	if r, e := c.Run("/ip/arp/print"); e == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			ni.ARP = append(ni.ARP, ARPEntry{
+				Address: m["address"], MAC: m["mac-address"], Iface: m["interface"],
+				Status: m["status"], Dynamic: m["dynamic"] == "true", Complete: m["complete"] == "true"})
+		}
+	}
+	if r, e := c.Run("/ip/route/print"); e == nil {
+		for _, re := range r.Re {
+			if len(ni.Routes) >= netRouteCap {
+				ni.RoutesCapped = true
+				break
+			}
+			m := re.Map
+			ni.Routes = append(ni.Routes, RouteEntry{
+				Dst: m["dst-address"], Gateway: m["gateway"], Distance: m["distance"],
+				Active: m["active"] == "true", Dynamic: m["dynamic"] == "true",
+				Static: m["static"] == "true", Conn: m["connect"] == "true"})
+		}
+	}
+	return ni, nil
+}
+
 // LTEIface is a read-only snapshot of one LTE interface and its radio metrics.
 type LTEIface struct {
 	Name, Status, Operator, Tech          string
