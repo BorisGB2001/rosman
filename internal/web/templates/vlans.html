@@ -1,0 +1,32 @@
+{{define "vlans"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "vlan.title"}}</h1>
+  <span class="muted small">{{.VlanCount}} VLAN · {{t "vlan.subtitle"}}</span></div>
+<div class="card">
+  <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
+    <input type="search" data-search-for="vlantable" placeholder="{{t "col.search"}}" style="width:200px">
+  </div>
+  <div class="scroll"><table id="vlantable" class="dtable">
+    <thead><tr>
+      <th data-col="vlan" data-label="VLAN">VLAN</th>
+      <th data-col="devs" data-label="{{t "vlan.devices"}}">{{t "vlan.devices"}}</th>
+      <th data-col="detail" data-label="{{t "vlan.ports"}}">{{t "vlan.ports"}}</th>
+    </tr></thead>
+    <tbody>
+    {{range .Rows}}
+      <tr>
+        <td><span class="badge" style="font-size:13px">{{.ID}}</span></td>
+        <td data-sort="{{len .Devices}}">{{len .Devices}}</td>
+        <td class="small">
+          {{range .Devices}}<div style="margin:2px 0">
+            <a href="/devices/{{.DeviceID}}">{{.Device}}</a>
+            {{if .Untagged}}<span class="muted">· U:</span> <span class="mono">{{.Untagged}}</span>{{end}}
+            {{if .Tagged}}<span class="muted">· T:</span> <span class="mono">{{.Tagged}}</span>{{end}}
+          </div>{{end}}
+        </td>
+      </tr>
+    {{else}}<tr><td colspan="3" class="muted">{{t "vlan.none"}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+  <p class="muted small">{{t "vlan.note"}}</p>
+</div>
+{{template "tail" .}}{{end}}

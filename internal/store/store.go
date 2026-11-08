@@ -423,7 +423,7 @@ func (s *Store) DeleteDevice(id int64) error {
 		return err
 	}
 	for _, t := range []string{"metrics", "configs", "alerts", "device_tags", "device_ports",
-		"device_clients", "device_neighbors", "iface_traffic", "topo_pos", "device_images", "bridge_hosts"} {
+		"device_clients", "device_neighbors", "iface_traffic", "topo_pos", "device_images", "bridge_hosts", "device_vlans"} {
 		if _, err := tx.Exec(`DELETE FROM `+t+` WHERE device_id=?`, id); err != nil {
 			tx.Rollback()
 			return err
@@ -754,6 +754,44 @@ func (s *Store) AddrOwners() (map[string]int64, error) {
 // virtual interfaces report, which must never be used as an identifier.
 func zeroMAC(mac string) bool {
 	return mac == "" || strings.ToUpper(mac) == "00:00:00:00:00:00"
+}
+
+// ReplaceVLANs replaces a device's stored bridge VLAN table.
+func (s *Store) ReplaceVLANs(deviceID int64, vlans []model.BridgeVLAN) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM device_vlans WHERE device_id=?`, deviceID); err != nil {
+		tx.Rollback()
+		return err
+	}
+	for _, v := range vlans {
+		if _, err := tx.Exec(`INSERT INTO device_vlans(device_id,vlan_ids,tagged,untagged,bridge) VALUES(?,?,?,?,?)`,
+			deviceID, v.VlanIDs, v.Tagged, v.Untagged, v.Bridge); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// AllVLANs returns every device's VLAN rows with the device id attached.
+func (s *Store) AllVLANs() ([]model.BridgeVLAN, error) {
+	rows, err := s.db.Query(`SELECT device_id,vlan_ids,tagged,untagged,bridge FROM device_vlans`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.BridgeVLAN
+	for rows.Next() {
+		var v model.BridgeVLAN
+		if err := rows.Scan(&v.DeviceID, &v.VlanIDs, &v.Tagged, &v.Untagged, &v.Bridge); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
 }
 
 // ReplaceBridgeHosts replaces a device's stored bridge FDB.

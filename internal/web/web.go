@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.64.0"
+const Version = "0.65.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -190,6 +190,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/tag", s.authed(s.requireRole(model.RoleOperator, s.deviceTag)))
 	mux.Handle("GET /clients", s.authed(s.clientsPage))
 	mux.Handle("GET /ports", s.authed(s.portsPage))
+	mux.Handle("GET /vlans", s.authed(s.vlansPage))
 	mux.Handle("GET /reports", s.authed(s.reportsPage))
 	mux.Handle("GET /reports/fleet.csv", s.authed(s.fleetCSV))
 	mux.Handle("GET /reports/fleet", s.authed(s.fleetReport))
@@ -2081,6 +2082,69 @@ func (s *Server) fleetRows() ([]fleetRow, map[string]int) {
 			LastSeen: ls, Outdated: outdated, CVE: n})
 	}
 	return rows, sum
+}
+
+// expandVlanIDs parses a RouterOS vlan-ids field ("200", "10,20-30") into a
+// sorted list of individual VLAN IDs.
+func expandVlanIDs(s string) []int {
+	seen := map[int]bool{}
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if a, b, ok := strings.Cut(part, "-"); ok {
+			lo, e1 := strconv.Atoi(strings.TrimSpace(a))
+			hi, e2 := strconv.Atoi(strings.TrimSpace(b))
+			if e1 == nil && e2 == nil && hi >= lo && hi-lo < 4096 {
+				for v := lo; v <= hi; v++ {
+					seen[v] = true
+				}
+			}
+		} else if v, e := strconv.Atoi(part); e == nil {
+			seen[v] = true
+		}
+	}
+	out := make([]int, 0, len(seen))
+	for v := range seen {
+		out = append(out, v)
+	}
+	sort.Ints(out)
+	return out
+}
+
+// vlansPage shows a fleet-wide VLAN overview: each VLAN id and the devices (and
+// their tagged/untagged ports) that carry it.
+func (s *Server) vlansPage(w http.ResponseWriter, r *http.Request) {
+	vrows, _ := s.a.Store.AllVLANs()
+	devs, _ := s.a.Store.Devices()
+	name := map[int64]string{}
+	for _, d := range devs {
+		name[d.ID] = d.Name
+	}
+	type DevVlan struct {
+		DeviceID         int64
+		Device           string
+		Tagged, Untagged string
+	}
+	type VlanRow struct {
+		ID      int
+		Devices []DevVlan
+	}
+	agg := map[int][]DevVlan{}
+	for _, vr := range vrows {
+		dv := DevVlan{DeviceID: vr.DeviceID, Device: name[vr.DeviceID], Tagged: vr.Tagged, Untagged: vr.Untagged}
+		for _, id := range expandVlanIDs(vr.VlanIDs) {
+			agg[id] = append(agg[id], dv)
+		}
+	}
+	rows := make([]VlanRow, 0, len(agg))
+	for id, dvs := range agg {
+		sort.Slice(dvs, func(i, j int) bool { return dvs[i].Device < dvs[j].Device })
+		rows = append(rows, VlanRow{ID: id, Devices: dvs})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
+	s.render(w, r, "vlans", map[string]any{"Active": "vlans", "Rows": rows, "VlanCount": len(rows)})
 }
 
 // portsPage shows per-device physical-port capacity (used / free / disabled)

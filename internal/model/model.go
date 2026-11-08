@@ -195,6 +195,15 @@ type Client struct {
 	Source     string
 }
 
+// BridgeVLAN is one row of a device's bridge VLAN table.
+type BridgeVLAN struct {
+	DeviceID int64
+	VlanIDs  string // e.g. "200" or "10,20-30"
+	Tagged   string // tagged ports (comma-separated)
+	Untagged string // untagged ports
+	Bridge   string
+}
+
 // BridgeHost is one entry of a device's bridge forwarding database (FDB): a
 // learned MAC and the physical member port it is reachable on.
 type BridgeHost struct {

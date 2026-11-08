@@ -559,5 +559,11 @@
   "cap.free": "Free",
   "cap.disabled": "Disabled",
   "cap.free_ports": "Free ports",
-  "cap.note": "A port counts as used when its link is up, free when down (and not disabled). Only physical ethernet/SFP ports are counted."
+  "cap.note": "A port counts as used when its link is up, free when down (and not disabled). Only physical ethernet/SFP ports are counted.",
+  "vlan.title": "VLANs",
+  "vlan.subtitle": "VLAN IDs across the fleet and the ports that carry them",
+  "vlan.devices": "Devices",
+  "vlan.ports": "Devices & ports (U = untagged, T = tagged)",
+  "vlan.none": "No VLAN data yet (collected from the bridge VLAN table on poll).",
+  "vlan.note": "From each device's /interface/bridge/vlan table. U = untagged (access) ports, T = tagged (trunk) ports."
 }

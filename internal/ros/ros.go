@@ -52,6 +52,7 @@ type Health struct {
 	VPNCount      int
 	VPNInfo       string // brief, e.g. "WG:2 IPsec:1 PPP:0"
 	BridgeHosts   []model.BridgeHost
+	BridgeVLANs   []model.BridgeVLAN
 }
 
 // parseROSTime parses RouterOS date strings in both the modern ISO form and the
@@ -299,6 +300,21 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 				continue
 			}
 			h.BridgeHosts = append(h.BridgeHosts, model.BridgeHost{MAC: mac, Iface: iface, Bridge: m["bridge"]})
+		}
+	}
+
+	// Bridge VLAN table: which VLAN IDs are tagged/untagged on which ports.
+	if r, err := c.Run("/interface/bridge/vlan/print"); err == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			ids := m["vlan-ids"]
+			if ids == "" {
+				continue
+			}
+			tagged := firstNonEmpty(m["current-tagged"], m["tagged"])
+			untagged := firstNonEmpty(m["current-untagged"], m["untagged"])
+			h.BridgeVLANs = append(h.BridgeVLANs, model.BridgeVLAN{
+				VlanIDs: ids, Tagged: tagged, Untagged: untagged, Bridge: m["bridge"]})
 		}
 	}
 

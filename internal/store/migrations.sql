@@ -267,6 +267,16 @@ CREATE TABLE IF NOT EXISTS device_vpn (
     info      TEXT NOT NULL DEFAULT ''
 );
 
+-- Bridge VLAN table per device: VLAN IDs and their tagged/untagged ports.
+CREATE TABLE IF NOT EXISTS device_vlans (
+    device_id INTEGER NOT NULL,
+    vlan_ids  TEXT NOT NULL DEFAULT '',
+    tagged    TEXT NOT NULL DEFAULT '',
+    untagged  TEXT NOT NULL DEFAULT '',
+    bridge    TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_device_vlans ON device_vlans(device_id);
+
 -- Bridge forwarding database (FDB): learned MAC -> physical member port, per
 -- device. Ground truth for which port a MAC/host sits behind.
 CREATE TABLE IF NOT EXISTS bridge_hosts (
