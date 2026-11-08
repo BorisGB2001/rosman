@@ -491,5 +491,18 @@
   "run.run": "Run",
   "run.no_output": "(no output)",
   "run.err_empty": "Command is empty",
-  "run.err_nodev": "No devices selected"
+  "run.err_nodev": "No devices selected",
+  "cs.title": "Config search",
+  "cs.subtitle": "Search a string or regex across the latest stored config of every device",
+  "cs.q_ph": "e.g. telnet, 0.0.0.0/0, allow-remote-requests",
+  "cs.regex": "Regex",
+  "cs.case": "Case-sensitive",
+  "cs.search": "Search",
+  "cs.note": "Searches the newest /export snapshot of each device (updated on backup). Matching lines are shown with line numbers.",
+  "cs.found": "Matches",
+  "cs.in_devices": "in devices",
+  "cs.no_config": "no stored config",
+  "cs.view_config": "View config",
+  "cs.none": "No device config matched.",
+  "cs.bad_regex": "Invalid regular expression"
 }

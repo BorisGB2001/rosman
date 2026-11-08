@@ -1,0 +1,38 @@
+{{define "configsearch"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "cs.title"}}</h1>
+  <span class="muted small">{{t "cs.subtitle"}}</span></div>
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+
+<div class="card">
+  <form method="get" action="/configsearch" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+    <input type="search" name="q" value="{{.Q}}" placeholder="{{t "cs.q_ph"}}" autofocus
+      style="flex:1;min-width:240px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">
+    <label style="flex-direction:row;gap:6px;align-items:center;font-weight:normal">
+      <input type="checkbox" name="re" value="1" {{if .Regex}}checked{{end}}> {{t "cs.regex"}}</label>
+    <label style="flex-direction:row;gap:6px;align-items:center;font-weight:normal">
+      <input type="checkbox" name="cs" value="1" {{if .Case}}checked{{end}}> {{t "cs.case"}}</label>
+    <button class="btn primary" type="submit">{{t "cs.search"}}</button>
+  </form>
+  <p class="muted small" style="margin:8px 0 0">{{t "cs.note"}}</p>
+</div>
+
+{{if .Searched}}
+<div class="cardhead" style="margin-top:6px"><h2 style="margin:0;font-size:16px">
+  {{t "cs.found"}}: {{.TotalHits}} · {{t "cs.in_devices"}}: {{len .Results}} / {{.Scanned}}{{if .NoCfg}} · <span class="muted">{{t "cs.no_config"}}: {{.NoCfg}}</span>{{end}}</h2></div>
+{{range .Results}}
+<div class="card" style="margin-bottom:8px">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <a href="/devices/{{.DeviceID}}"><strong>{{.Device}}</strong></a>
+    <span class="mono muted small">{{.IP}}</span>
+    <span class="badge good">{{len .Hits}}</span>
+    <span class="muted small" style="margin-left:auto">{{dateT .TakenAt}}</span>
+    <a class="btn sm secondary" href="/devices/{{.DeviceID}}/history">{{t "cs.view_config"}}</a>
+  </div>
+  <pre style="margin:8px 0 0;max-height:280px;overflow:auto;background:var(--bg2,#0d1117);padding:10px;border-radius:6px;font-size:12.5px;white-space:pre-wrap;word-break:break-word">{{range .Hits}}<span class="muted" style="user-select:none;display:inline-block;min-width:3.5em;text-align:right;margin-right:10px">{{.Line}}</span>{{.Text}}
+{{end}}</pre>
+</div>
+{{else}}
+<div class="card"><p class="muted">{{t "cs.none"}}</p></div>
+{{end}}
+{{end}}
+{{template "tail" .}}{{end}}

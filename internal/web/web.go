@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.53.0"
+const Version = "0.54.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -185,6 +185,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /bulk", s.authed(s.requireRole(model.RoleOperator, s.bulkRun)))
 	mux.Handle("GET /run", s.authed(s.requireRole(model.RoleOperator, s.runPage)))
 	mux.Handle("POST /run", s.authed(s.requireRole(model.RoleOperator, s.runExec)))
+	mux.Handle("GET /configsearch", s.authed(s.requireRole(model.RoleOperator, s.configSearchPage)))
 	mux.Handle("GET /compliance", s.authed(s.compliancePage))
 	mux.Handle("POST /compliance", s.authed(s.requireRole(model.RoleOperator, s.complianceCreate)))
 	mux.Handle("POST /compliance/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.complianceDelete)))
@@ -2023,6 +2024,38 @@ func firstLine(s string) string {
 		return s[:i] + " …"
 	}
 	return s
+}
+
+func (s *Server) configSearchPage(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	useRegex := r.URL.Query().Get("re") == "1"
+	caseSens := r.URL.Query().Get("cs") == "1"
+	data := map[string]any{"Active": "configsearch", "Q": q, "Regex": useRegex, "Case": caseSens}
+	if q != "" {
+		results, err := s.a.ConfigSearch(q, useRegex, caseSens)
+		if err != nil {
+			data["Err"] = i18n.T(langOf(r), "cs.bad_regex") + ": " + err.Error()
+		} else {
+			matched := make([]app.ConfigSearchResult, 0, len(results))
+			totalHits, noCfg := 0, 0
+			for _, rr := range results {
+				if rr.NoConfig {
+					noCfg++
+					continue
+				}
+				if len(rr.Hits) > 0 {
+					matched = append(matched, rr)
+					totalHits += len(rr.Hits)
+				}
+			}
+			data["Results"] = matched
+			data["TotalHits"] = totalHits
+			data["NoCfg"] = noCfg
+			data["Scanned"] = len(results) - noCfg
+			data["Searched"] = true
+		}
+	}
+	s.render(w, r, "configsearch", data)
 }
 
 func (s *Server) compliancePage(w http.ResponseWriter, r *http.Request) {
