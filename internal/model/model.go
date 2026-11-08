@@ -117,6 +117,7 @@ type Device struct {
 	SNMPPort      int
 	DeviceType      string     // router | switch | mix | "" (unknown)
 	LastFail        *time.Time // last poll failure
+	Notes           string     // free-text admin description shown on the device card
 	PollIntervalSec int        // per-device poll interval in seconds (0 = global default)
 }
 
@@ -245,6 +246,16 @@ type Neighbor struct {
 	IP       string
 	MAC      string
 	Platform string
+}
+
+// DeviceImage is one uploaded image for a device (metadata; data fetched
+// separately).
+type DeviceImage struct {
+	ID        int64
+	DeviceID  int64
+	Caption   string
+	Type      string
+	CreatedAt time.Time
 }
 
 // Template is a named RouterOS config snippet.

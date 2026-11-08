@@ -17,6 +17,8 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -44,7 +46,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.58.0"
+const Version = "0.59.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -75,6 +77,7 @@ func New(a *app.App) (*Server, error) {
 		"dateT":    func(t time.Time) string { if t.IsZero() { return "—" }; return t.Format("2006-01-02") },
 		"sub":      func(a, b int) int { return a - b },
 		"ipbase":   func(a string) string { if i := strings.IndexByte(a, '/'); i >= 0 { return a[:i] }; return a },
+		"modelImg":  func(m string) string { return modelImgPath(a.Cfg.DataDir, m) },
 		"date":     func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02") },
 		"canWrite": func(u model.User) bool { return roleRank(u.Role) >= roleRank(model.RoleOperator) },
 		"isAdmin":  func(u model.User) bool { return u.Role == model.RoleAdmin },
@@ -159,7 +162,12 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /devices/{id}/tools", s.authed(s.toolsPage))
 	mux.Handle("GET /devices/{id}/lte", s.authed(s.ltePage))
 	mux.Handle("GET /devices/{id}/vpn", s.authed(s.vpnPage))
+	mux.Handle("GET /models/{name}", s.authed(s.serveModelImage))
 	mux.Handle("GET /devices/{id}/net", s.authed(s.netPage))
+	mux.Handle("GET /devices/{id}/image/{imgid}", s.authed(s.deviceImageServe))
+	mux.Handle("POST /devices/{id}/image", s.authed(s.requireRole(model.RoleOperator, s.deviceImageUpload)))
+	mux.Handle("POST /devices/{id}/image/{imgid}/delete", s.authed(s.requireRole(model.RoleOperator, s.deviceImageDelete)))
+	mux.Handle("POST /devices/{id}/notes", s.authed(s.requireRole(model.RoleOperator, s.deviceNotesSave)))
 	mux.Handle("GET /devices/{id}/history", s.authed(s.historyPage))
 	mux.Handle("POST /devices/{id}/firewall", s.authed(s.requireRole(model.RoleOperator, s.firewallApply)))
 	mux.Handle("GET /devices/{id}/diff", s.authed(s.diffPage))
@@ -1214,6 +1222,7 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 	traffic := s.trafficRows(id)
 	sites, _ := s.a.Store.Sites()
 	devTags, _ := s.a.Store.DeviceTags(id)
+	images, _ := s.a.Store.DeviceImages(id)
 	ports, _ := s.a.Store.DevicePorts(id)
 	clients, _ := s.a.Store.Clients(id)
 	metrics, _ := s.a.Store.MetricsSince(id, time.Now().Add(-2*time.Hour))
@@ -1230,7 +1239,8 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "device", map[string]any{"Active": "devices",
 		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors, "Traffic": traffic,
 		"Sites": sites, "DevTags": devTags, "BackupMode": s.a.BackupMode(),
-		"Clients":   clients,
+		"Clients":  clients,
+		"Images":   images, "ModelImg": modelImgPath(s.a.Cfg.DataDir, d.Model),
 		"Faceplate": facePlateSVG(ports),
 		"CPUGraph":  graphSVG(cpu, 100, "var(--accent)"), "RAMGraph": graphSVG(ram, 100, "var(--warn)"),
 		"TempGraph": graphSVG(temp, 0, "var(--bad)"), "HasTemp": len(temp) > 0,
@@ -1238,6 +1248,98 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 		"InMaint":       s.a.Store.InMaintenance(d.ID, time.Now()),
 		"GlobalPollSec": int(s.a.Cfg.PollInterval.Seconds()),
 	})
+}
+
+var imageTypeOK = map[string]bool{
+	"image/png": true, "image/jpeg": true, "image/webp": true,
+	"image/gif": true, "image/svg+xml": true,
+}
+
+const maxImageBytes = 6 << 20 // 6 MiB
+
+func (s *Server) deviceImageUpload(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if _, err := s.a.Store.Device(id); err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	if err := r.ParseMultipartForm(maxImageBytes + (1 << 20)); err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/devices/%d?err=%s", id, urlq("upload too large")), http.StatusSeeOther)
+		return
+	}
+	file, hdr, err := r.FormFile("image")
+	if err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/devices/%d?err=%s", id, urlq("no file")), http.StatusSeeOther)
+		return
+	}
+	defer file.Close()
+	data := make([]byte, 0, hdr.Size)
+	buf := make([]byte, 32*1024)
+	for {
+		n, e := file.Read(buf)
+		data = append(data, buf[:n]...)
+		if len(data) > maxImageBytes {
+			http.Redirect(w, r, fmt.Sprintf("/devices/%d?err=%s", id, urlq("image over 6 MB")), http.StatusSeeOther)
+			return
+		}
+		if e != nil {
+			break
+		}
+	}
+	ct := http.DetectContentType(data)
+	// SVG is detected as text/plain or text/xml; trust the uploaded type for SVG.
+	if hdr.Header.Get("Content-Type") == "image/svg+xml" && (strings.HasPrefix(ct, "text/") ) {
+		ct = "image/svg+xml"
+	}
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = ct[:i]
+	}
+	if !imageTypeOK[ct] {
+		http.Redirect(w, r, fmt.Sprintf("/devices/%d?err=%s", id, urlq("unsupported image type")), http.StatusSeeOther)
+		return
+	}
+	caption := strings.TrimSpace(r.FormValue("caption"))
+	if _, err := s.a.Store.AddDeviceImage(id, caption, ct, data); err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/devices/%d?err=%s", id, urlq(err.Error())), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "device_image_add", fmt.Sprintf("device %d (%s)", id, ct))
+	http.Redirect(w, r, fmt.Sprintf("/devices/%d?msg=%s", id, urlq("image added")), http.StatusSeeOther)
+}
+
+func (s *Server) deviceImageServe(w http.ResponseWriter, r *http.Request) {
+	imgID, _ := strconv.ParseInt(r.PathValue("imgid"), 10, 64)
+	ct, data, err := s.a.Store.DeviceImageData(imgID)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	_, _ = w.Write(data)
+}
+
+func (s *Server) deviceImageDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	imgID, _ := strconv.ParseInt(r.PathValue("imgid"), 10, 64)
+	_ = s.a.Store.DeleteDeviceImage(imgID, id)
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "device_image_delete", fmt.Sprintf("device %d image %d", id, imgID))
+	http.Redirect(w, r, fmt.Sprintf("/devices/%d?msg=%s", id, urlq("image removed")), http.StatusSeeOther)
+}
+
+func (s *Server) deviceNotesSave(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if _, err := s.a.Store.Device(id); err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	notes := r.FormValue("notes")
+	if len(notes) > 8000 {
+		notes = notes[:8000]
+	}
+	_ = s.a.Store.SetDeviceNotes(id, notes)
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "device_notes", fmt.Sprintf("device %d", id))
+	http.Redirect(w, r, fmt.Sprintf("/devices/%d?msg=%s", id, urlq("notes saved")), http.StatusSeeOther)
 }
 
 func (s *Server) devicePoll(w http.ResponseWriter, r *http.Request) {
@@ -2313,6 +2415,53 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 	}
 	s.render(w, r, "topology", map[string]any{"Active": "topology", "CanWrite": roleRank(userFrom(r).Role) >= roleRank(model.RoleOperator),
 		"Nodes": nodes, "Edges": edges, "Count": len(devs), "EdgeCount": len(edges)})
+}
+
+// normModel reduces a RouterOS model string to a filename-safe key:
+// lower-case, keeping only letters and digits (e.g. "RB4011iGS+" → "rb4011igs",
+// "CRS328-24P-4S+" → "crs32824p4s", "hAP ac^2" → "hapac2").
+func normModel(m string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(m) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// modelImgPath returns the served URL of a product image for a model, or "" when
+// none exists. Images live on disk in <DataDir>/models/<normModel>.svg so the
+// set can be grown or replaced without rebuilding the binary.
+func modelImgPath(dataDir, mdl string) string {
+	n := normModel(mdl)
+	if n == "" {
+		return ""
+	}
+	if st, err := os.Stat(filepath.Join(dataDir, "models", n+".svg")); err == nil && !st.IsDir() {
+		return "/models/" + n + ".svg"
+	}
+	return ""
+}
+
+// serveModelImage serves a product image from <DataDir>/models by base name.
+func (s *Server) serveModelImage(w http.ResponseWriter, r *http.Request) {
+	name := filepath.Base(r.PathValue("name"))
+	ext := strings.ToLower(filepath.Ext(name))
+	ct := map[string]string{".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}[ext]
+	if ct == "" || strings.Contains(name, "..") {
+		http.Error(w, "not found", 404)
+		return
+	}
+	p := filepath.Join(s.a.Cfg.DataDir, "models", name)
+	data, err := os.ReadFile(p)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "public, max-age=604800")
+	_, _ = w.Write(data)
 }
 
 // physicalPort returns the first physical interface in a RouterOS neighbour

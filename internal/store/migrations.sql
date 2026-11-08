@@ -267,6 +267,17 @@ CREATE TABLE IF NOT EXISTS device_vpn (
     info      TEXT NOT NULL DEFAULT ''
 );
 
+-- Per-device uploaded images (rack photos, better product shots) for the gallery.
+CREATE TABLE IF NOT EXISTS device_images (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id    INTEGER NOT NULL,
+    caption      TEXT NOT NULL DEFAULT '',
+    content_type TEXT NOT NULL DEFAULT '',
+    data         BLOB,
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_device_images ON device_images(device_id);
+
 -- Saved topology node positions (manual drag layout).
 CREATE TABLE IF NOT EXISTS topo_pos (
     device_id INTEGER PRIMARY KEY,

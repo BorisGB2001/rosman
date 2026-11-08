@@ -527,5 +527,14 @@
   "topo.online": "online",
   "topo.offline": "offline",
   "topo.unknown": "unknown",
-  "topo.drag_hint": "drag nodes to arrange — the layout is saved; click a node to open it"
+  "topo.drag_hint": "drag nodes to arrange — the layout is saved; click a node to open it",
+  "img.model_default": "Model image",
+  "img.none": "No image yet.",
+  "img.upload": "Upload",
+  "img.caption_ph": "caption (optional)",
+  "img.del_confirm": "Remove this image?",
+  "img.notes": "Notes",
+  "img.notes_ph": "Notes for colleagues — rack position, quirks, anything worth knowing…",
+  "img.notes_save": "Save notes",
+  "img.notes_none": "No notes."
 }

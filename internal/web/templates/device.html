@@ -26,6 +26,51 @@
     <form class="inline" method="post" action="/devices/{{.D.ID}}/issuecert"><button class="btn sm" type="submit">{{t "dev.issue_cert"}}</button></form>
   </div>{{end}}
 </div>
+<div class="card">
+  <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+    <div style="flex:0 0 320px;max-width:100%">
+      <div id="gallery" class="gallery">
+        {{if .ModelImg}}<div class="gslide"><img src="{{.ModelImg}}" alt="{{.D.Model}}"><div class="gcap muted small">{{t "img.model_default"}}: {{.D.Model}}</div></div>{{end}}
+        {{range .Images}}<div class="gslide"><img src="/devices/{{.DeviceID}}/image/{{.ID}}" alt="{{.Caption}}">
+          <div class="gcap muted small">{{if .Caption}}{{.Caption}}{{else}}{{dateT .CreatedAt}}{{end}}
+            {{if canWrite $.User}}<form class="inline" method="post" action="/devices/{{.DeviceID}}/image/{{.ID}}/delete" style="display:inline;margin-left:6px"><button class="link" type="submit" onclick="return confirm('{{t "img.del_confirm"}}')" title="{{t "site.delete"}}">🗑️</button></form>{{end}}</div>
+        </div>{{end}}
+        {{if not (or .ModelImg .Images)}}<p class="muted small" style="margin:0">{{t "img.none"}}</p>{{end}}
+      </div>
+      <div id="gnav" class="gnav" style="display:none">
+        <button class="btn sm secondary" type="button" onclick="gstep(-1)">‹</button>
+        <span id="gidx" class="muted small"></span>
+        <button class="btn sm secondary" type="button" onclick="gstep(1)">›</button>
+      </div>
+      {{if canWrite .User}}
+      <form method="post" action="/devices/{{.D.ID}}/image" enctype="multipart/form-data" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <input type="file" name="image" accept="image/*" required style="max-width:160px;font-size:12px">
+        <input name="caption" placeholder="{{t "img.caption_ph"}}" style="width:120px">
+        <button class="btn sm" type="submit">{{t "img.upload"}}</button>
+      </form>{{end}}
+    </div>
+    <div style="flex:1;min-width:240px">
+      <h3 style="margin-top:0">{{t "img.notes"}}</h3>
+      {{if canWrite .User}}
+      <form method="post" action="/devices/{{.D.ID}}/notes">
+        <textarea name="notes" rows="6" placeholder="{{t "img.notes_ph"}}" style="width:100%;resize:vertical">{{.D.Notes}}</textarea>
+        <div style="margin-top:6px"><button class="btn sm primary" type="submit">{{t "img.notes_save"}}</button></div>
+      </form>
+      {{else}}{{if .D.Notes}}<p style="white-space:pre-wrap">{{.D.Notes}}</p>{{else}}<p class="muted">{{t "img.notes_none"}}</p>{{end}}{{end}}
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var g=document.getElementById('gallery'); if(!g) return;
+  var slides=g.querySelectorAll('.gslide'); if(slides.length<=1) return;
+  var nav=document.getElementById('gnav'); nav.style.display='flex';
+  var i=0, idx=document.getElementById('gidx');
+  function show(){ slides.forEach(function(s,j){ s.style.display=j===i?'block':'none'; }); idx.textContent=(i+1)+' / '+slides.length; }
+  window.gstep=function(d){ i=(i+d+slides.length)%slides.length; show(); };
+  show();
+})();
+</script>
 <div class="card"><table>
   <tr><th>{{t "col.model"}}</th><td>{{.D.Model}}</td><th>{{t "dev.serial"}}</th><td>{{.D.Serial}}</td></tr>
   <tr><th>RouterOS</th><td>{{.D.ROSVersion}}</td><th>{{t "col.uptime"}}</th><td>{{.H.Uptime}}</td></tr>

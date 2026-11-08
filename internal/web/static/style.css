@@ -520,3 +520,9 @@ pre.notes { white-space: pre-wrap; font-size: 13px; background: var(--bg); borde
 small.client { color: var(--muted); font-size: 11px; white-space: nowrap; }
 small.client.script, small.client.empty { color: var(--warn); }
 #upd-wait progress { width: 100%; max-width: 420px; margin-top: 8px; accent-color: var(--accent); }
+
+/* device image gallery */
+.gallery { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.gallery img { max-width: 100%; max-height: 240px; width: auto; object-fit: contain; display: block; margin: 0 auto; border-radius: 6px; }
+.gallery .gcap { margin-top: 6px; text-align: center; }
+.gnav { justify-content: center; align-items: center; gap: 10px; margin-top: 6px; }

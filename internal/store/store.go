@@ -53,6 +53,7 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE devices ADD COLUMN last_fail_at TIMESTAMP`,
 		`ALTER TABLE devices ADD COLUMN poll_interval_sec INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE cron_jobs ADD COLUMN command TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE devices ADD COLUMN notes TEXT NOT NULL DEFAULT ''`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -422,7 +423,7 @@ func (s *Store) DeleteDevice(id int64) error {
 		return err
 	}
 	for _, t := range []string{"metrics", "configs", "alerts", "device_tags", "device_ports",
-		"device_clients", "device_neighbors", "iface_traffic", "topo_pos"} {
+		"device_clients", "device_neighbors", "iface_traffic", "topo_pos", "device_images"} {
 		if _, err := tx.Exec(`DELETE FROM `+t+` WHERE device_id=?`, id); err != nil {
 			tx.Rollback()
 			return err
@@ -445,7 +446,7 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	err := row.Scan(&d.ID, &d.Name, &d.IP, &d.APIPort, &tls, &d.APIUser, &d.APIPassEnc,
 		&d.SSHUser, &d.APICertPin, &d.SSHHostPin, &d.Model, &d.Serial, &d.ROSVersion, &last, &d.CreatedAt,
 		&d.APISSLCert, &exp, &d.FwLatest, &d.FwChannel, &d.FwStatus, &site,
-		&snmpEn, &d.SNMPCommEnc, &d.SNMPPort, &d.DeviceType, &fail, &d.PollIntervalSec)
+		&snmpEn, &d.SNMPCommEnc, &d.SNMPPort, &d.DeviceType, &fail, &d.PollIntervalSec, &d.Notes)
 	d.APITLS = tls != 0
 	d.SNMPEnabled = snmpEn != 0
 	if fail.Valid {
@@ -463,7 +464,7 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	return d, err
 }
 
-const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id,snmp_enabled,snmp_community_enc,snmp_port,device_type,last_fail_at,poll_interval_sec`
+const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id,snmp_enabled,snmp_community_enc,snmp_port,device_type,last_fail_at,poll_interval_sec,notes`
 
 // SetDeviceType sets a device's role (router/switch/mix, or "" for unknown).
 func (s *Store) SetDeviceType(id int64, t string) error {
@@ -765,6 +766,57 @@ func (s *Store) MacOwners() (map[string]int64, error) {
 		}
 	}
 	return m, rows.Err()
+}
+
+// SetDeviceNotes saves the free-text admin description for a device.
+func (s *Store) SetDeviceNotes(id int64, notes string) error {
+	_, err := s.db.Exec(`UPDATE devices SET notes=? WHERE id=?`, notes, id)
+	return err
+}
+
+// AddDeviceImage stores one uploaded image and returns its id.
+func (s *Store) AddDeviceImage(deviceID int64, caption, contentType string, data []byte) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO device_images(device_id,caption,content_type,data) VALUES(?,?,?,?)`,
+		deviceID, caption, contentType, data)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// DeviceImages lists a device's uploaded images (metadata only, no data).
+func (s *Store) DeviceImages(deviceID int64) ([]model.DeviceImage, error) {
+	rows, err := s.db.Query(`SELECT id,device_id,caption,content_type,created_at FROM device_images WHERE device_id=? ORDER BY id`, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.DeviceImage
+	for rows.Next() {
+		var im model.DeviceImage
+		if err := rows.Scan(&im.ID, &im.DeviceID, &im.Caption, &im.Type, &im.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, im)
+	}
+	return out, rows.Err()
+}
+
+// DeviceImageData returns one image's content type and bytes.
+func (s *Store) DeviceImageData(id int64) (string, []byte, error) {
+	var ct string
+	var data []byte
+	err := s.db.QueryRow(`SELECT content_type,data FROM device_images WHERE id=?`, id).Scan(&ct, &data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil, ErrNotFound
+	}
+	return ct, data, err
+}
+
+// DeleteDeviceImage removes one image, scoped to its device.
+func (s *Store) DeleteDeviceImage(id, deviceID int64) error {
+	_, err := s.db.Exec(`DELETE FROM device_images WHERE id=? AND device_id=?`, id, deviceID)
+	return err
 }
 
 // TopoPositions returns saved manual topology node positions by device id.
