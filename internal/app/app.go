@@ -122,6 +122,7 @@ func (a *App) PollDevice(d model.Device) error {
 	_ = a.Store.ReplaceAddrs(d.ID, h.Addrs)
 	_ = a.Store.ReplaceMacs(d.ID, h.Macs)
 	_ = a.Store.SetDeviceLTE(d.ID, h.LTE)
+	_ = a.Store.SetDeviceVPN(d.ID, h.VPNCount, h.VPNInfo)
 	_ = a.Store.UpdateCertInfo(d.ID, h.APISSLCert, h.APICertExpiry)
 	a.evalCert(d, h.APICertExpiry)
 	_ = a.Store.UpdateFirmware(d.ID, h.FwLatest, h.FwChannel, h.FwStatus)
@@ -555,6 +556,14 @@ func (a *App) DeviceTraceroute(d model.Device, addr string) ([]ros.TraceHop, err
 		return nil, err
 	}
 	return ros.Traceroute(d, pass, addr, a.Cfg.APITimeout)
+}
+
+func (a *App) DeviceVPN(d model.Device) (ros.VPNInfo, error) {
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return ros.VPNInfo{}, err
+	}
+	return ros.VPN(d, pass, a.Cfg.APITimeout)
 }
 
 func (a *App) DeviceLTE(d model.Device) ([]ros.LTEIface, error) {

@@ -259,3 +259,10 @@ CREATE TABLE IF NOT EXISTS device_lte (
     rsrp       TEXT NOT NULL DEFAULT '',
     fw_upgrade INTEGER NOT NULL DEFAULT 0
 );
+
+-- Per-device active VPN tunnel summary, updated on poll.
+CREATE TABLE IF NOT EXISTS device_vpn (
+    device_id INTEGER PRIMARY KEY,
+    count     INTEGER NOT NULL DEFAULT 0,
+    info      TEXT NOT NULL DEFAULT ''
+);

@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.49.0"
+const Version = "0.50.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -158,6 +158,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /devices/{id}/firewall", s.authed(s.firewallPage))
 	mux.Handle("GET /devices/{id}/tools", s.authed(s.toolsPage))
 	mux.Handle("GET /devices/{id}/lte", s.authed(s.ltePage))
+	mux.Handle("GET /devices/{id}/vpn", s.authed(s.vpnPage))
 	mux.Handle("GET /devices/{id}/history", s.authed(s.historyPage))
 	mux.Handle("POST /devices/{id}/firewall", s.authed(s.requireRole(model.RoleOperator, s.firewallApply)))
 	mux.Handle("GET /devices/{id}/diff", s.authed(s.diffPage))
@@ -688,6 +689,8 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		Addrs    []model.NetAddr
 		Macs     []model.NetMac
 		LTE      model.LTEInfo
+		VPNCount int
+		VPNInfo  string
 	}
 	rows := make([]row, 0, len(devs))
 	for _, d := range devs {
@@ -713,6 +716,7 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		rr.Addrs, _ = s.a.Store.DeviceAddrs(d.ID)
 		rr.Macs, _ = s.a.Store.DeviceMacs(d.ID)
 		rr.LTE, _ = s.a.Store.DeviceLTEInfo(d.ID)
+		rr.VPNCount, rr.VPNInfo = s.a.Store.DeviceVPNSummary(d.ID)
 		if h, err := s.a.Store.LatestHealth(d.ID); err == nil {
 			rr.CPU, rr.Uptime = h.CPU, h.Uptime
 		}
@@ -1309,6 +1313,22 @@ func (s *Server) capsmanPage(w http.ResponseWriter, r *http.Request) {
 		data["C"] = ci
 	}
 	s.render(w, r, "capsman", data)
+}
+
+func (s *Server) vpnPage(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	data := map[string]any{"Active": "devices", "D": d}
+	if v, e := s.a.DeviceVPN(d); e != nil {
+		data["Err"] = e.Error()
+	} else {
+		data["V"] = v
+	}
+	s.render(w, r, "vpn", data)
 }
 
 func (s *Server) ltePage(w http.ResponseWriter, r *http.Request) {

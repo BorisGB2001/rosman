@@ -1,0 +1,25 @@
+{{define "vpn"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">VPN — {{.D.Name}}</h1></div>
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+{{with .V}}
+<div class="card">
+  <h3>WireGuard {{if .WG}}<span class="badge good">{{len .WG}}</span>{{end}}</h3>
+  <div class="scroll"><table class="dtable"><thead><tr><th>{{t "neigh.iface"}}</th><th>{{t "vpn.endpoint"}}</th><th>{{t "vpn.allowed"}}</th><th>{{t "vpn.handshake"}}</th><th>RX</th><th>TX</th></tr></thead><tbody>
+  {{range .WG}}<tr><td>{{.Iface}}</td><td class="mono">{{.Endpoint}}</td><td class="mono muted">{{.Allowed}}</td><td class="muted">{{if .LastHandshake}}{{.LastHandshake}}{{else}}—{{end}}</td><td class="mono">{{.Rx}}</td><td class="mono">{{.Tx}}</td></tr>{{else}}<tr><td colspan="6" class="muted">—</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+<div class="card">
+  <h3>IPsec {{if .IPsec}}<span class="badge good">{{len .IPsec}}</span>{{end}}</h3>
+  <div class="scroll"><table class="dtable"><thead><tr><th>{{t "vpn.remote"}}</th><th>{{t "al.state"}}</th><th>{{t "col.uptime"}}</th><th>RX</th><th>TX</th></tr></thead><tbody>
+  {{range .IPsec}}<tr><td class="mono">{{.Remote}}</td><td><span class="badge{{if eq .State "established"}} good{{end}}">{{.State}}</span></td><td class="muted">{{.Uptime}}</td><td class="mono">{{.Rx}}</td><td class="mono">{{.Tx}}</td></tr>{{else}}<tr><td colspan="5" class="muted">—</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+<div class="card">
+  <h3>PPP ({{t "vpn.ppp_note"}}) {{if .PPP}}<span class="badge good">{{len .PPP}}</span>{{end}}</h3>
+  <div class="scroll"><table class="dtable"><thead><tr><th>{{t "svc.name"}}</th><th>{{t "vpn.service"}}</th><th>{{t "vpn.address"}}</th><th>{{t "col.uptime"}}</th></tr></thead><tbody>
+  {{range .PPP}}<tr><td>{{.Name}}</td><td>{{.Service}}</td><td class="mono">{{.Address}}</td><td class="muted">{{.Uptime}}</td></tr>{{else}}<tr><td colspan="4" class="muted">—</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+{{end}}
+<p><a href="/devices/{{.D.ID}}">← {{t "dev.back"}}</a></p>
+{{template "tail" .}}{{end}}

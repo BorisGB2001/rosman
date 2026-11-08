@@ -693,6 +693,21 @@ func (s *Store) AllNeighborSightings() ([]model.NeighborSighting, error) {
 	return out, rows.Err()
 }
 
+// SetDeviceVPN upserts the per-device active-tunnel summary.
+func (s *Store) SetDeviceVPN(deviceID int64, count int, info string) error {
+	_, err := s.db.Exec(`INSERT INTO device_vpn(device_id,count,info) VALUES(?,?,?)
+		ON CONFLICT(device_id) DO UPDATE SET count=excluded.count, info=excluded.info`, deviceID, count, info)
+	return err
+}
+
+// DeviceVPNSummary returns the stored tunnel count and brief info.
+func (s *Store) DeviceVPNSummary(deviceID int64) (int, string) {
+	var n int
+	var info string
+	_ = s.db.QueryRow(`SELECT count,info FROM device_vpn WHERE device_id=?`, deviceID).Scan(&n, &info)
+	return n, info
+}
+
 // SetDeviceLTE upserts the per-device LTE summary.
 func (s *Store) SetDeviceLTE(deviceID int64, l model.LTEInfo) error {
 	_, err := s.db.Exec(`INSERT INTO device_lte(device_id,present,info,rsrp,fw_upgrade) VALUES(?,?,?,?,?)

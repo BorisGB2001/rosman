@@ -49,6 +49,8 @@ type Health struct {
 	Addrs         []model.NetAddr
 	Macs          []model.NetMac
 	LTE           model.LTEInfo
+	VPNCount      int
+	VPNInfo       string // brief, e.g. "WG:2 IPsec:1 PPP:0"
 }
 
 // parseROSTime parses RouterOS date strings in both the modern ISO form and the
@@ -209,6 +211,23 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 					h.LTE.FwUpgrade = true
 				}
 			}
+		}
+	}
+	// Active VPN tunnels summary for the device list.
+	{
+		wg, ips, ppp := 0, 0, 0
+		if r, e := c.Run("/interface/wireguard/peers/print"); e == nil {
+			wg = len(r.Re)
+		}
+		if r, e := c.Run("/ip/ipsec/active-peers/print"); e == nil {
+			ips = len(r.Re)
+		}
+		if r, e := c.Run("/ppp/active/print"); e == nil {
+			ppp = len(r.Re)
+		}
+		h.VPNCount = wg + ips + ppp
+		if h.VPNCount > 0 {
+			h.VPNInfo = fmt.Sprintf("WG:%d IPsec:%d PPP:%d", wg, ips, ppp)
 		}
 	}
 	// Temperature from /system/health (optional; absent on many boards).
@@ -401,6 +420,60 @@ func CAPsMAN(d model.Device, pass string, timeout time.Duration) (CAPsMANInfo, e
 	}
 	return ci, nil
 }
+
+// VPNInfo is a read-only snapshot of VPN tunnels on the device.
+type VPNInfo struct {
+	WG    []WGPeer
+	IPsec []IPsecPeer
+	PPP   []PPPSession
+}
+
+type WGPeer struct {
+	Iface, Endpoint, Allowed, LastHandshake, Rx, Tx string
+}
+type IPsecPeer struct {
+	Remote, State, Uptime, Rx, Tx string
+}
+type PPPSession struct {
+	Name, Service, Address, Uptime string
+}
+
+// VPN reads WireGuard peers, active IPsec peers and active PPP sessions.
+func VPN(d model.Device, pass string, timeout time.Duration) (VPNInfo, error) {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return VPNInfo{}, err
+	}
+	defer c.Close()
+	var v VPNInfo
+	if r, e := c.Run("/interface/wireguard/peers/print"); e == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			v.WG = append(v.WG, WGPeer{Iface: m["interface"],
+				Endpoint:      firstNonEmpty(m["current-endpoint-address"], m["endpoint-address"]),
+				Allowed:       m["allowed-address"], LastHandshake: m["last-handshake"],
+				Rx: m["rx"], Tx: m["tx"]})
+		}
+	}
+	if r, e := c.Run("/ip/ipsec/active-peers/print"); e == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			v.IPsec = append(v.IPsec, IPsecPeer{Remote: firstNonEmpty(m["remote-address"], m["id"]),
+				State: m["state"], Uptime: m["uptime"], Rx: m["rx-bytes"], Tx: m["tx-bytes"]})
+		}
+	}
+	if r, e := c.Run("/ppp/active/print"); e == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			v.PPP = append(v.PPP, PPPSession{Name: m["name"], Service: m["service"],
+				Address: m["address"], Uptime: m["uptime"]})
+		}
+	}
+	return v, nil
+}
+
+// Count returns the number of active tunnels in the snapshot.
+func (v VPNInfo) Count() int { return len(v.WG) + len(v.IPsec) + len(v.PPP) }
 
 // FirewallInfo is a read-only snapshot of the IP firewall.
 type FirewallInfo struct {
