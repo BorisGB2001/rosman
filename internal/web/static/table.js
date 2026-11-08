@@ -153,7 +153,7 @@
       });
       gear.parentNode.style.position = 'relative';
       gear.parentNode.appendChild(menu);
-      gear.addEventListener('click', function (e) { e.preventDefault(); menu.style.display = menu.style.display === 'none' ? 'block' : 'none'; });
+      gear.addEventListener('click', function (e) { e.preventDefault(); menu.style.display = menu.style.display === 'none' ? 'grid' : 'none'; });
       document.addEventListener('click', function (e) { if (!menu.contains(e.target) && e.target !== gear) menu.style.display = 'none'; });
     }
     if (search) {

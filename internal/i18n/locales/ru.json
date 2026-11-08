@@ -203,6 +203,8 @@
   "dev.del_confirm": "Удалить это устройство из ROSMan? Данные опроса и история конфигов будут удалены.",
   "col.type": "Тип",
   "col.lastfail": "Посл. сбой",
+  "col.lastpoll": "Посл. опрос",
+  "col.failing_since": "Не отвечает с первого сбоя",
   "filter.all_types": "Все типы",
   "dtype.router": "Роутер",
   "dtype.switch": "Свитч",

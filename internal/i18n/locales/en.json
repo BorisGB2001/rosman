@@ -203,6 +203,8 @@
   "dev.del_confirm": "Delete this device from ROSMan? Its poll data and config history will be removed.",
   "col.type": "Type",
   "col.lastfail": "Last fail",
+  "col.lastpoll": "Last poll",
+  "col.failing_since": "Failing since first error",
   "filter.all_types": "All types",
   "dtype.router": "Router",
   "dtype.switch": "Switch",

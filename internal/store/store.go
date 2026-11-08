@@ -480,8 +480,12 @@ func (s *Store) SetDevicePollInterval(id int64, sec int) error {
 }
 
 // MarkDeviceFail records the time of the latest poll failure.
+// MarkDeviceFail records a failed poll. The timestamp is set only on the first
+// failure of a streak (last_fail_at IS NULL) and left untouched on subsequent
+// consecutive failures, so it marks when the device first went bad; a
+// successful poll clears it (see UpdateInventory).
 func (s *Store) MarkDeviceFail(id int64) error {
-	_, err := s.db.Exec(`UPDATE devices SET last_fail_at=CURRENT_TIMESTAMP WHERE id=?`, id)
+	_, err := s.db.Exec(`UPDATE devices SET last_fail_at=CURRENT_TIMESTAMP WHERE id=? AND last_fail_at IS NULL`, id)
 	return err
 }
 
@@ -519,9 +523,10 @@ func (s *Store) Devices() ([]model.Device, error) {
 	return out, rows.Err()
 }
 
-// UpdateInventory writes identity/health-derived fields after a poll.
+// UpdateInventory writes identity/health-derived fields after a successful poll.
+// It also clears last_fail_at, ending any failure streak (the device answered).
 func (s *Store) UpdateInventory(id int64, model_, serial, ros string, seen time.Time) error {
-	_, err := s.db.Exec(`UPDATE devices SET model=?,serial=?,ros_version=?,last_seen=? WHERE id=?`,
+	_, err := s.db.Exec(`UPDATE devices SET model=?,serial=?,ros_version=?,last_seen=?,last_fail_at=NULL WHERE id=?`,
 		model_, serial, ros, seen, id)
 	return err
 }
