@@ -267,6 +267,17 @@ CREATE TABLE IF NOT EXISTS device_vpn (
     info      TEXT NOT NULL DEFAULT ''
 );
 
+-- Bridge forwarding database (FDB): learned MAC -> physical member port, per
+-- device. Ground truth for which port a MAC/host sits behind.
+CREATE TABLE IF NOT EXISTS bridge_hosts (
+    device_id INTEGER NOT NULL,
+    mac       TEXT NOT NULL,
+    iface     TEXT NOT NULL DEFAULT '',
+    bridge    TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_bridge_hosts_dev ON bridge_hosts(device_id);
+CREATE INDEX IF NOT EXISTS idx_bridge_hosts_mac ON bridge_hosts(mac);
+
 -- Per-device uploaded images (rack photos, better product shots) for the gallery.
 CREATE TABLE IF NOT EXISTS device_images (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

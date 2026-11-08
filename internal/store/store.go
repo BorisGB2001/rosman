@@ -423,7 +423,7 @@ func (s *Store) DeleteDevice(id int64) error {
 		return err
 	}
 	for _, t := range []string{"metrics", "configs", "alerts", "device_tags", "device_ports",
-		"device_clients", "device_neighbors", "iface_traffic", "topo_pos", "device_images"} {
+		"device_clients", "device_neighbors", "iface_traffic", "topo_pos", "device_images", "bridge_hosts"} {
 		if _, err := tx.Exec(`DELETE FROM `+t+` WHERE device_id=?`, id); err != nil {
 			tx.Rollback()
 			return err
@@ -754,6 +754,78 @@ func (s *Store) AddrOwners() (map[string]int64, error) {
 // virtual interfaces report, which must never be used as an identifier.
 func zeroMAC(mac string) bool {
 	return mac == "" || strings.ToUpper(mac) == "00:00:00:00:00:00"
+}
+
+// ReplaceBridgeHosts replaces a device's stored bridge FDB.
+func (s *Store) ReplaceBridgeHosts(deviceID int64, hosts []model.BridgeHost) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM bridge_hosts WHERE device_id=?`, deviceID); err != nil {
+		tx.Rollback()
+		return err
+	}
+	for _, h := range hosts {
+		if zeroMAC(h.MAC) {
+			continue
+		}
+		if _, err := tx.Exec(`INSERT INTO bridge_hosts(device_id,mac,iface,bridge) VALUES(?,?,?,?)`,
+			deviceID, strings.ToUpper(h.MAC), h.Iface, h.Bridge); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// BridgeHostsByMac returns every device+port that has learned the given MAC.
+func (s *Store) BridgeHostsByMac(mac string) ([]model.BridgeHost, error) {
+	rows, err := s.db.Query(`SELECT device_id,mac,iface,bridge FROM bridge_hosts WHERE mac=?`, strings.ToUpper(mac))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.BridgeHost
+	for rows.Next() {
+		var h model.BridgeHost
+		if err := rows.Scan(&h.DeviceID, &h.MAC, &h.Iface, &h.Bridge); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// BridgePortLoad returns, per device and interface, how many MACs are learned on
+// it — so an access/edge port (few MACs) can be told from an uplink (many).
+func (s *Store) BridgePortLoad() (map[int64]map[string]int, error) {
+	rows, err := s.db.Query(`SELECT device_id,iface,COUNT(*) FROM bridge_hosts GROUP BY device_id,iface`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := map[int64]map[string]int{}
+	for rows.Next() {
+		var dev int64
+		var iface string
+		var n int
+		if rows.Scan(&dev, &iface, &n) == nil {
+			if m[dev] == nil {
+				m[dev] = map[string]int{}
+			}
+			m[dev][iface] = n
+		}
+	}
+	return m, rows.Err()
+}
+
+// BridgePortOn returns the port on a specific device where a MAC is learned, "".
+func (s *Store) BridgePortOn(deviceID int64, mac string) string {
+	var iface string
+	_ = s.db.QueryRow(`SELECT iface FROM bridge_hosts WHERE device_id=? AND mac=? LIMIT 1`,
+		deviceID, strings.ToUpper(mac)).Scan(&iface)
+	return iface
 }
 
 // DeviceMacMap maps each device id to one representative interface MAC.

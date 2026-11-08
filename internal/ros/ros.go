@@ -51,6 +51,7 @@ type Health struct {
 	LTE           model.LTEInfo
 	VPNCount      int
 	VPNInfo       string // brief, e.g. "WG:2 IPsec:1 PPP:0"
+	BridgeHosts   []model.BridgeHost
 }
 
 // parseROSTime parses RouterOS date strings in both the modern ISO form and the
@@ -275,6 +276,30 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 	}
 	for _, cl := range byMac {
 		h.Clients = append(h.Clients, *cl)
+	}
+
+	// Bridge host table (FDB): learned MAC -> physical member port. This is the
+	// ground truth for "which port is this device behind". Skip the bridge's own
+	// (local) interface MACs and cap the list for very large tables.
+	if r, err := c.Run("/interface/bridge/host/print"); err == nil {
+		for _, re := range r.Re {
+			if len(h.BridgeHosts) >= 4000 {
+				break
+			}
+			m := re.Map
+			if m["local"] == "true" {
+				continue
+			}
+			mac := strings.ToUpper(m["mac-address"])
+			iface := m["on-interface"]
+			if iface == "" {
+				iface = m["interface"]
+			}
+			if mac == "" || iface == "" {
+				continue
+			}
+			h.BridgeHosts = append(h.BridgeHosts, model.BridgeHost{MAC: mac, Iface: iface, Bridge: m["bridge"]})
+		}
 	}
 
 	// Discovered neighbours (MNDP/LLDP/CDP) for topology.

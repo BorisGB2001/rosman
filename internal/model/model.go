@@ -195,6 +195,15 @@ type Client struct {
 	Source     string
 }
 
+// BridgeHost is one entry of a device's bridge forwarding database (FDB): a
+// learned MAC and the physical member port it is reachable on.
+type BridgeHost struct {
+	DeviceID int64
+	MAC      string
+	Iface    string
+	Bridge   string
+}
+
 // Port is a physical/interface port for the device faceplate.
 type Port struct {
 	Name     string

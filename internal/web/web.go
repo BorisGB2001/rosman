@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.60.1"
+const Version = "0.61.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -2416,6 +2416,13 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 	}
 	edges := make([]Edge, 0, len(edgePort)+1)
 	for k, port := range edgePort {
+		// Prefer the exact physical port from the bridge FDB: the port on A where
+		// B's MAC is learned (or vice-versa) beats the MNDP interface guess.
+		if p := s.a.Store.BridgePortOn(k[0], macByDev[k[1]]); physicalPort(p) != "" {
+			port = p
+		} else if p := s.a.Store.BridgePortOn(k[1], macByDev[k[0]]); physicalPort(p) != "" {
+			port = p
+		}
 		edges = append(edges, Edge{A: k[0], B: k[1], Port: port})
 	}
 	// ROSMan monitoring host node: find which managed device sees this server's
@@ -2431,6 +2438,29 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 	}
 	s.render(w, r, "topology", map[string]any{"Active": "topology", "CanWrite": roleRank(userFrom(r).Role) >= roleRank(model.RoleOperator),
 		"Nodes": nodes, "Edges": edges, "Count": len(devs), "EdgeCount": len(edges)})
+}
+
+// bestFDBAttach picks the device and physical port where a MAC is most likely
+// directly attached: among devices that learned it on a physical port, the one
+// whose port carries the fewest MACs (an access/edge port, not an uplink).
+func (s *Server) bestFDBAttach(mac string) (deviceID int64, port string) {
+	hosts, _ := s.a.Store.BridgeHostsByMac(mac)
+	if len(hosts) == 0 {
+		return 0, ""
+	}
+	load, _ := s.a.Store.BridgePortLoad()
+	best := -1
+	for _, h := range hosts {
+		p := physicalPort(h.Iface)
+		if p == "" {
+			continue
+		}
+		n := load[h.DeviceID][h.Iface]
+		if best == -1 || n < best {
+			best, deviceID, port = n, h.DeviceID, p
+		}
+	}
+	return deviceID, port
 }
 
 // serverNICs returns this host's non-loopback interface MACs (upper-case) and
@@ -2464,8 +2494,15 @@ func (s *Server) rosmanAttachment() (deviceID int64, port, ip, mac string) {
 	for _, p := range ips {
 		ipSet[p] = true
 	}
+	// Exact physical port from the bridge FDB first.
+	for _, m := range macs {
+		if dev, port := s.bestFDBAttach(m); dev != 0 {
+			return dev, port, srvAddr("", ips), m
+		}
+	}
+	// Fall back to the clients table (ARP/DHCP) — may only give a logical iface.
 	clients, _ := s.a.Store.AllClients(100000)
-	var fb *model.Client // first match, as a fallback when none is on a physical port
+	var fb *model.Client
 	for i := range clients {
 		c := clients[i]
 		if (c.MAC != "" && macSet[strings.ToUpper(c.MAC)]) || (c.IP != "" && ipSet[c.IP]) {
@@ -2478,8 +2515,6 @@ func (s *Server) rosmanAttachment() (deviceID int64, port, ip, mac string) {
 		}
 	}
 	if fb != nil {
-		// No physical-port sighting (e.g. seen on a VLAN/DHCP interface); show that
-		// logical interface rather than nothing.
 		return fb.DeviceID, fb.Iface, srvAddr(fb.IP, ips), srvAddr(strings.ToUpper(fb.MAC), macs)
 	}
 	return 0, "", "", ""
@@ -2529,22 +2564,39 @@ func (s *Server) topoFind(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Client / endpoint MAC or IP seen by a managed device.
+	// Exact attachment from the bridge FDB when the query is a MAC.
+	if dev, port := s.bestFDBAttach(q); dev != 0 {
+		d, _ := s.a.Store.Device(dev)
+		lbl := i18n.T(langOf(r), "topo.connected_to") + " " + d.Name
+		if port != "" {
+			lbl += " · " + port
+		}
+		write(dev, lbl)
+		return
+	}
+	// Client / endpoint MAC or IP seen by a managed device (ARP/DHCP). Upgrade the
+	// port to the FDB physical port when that MAC is in the forwarding database.
 	clients, _ := s.a.Store.AllClients(100000)
 	for _, c := range clients {
 		if strings.EqualFold(c.MAC, q) || c.IP == q {
-			port := physicalPort(c.Iface)
+			targetID, port := c.DeviceID, physicalPort(c.Iface)
 			if port == "" {
 				port = c.Iface
 			}
-			lbl := i18n.T(langOf(r), "topo.connected_to") + " " + c.DeviceName
+			if c.MAC != "" {
+				if fdbDev, fdbPort := s.bestFDBAttach(c.MAC); fdbDev != 0 {
+					targetID, port = fdbDev, fdbPort
+				}
+			}
+			d, _ := s.a.Store.Device(targetID)
+			lbl := i18n.T(langOf(r), "topo.connected_to") + " " + d.Name
 			if port != "" {
 				lbl += " · " + port
 			}
 			if c.Hostname != "" {
 				lbl += " (" + c.Hostname + ")"
 			}
-			write(c.DeviceID, lbl)
+			write(targetID, lbl)
 			return
 		}
 	}
