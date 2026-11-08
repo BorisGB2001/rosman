@@ -189,6 +189,18 @@ type Port struct {
 	Disabled bool
 }
 
+// NetAddr is one IP address configured on the device.
+type NetAddr struct {
+	Address string
+	Iface   string
+}
+
+// NetMac is one interface MAC on the device.
+type NetMac struct {
+	Iface string
+	Mac   string
+}
+
 // IfaceSample is one per-interface byte-counter reading.
 type IfaceSample struct {
 	Iface   string

@@ -194,6 +194,11 @@ table.dtable th.sort-desc::after { content: " ▼"; font-size: 9px; opacity: .7;
 .dtable-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
 .dtable-bar input[type=search] { width: 180px; }
 table th.col-drop { box-shadow: inset 2px 0 0 var(--accent); }
+.celldd { display: inline-block; }
+.celldd > summary { cursor: pointer; list-style: none; white-space: nowrap; }
+.celldd > summary::-webkit-details-marker { display: none; }
+.celldd[open] > summary { color: var(--accent); }
+.celldd .ddlist { position: absolute; margin-top: 4px; z-index: 40; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; box-shadow: 0 8px 24px #0007; font-size: 12px; line-height: 1.6; white-space: nowrap; }
 table th[draggable=true] { -webkit-user-drag: element; }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--bg); color: var(--muted); white-space: nowrap; }
 .badge.good { background: var(--good-bg); color: var(--good); }

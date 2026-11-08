@@ -236,3 +236,17 @@ CREATE TABLE IF NOT EXISTS cron_jobs (
     next_run     TIMESTAMP,
     created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Per-device configured IP addresses and interface MACs (replaced each poll).
+CREATE TABLE IF NOT EXISTS device_addrs (
+    device_id INTEGER NOT NULL,
+    address   TEXT NOT NULL,
+    iface     TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_device_addrs ON device_addrs(device_id);
+CREATE TABLE IF NOT EXISTS device_macs (
+    device_id INTEGER NOT NULL,
+    iface     TEXT NOT NULL DEFAULT '',
+    mac       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_device_macs ON device_macs(device_id);

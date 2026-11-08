@@ -616,6 +616,76 @@ func (s *Store) CountClients() int {
 
 // ---- ports (faceplate) ----
 
+func (s *Store) ReplaceAddrs(deviceID int64, addrs []model.NetAddr) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM device_addrs WHERE device_id=?`, deviceID); err != nil {
+		tx.Rollback()
+		return err
+	}
+	for _, a := range addrs {
+		if _, err := tx.Exec(`INSERT INTO device_addrs(device_id,address,iface) VALUES(?,?,?)`, deviceID, a.Address, a.Iface); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) ReplaceMacs(deviceID int64, macs []model.NetMac) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM device_macs WHERE device_id=?`, deviceID); err != nil {
+		tx.Rollback()
+		return err
+	}
+	for _, mc := range macs {
+		if _, err := tx.Exec(`INSERT INTO device_macs(device_id,iface,mac) VALUES(?,?,?)`, deviceID, mc.Iface, mc.Mac); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) DeviceAddrs(deviceID int64) ([]model.NetAddr, error) {
+	rows, err := s.db.Query(`SELECT address,iface FROM device_addrs WHERE device_id=? ORDER BY rowid`, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.NetAddr
+	for rows.Next() {
+		var a model.NetAddr
+		if err := rows.Scan(&a.Address, &a.Iface); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeviceMacs(deviceID int64) ([]model.NetMac, error) {
+	rows, err := s.db.Query(`SELECT iface,mac FROM device_macs WHERE device_id=? ORDER BY rowid`, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.NetMac
+	for rows.Next() {
+		var m model.NetMac
+		if err := rows.Scan(&m.Iface, &m.Mac); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) ReplacePorts(deviceID int64, ports []model.Port) error {
 	tx, err := s.db.Begin()
 	if err != nil {

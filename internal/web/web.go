@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.43.0"
+const Version = "0.44.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -73,6 +73,7 @@ func New(a *app.App) (*Server, error) {
 		"ts":       func(t time.Time) string { return t.Format("2006-01-02 15:04:05") },
 		"tsp":      func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02 15:04:05") },
 		"dateT":    func(t time.Time) string { if t.IsZero() { return "—" }; return t.Format("2006-01-02") },
+		"sub":      func(a, b int) int { return a - b },
 		"date":     func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02") },
 		"canWrite": func(u model.User) bool { return roleRank(u.Role) >= roleRank(model.RoleOperator) },
 		"isAdmin":  func(u model.User) bool { return u.Role == model.RoleAdmin },
@@ -681,6 +682,8 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		DevTags  []string
 		Outdated bool
 		Alerts   int
+		Addrs    []model.NetAddr
+		Macs     []model.NetMac
 	}
 	rows := make([]row, 0, len(devs))
 	for _, d := range devs {
@@ -703,6 +706,8 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 			rr.SiteName = siteName[*d.SiteID]
 		}
 		rr.DevTags, _ = s.a.Store.DeviceTags(d.ID)
+		rr.Addrs, _ = s.a.Store.DeviceAddrs(d.ID)
+		rr.Macs, _ = s.a.Store.DeviceMacs(d.ID)
 		if h, err := s.a.Store.LatestHealth(d.ID); err == nil {
 			rr.CPU, rr.Uptime = h.CPU, h.Uptime
 		}

@@ -46,6 +46,8 @@ type Health struct {
 	Ports         []model.Port
 	Temp          float64
 	Clients       []model.Client
+	Addrs         []model.NetAddr
+	Macs          []model.NetMac
 }
 
 // parseROSTime parses RouterOS date strings in both the modern ISO form and the
@@ -156,6 +158,9 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 			disabled := m["disabled"] == "true"
 			h.Ports = append(h.Ports, model.Port{
 				Name: m["name"], Type: m["type"], Running: m["running"] == "true", Disabled: disabled})
+			if mac := strings.ToUpper(m["mac-address"]); mac != "" {
+				h.Macs = append(h.Macs, model.NetMac{Iface: m["name"], Mac: mac})
+			}
 			if disabled {
 				continue
 			}
@@ -165,6 +170,15 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 			}
 			h.Ifaces = append(h.Ifaces, model.IfaceSample{
 				Iface: m["name"], RxBytes: rx, TxBytes: tx, Running: m["running"] == "true"})
+		}
+	}
+	// Configured IP addresses (for the device list's IP dropdown).
+	if r, err := c.Run("/ip/address/print"); err == nil {
+		for _, re := range r.Re {
+			m := re.Map
+			if m["address"] != "" {
+				h.Addrs = append(h.Addrs, model.NetAddr{Address: m["address"], Iface: m["interface"]})
+			}
 		}
 	}
 	// Temperature from /system/health (optional; absent on many boards).
