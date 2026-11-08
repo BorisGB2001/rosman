@@ -519,5 +519,8 @@
   "net.routes_capped": "Showing the first 500 routes only.",
   "net.dst": "Destination",
   "net.gateway": "Gateway",
-  "net.distance": "Dist"
+  "net.distance": "Dist",
+  "set.test_notify": "Send test",
+  "set.test_note": "Sends a test message to the configured Telegram / SMTP (using the values above).",
+  "set.test_sent": "Test notification sent"
 }

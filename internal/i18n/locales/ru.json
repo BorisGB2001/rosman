@@ -519,5 +519,8 @@
   "net.routes_capped": "Показаны только первые 500 маршрутов.",
   "net.dst": "Назначение",
   "net.gateway": "Шлюз",
-  "net.distance": "Дист"
+  "net.distance": "Дист",
+  "set.test_notify": "Отправить тест",
+  "set.test_note": "Отправит пробное сообщение в настроенные Telegram / SMTP (по значениям выше).",
+  "set.test_sent": "Пробное уведомление отправлено"
 }

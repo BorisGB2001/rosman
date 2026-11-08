@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.56.0"
+const Version = "0.57.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -233,6 +233,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /settings", s.authed(s.requireRole(model.RoleAdmin, s.settingsSave)))
 	mux.Handle("POST /settings/gitexport", s.authed(s.requireRole(model.RoleAdmin, s.gitExportNow)))
 	mux.Handle("POST /settings/prune", s.authed(s.requireRole(model.RoleAdmin, s.pruneNow)))
+	mux.Handle("POST /settings/testnotify", s.authed(s.requireRole(model.RoleAdmin, s.settingsTestNotify)))
 	mux.Handle("GET /configs/{id}/download", s.authed(s.configDownload))
 	mux.Handle("GET /ca", s.authed(s.requireRole(model.RoleAdmin, s.caPage)))
 	mux.Handle("POST /ca/generate", s.authed(s.requireRole(model.RoleAdmin, s.caGenerate)))
@@ -2398,6 +2399,30 @@ func (s *Server) gitExportNow(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "git_export", res)
 	http.Redirect(w, r, "/settings?msg="+urlq("git: "+res), http.StatusSeeOther)
+}
+
+func (s *Server) settingsTestNotify(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	get := func(k string) string {
+		v := strings.TrimSpace(r.FormValue(k))
+		if v == "" {
+			v = s.a.Setting(k)
+		}
+		return v
+	}
+	smtp := s.a.SmtpFromForm(get("smtp_host"), get("smtp_port"), get("smtp_user"),
+		strings.TrimSpace(r.FormValue("smtp_pass")), get("smtp_from"), get("smtp_to"))
+	msg, err := s.a.TestNotify(get("tg_token"), get("tg_chat"), smtp)
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "settings_test_notify", msg)
+	if err != nil {
+		q := err.Error()
+		if msg != "" {
+			q = msg + " — " + q
+		}
+		http.Redirect(w, r, "/settings?err="+urlq(q), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/settings?msg="+urlq(i18n.T(langOf(r), "set.test_sent")+" ("+msg+")"), http.StatusSeeOther)
 }
 
 func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {

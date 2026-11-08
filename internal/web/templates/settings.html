@@ -23,6 +23,8 @@
   <h3>Telegram <span class="muted small">({{t "set.notify_too"}})</span></h3>
   <label>{{t "set.tg_token"}}<input name="tg_token" value="{{index .V "tg_token"}}"></label>
   <label>{{t "set.tg_chat"}}<input name="tg_chat" value="{{index .V "tg_chat"}}"></label>
+  <div style="margin-top:8px"><button class="btn secondary sm" type="submit" formaction="/settings/testnotify" formnovalidate>{{t "set.test_notify"}}</button>
+    <span class="muted small">{{t "set.test_note"}}</span></div>
 </div>
 <div class="card narrow">
   <h3>{{t "set.smtp"}} <span class="muted small">({{t "set.notify_too"}})</span></h3>

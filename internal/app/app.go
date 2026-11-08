@@ -898,6 +898,58 @@ func (a *App) alertNotifyDev(d model.Device, subject, text string) {
 	a.alertNotify(subject, text)
 }
 
+// TestNotify sends a test message to the given Telegram and SMTP settings and
+// returns a human-readable per-channel result. An empty Telegram token/chat or
+// SMTP host skips that channel; with nothing configured it returns an error.
+func (a *App) TestNotify(tgToken, tgChat string, smtp notify.SMTP) (string, error) {
+	const subj = "ROSMan — test"
+	body := "Test notification from ROSMan at " + time.Now().Format("2006-01-02 15:04:05")
+	var oks, errs []string
+	if tgToken != "" && tgChat != "" {
+		if err := notify.TestTelegram(tgToken, tgChat, subj+"\n"+body); err != nil {
+			errs = append(errs, "Telegram: "+err.Error())
+		} else {
+			oks = append(oks, "Telegram")
+		}
+	}
+	if smtp.Host != "" {
+		if err := notify.SendMail(smtp, subj, body, "", nil); err != nil {
+			errs = append(errs, "SMTP: "+err.Error())
+		} else {
+			oks = append(oks, "SMTP")
+		}
+	}
+	if len(oks) == 0 && len(errs) == 0 {
+		return "", fmt.Errorf("no notification channel configured")
+	}
+	msg := ""
+	if len(oks) > 0 {
+		msg = "sent: " + strings.Join(oks, ", ")
+	}
+	if len(errs) > 0 {
+		return msg, fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+	return msg, nil
+}
+
+// SmtpFromForm builds an SMTP config from submitted form values, falling back to
+// the saved encrypted password when the password field was left blank.
+func (a *App) SmtpFromForm(host, port, user, pass, from, to string) notify.SMTP {
+	var tos []string
+	for _, t := range strings.Split(to, ",") {
+		if s := strings.TrimSpace(t); s != "" {
+			tos = append(tos, s)
+		}
+	}
+	if pass == "" {
+		pass = a.settingDecrypt("smtp_pass_enc")
+	}
+	return notify.SMTP{Host: host, Port: port, User: user, Pass: pass, From: from, To: tos}
+}
+
+// Setting exposes a stored plain setting value (read-only) to the web layer.
+func (a *App) Setting(key string) string { return a.setting(key) }
+
 func (a *App) alertNotify(subject, text string) {
 	a.Notify.Send(subject, text)
 	if tok, chat := a.setting("tg_token"), a.setting("tg_chat"); tok != "" && chat != "" {

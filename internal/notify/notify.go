@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -96,6 +97,37 @@ func SendTelegramText(token, chat, text string) error {
 		return err
 	}
 	resp.Body.Close()
+	return nil
+}
+
+// TestTelegram posts a message and verifies Telegram accepted it, checking the
+// HTTP status and the API "ok" flag so a bad token or chat id surfaces as an
+// error (unlike SendTelegramText, which is best-effort fire-and-forget).
+func TestTelegram(token, chat, text string) error {
+	form := url.Values{"chat_id": {chat}, "text": {text}}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
+		"https://api.telegram.org/bot"+token+"/sendMessage", bytes.NewBufferString(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	var res struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	_ = json.Unmarshal(body, &res)
+	if resp.StatusCode != 200 || !res.OK {
+		d := res.Description
+		if d == "" {
+			d = strings.TrimSpace(string(body))
+		}
+		return fmt.Errorf("telegram rejected (HTTP %d): %s", resp.StatusCode, d)
+	}
 	return nil
 }
 
