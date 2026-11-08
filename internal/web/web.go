@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.77.0"
+const Version = "0.78.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -2970,6 +2970,11 @@ func (s *Server) clientsPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "clients", map[string]any{"Active": "clients", "Clients": clients})
 }
 
+// rosmanNodeID is the reserved topology-node id for the ROSMan host itself.
+// Negative so it never collides with a (always-positive) device id, and
+// non-zero so the position-save handler, which rejects id 0, accepts it.
+const rosmanNodeID = -1
+
 func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 	devs, _ := s.a.Store.Devices()
 	neigh, _ := s.a.Store.AllNeighbors()
@@ -3068,15 +3073,18 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 		edges = append(edges, Edge{A: k[0], B: k[1], Port: port})
 	}
 	// ROSMan monitoring host node: find which managed device sees this server's
-	// own MAC/IP as a client, and attach a special node to it on that port.
+	// own MAC/IP as a client, and attach a special node to it on that port. It
+	// uses a reserved negative id (rosmanNodeID) so its dragged position can be
+	// saved like any device's — a real device id is always positive, and id 0 is
+	// rejected by the save handler as "no node".
 	if attachID, port, srvIP, srvMAC := s.rosmanAttachment(); attachID != 0 {
 		sx, sy := cx, cy
-		if p, ok := saved[0]; ok {
+		if p, ok := saved[rosmanNodeID]; ok {
 			sx, sy = p[0], p[1]
 		}
-		nodes = append(nodes, Node{ID: 0, Name: "ROSMan", IP: srvIP, MAC: srvMAC,
+		nodes = append(nodes, Node{ID: rosmanNodeID, Name: "ROSMan", IP: srvIP, MAC: srvMAC,
 			Model: "monitoring", ROS: Version, X: sx, Y: sy, Status: "up", Server: true})
-		edges = append(edges, Edge{A: 0, B: attachID, Port: port})
+		edges = append(edges, Edge{A: rosmanNodeID, B: attachID, Port: port})
 	}
 	s.render(w, r, "topology", map[string]any{"Active": "topology", "CanWrite": roleRank(userFrom(r).Role) >= roleRank(model.RoleOperator),
 		"Nodes": nodes, "Edges": edges, "Count": len(devs), "EdgeCount": len(edges)})
