@@ -67,6 +67,49 @@
 <main>{{end}}
 
 {{define "tail"}}</main>
+<div class="toast-wrap" id="toasts" data-closeall="{{t "toast.closeall"}}"></div>
+<script src="/static/table.js"></script>
+<script>
+(function(){
+  var wrap = document.getElementById('toasts');
+  if (!wrap) return;
+  var notes = document.querySelectorAll('.note.ok, .note.err, .note.warn');
+  var toasts = [];
+  function kind(el){ return el.classList.contains('err') ? 'err' : (el.classList.contains('warn') ? 'warn' : 'ok'); }
+  function dismiss(t){
+    if (t._gone) return; t._gone = true;
+    t.classList.remove('show');
+    setTimeout(function(){ if (t.parentNode) t.parentNode.removeChild(t); refreshCloseAll(); }, 400);
+  }
+  function refreshCloseAll(){
+    var live = wrap.querySelectorAll('.toast:not(._gone)');
+    var btn = wrap.querySelector('.toast-closeall');
+    if (live.length > 1 && !btn){
+      btn = document.createElement('button');
+      btn.className = 'toast-closeall'; btn.textContent = wrap.dataset.closeall || 'Close all';
+      btn.onclick = function(){ wrap.querySelectorAll('.toast').forEach(dismiss); };
+      wrap.appendChild(btn);
+    } else if (live.length <= 1 && btn){ btn.remove(); }
+  }
+  notes.forEach(function(note){
+    var k = kind(note);
+    var t = document.createElement('div');
+    t.className = 'toast ' + k;
+    var span = document.createElement('span'); span.innerHTML = note.innerHTML; t.appendChild(span);
+    var x = document.createElement('span'); x.className = 'x'; x.textContent = '×'; x.onclick = function(){ dismiss(t); };
+    t.appendChild(x);
+    wrap.appendChild(t);
+    toasts.push(t);
+    note.remove();
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ t.classList.add('show'); }); });
+    var ttl = (k === 'err') ? 8000 : 4500;
+    var timer = setTimeout(function(){ dismiss(t); }, ttl);
+    t.addEventListener('mouseenter', function(){ clearTimeout(timer); });
+    t.addEventListener('mouseleave', function(){ timer = setTimeout(function(){ dismiss(t); }, 2500); });
+  });
+  refreshCloseAll();
+})();
+</script>
 </body></html>{{end}}
 
 {{define "sev"}}<span class="badge {{if eq . "crit"}}bad{{else}}warn{{end}}">{{.}}</span>{{end}}

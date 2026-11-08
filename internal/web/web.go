@@ -72,6 +72,7 @@ func New(a *app.App) (*Server, error) {
 		},
 		"ts":       func(t time.Time) string { return t.Format("2006-01-02 15:04:05") },
 		"tsp":      func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02 15:04:05") },
+		"dateT":    func(t time.Time) string { if t.IsZero() { return "—" }; return t.Format("2006-01-02") },
 		"date":     func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02") },
 		"canWrite": func(u model.User) bool { return roleRank(u.Role) >= roleRank(model.RoleOperator) },
 		"isAdmin":  func(u model.User) bool { return u.Role == model.RoleAdmin },
@@ -139,6 +140,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /{$}", s.authed(s.devices))
 	mux.Handle("GET /devices/new", s.authed(s.requireRole(model.RoleOperator, s.newDeviceForm)))
 	mux.Handle("POST /devices/new", s.authed(s.requireRole(model.RoleOperator, s.newDeviceSubmit)))
+	mux.Handle("POST /devices/{id}/delete", s.authed(s.requireRole(model.RoleAdmin, s.deviceDelete)))
 	mux.Handle("GET /devices/import", s.authed(s.requireRole(model.RoleOperator, s.importForm)))
 	mux.Handle("POST /devices/import", s.authed(s.requireRole(model.RoleOperator, s.importRun)))
 	mux.Handle("GET /devices/{id}", s.authed(s.deviceDetail))
@@ -656,12 +658,21 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 	if fTag != "" {
 		tagged, _ = s.a.Store.DeviceIDsByTag(fTag)
 	}
+	// Active-alert counts per device for the Alerts column.
+	alertN := map[int64]int{}
+	if al, e := s.a.Store.ActiveAlerts(); e == nil {
+		for _, a := range al {
+			alertN[a.DeviceID]++
+		}
+	}
 	type row struct {
 		model.Device
 		CPU      int
 		Uptime   string
 		SiteName string
 		DevTags  []string
+		Outdated bool
+		Alerts   int
 	}
 	rows := make([]row, 0, len(devs))
 	for _, d := range devs {
@@ -673,7 +684,10 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		if fTag != "" && !tagged[d.ID] {
 			continue
 		}
-		rr := row{Device: d}
+		rr := row{Device: d, Alerts: alertN[d.ID]}
+		if l := fwFirst(d.FwLatest); l != "" && l != fwFirst(d.ROSVersion) {
+			rr.Outdated = true
+		}
 		if d.SiteID != nil {
 			rr.SiteName = siteName[*d.SiteID]
 		}
@@ -684,7 +698,8 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, rr)
 	}
 	s.render(w, r, "devices", map[string]any{"Active": "devices", "Devices": rows,
-		"Sites": sites, "AllTags": allTags, "FSite": fSite, "FTag": fTag})
+		"Sites": sites, "AllTags": allTags, "FSite": fSite, "FTag": fTag,
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
 }
 
 func fwFirst(s string) string {
@@ -906,6 +921,21 @@ func (s *Server) deviceTag(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) newDeviceForm(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "new_device", map[string]any{"Active": "devices"})
+}
+
+func (s *Server) deviceDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	if err := s.a.Store.DeleteDevice(id); err != nil {
+		http.Redirect(w, r, "/?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "device_delete", d.Name+" ("+d.IP+")")
+	http.Redirect(w, r, "/?msg=device-deleted", http.StatusSeeOther)
 }
 
 func (s *Server) importForm(w http.ResponseWriter, r *http.Request) {

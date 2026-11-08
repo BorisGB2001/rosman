@@ -310,6 +310,26 @@ func (s *Store) CreateDevice(d model.Device) (int64, error) {
 	return res.LastInsertId()
 }
 
+// DeleteDevice removes a device and all of its dependent rows.
+func (s *Store) DeleteDevice(id int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	for _, t := range []string{"metrics", "configs", "alerts", "device_tags", "device_ports",
+		"device_clients", "device_neighbors", "iface_traffic"} {
+		if _, err := tx.Exec(`DELETE FROM `+t+` WHERE device_id=?`, id); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	if _, err := tx.Exec(`DELETE FROM devices WHERE id=?`, id); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
 func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	var d model.Device
 	var tls int

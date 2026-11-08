@@ -167,6 +167,25 @@ td.nowrap, .nowrap { white-space: nowrap; }
 .note { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; }
 .note.ok { background: var(--good-bg); color: var(--good); }
 .note.err { background: var(--bad-bg); color: var(--bad); }
+/* boris.gb 2026-11-08 09:20 - всплывающие тосты в правом верхнем углу (правило пользователя: сообщения после действий не полосой над страницей) */
+.toast-wrap { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; width: min(360px, calc(100vw - 32px)); pointer-events: none; }
+.toast { pointer-events: auto; position: relative; padding: 12px 40px 12px 14px; border-radius: 9px; font-size: 13.5px; line-height: 1.4; box-shadow: 0 8px 28px #0007; border: 1px solid #0003; opacity: 0; transform: translateX(24px); transition: opacity .35s ease, transform .35s ease; }
+.toast.show { opacity: 1; transform: none; }
+.toast.ok { background: var(--good-bg); color: var(--good); border-color: color-mix(in srgb, var(--good) 35%, transparent); }
+.toast.err { background: var(--bad-bg); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
+.toast.warn { background: var(--warn-bg); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+.toast .x { position: absolute; top: 7px; right: 9px; cursor: pointer; opacity: .55; font-size: 15px; line-height: 1; padding: 2px 4px; }
+.toast .x:hover { opacity: 1; }
+.toast-closeall { pointer-events: auto; align-self: flex-end; cursor: pointer; background: var(--surface); color: var(--muted); border: 1px solid var(--line); border-radius: 7px; padding: 5px 10px; font-size: 12px; }
+.toast-closeall:hover { color: var(--fg); }
+/* boris.gb 2026-11-08 09:35 - управляемые таблицы: ресайз/сортировка/меню колонок */
+table.dtable th { position: relative; user-select: none; }
+table.dtable th.sort-asc::after { content: " ▲"; font-size: 9px; opacity: .7; }
+table.dtable th.sort-desc::after { content: " ▼"; font-size: 9px; opacity: .7; }
+.col-grip { position: absolute; top: 0; right: -3px; width: 8px; height: 100%; cursor: col-resize; }
+.cols-menu { position: absolute; top: 100%; right: 0; margin-top: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; box-shadow: 0 8px 28px #0007; z-index: 50; display: flex; flex-direction: column; gap: 4px; min-width: 160px; }
+.cols-menu label { display: flex; align-items: center; gap: 7px; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.gearbtn { cursor: pointer; }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--bg); color: var(--muted); white-space: nowrap; }
 .badge.good { background: var(--good-bg); color: var(--good); }
 .badge.warn { background: var(--warn-bg); color: var(--warn); }
