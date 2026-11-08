@@ -86,6 +86,9 @@ func (a *App) RunCronJob(j model.CronJob) (string, error) {
 			return "", fmt.Errorf("template not found")
 		}
 	}
+	if j.Action == "command" && strings.TrimSpace(j.Command) == "" {
+		return "", fmt.Errorf("no command set")
+	}
 	ok, fail := 0, 0
 	for _, d := range devs {
 		var e error
@@ -98,6 +101,8 @@ func (a *App) RunCronJob(j model.CronJob) (string, error) {
 			e = a.RefreshFirmware(d)
 		case "template":
 			e = a.ApplyTemplate(d, tpl.Body, j.Guard)
+		case "command":
+			_, e = a.RunCommand(d, j.Command, j.Guard)
 		default:
 			return "", fmt.Errorf("unknown action %q", j.Action)
 		}

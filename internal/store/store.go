@@ -52,6 +52,7 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE devices ADD COLUMN device_type TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN last_fail_at TIMESTAMP`,
 		`ALTER TABLE devices ADD COLUMN poll_interval_sec INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE cron_jobs ADD COLUMN command TEXT NOT NULL DEFAULT ''`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -187,21 +188,21 @@ func (s *Store) SetComplianceEnabled(id int64, enabled bool) error {
 
 // ---- cron jobs ----
 
-const cronCols = `id,name,action,target,template_id,guard,kind,interval_min,at_hour,at_min,weekday,enabled,last_run,last_status,next_run,created_at`
+const cronCols = `id,name,action,target,template_id,guard,kind,interval_min,at_hour,at_min,weekday,enabled,last_run,last_status,next_run,created_at,command`
 
 func scanCron(sc interface{ Scan(...any) error }) (model.CronJob, error) {
 	var j model.CronJob
 	var en int
 	err := sc.Scan(&j.ID, &j.Name, &j.Action, &j.Target, &j.TemplateID, &j.Guard, &j.Kind,
-		&j.IntervalMin, &j.AtHour, &j.AtMin, &j.Weekday, &en, &j.LastRun, &j.LastStatus, &j.NextRun, &j.CreatedAt)
+		&j.IntervalMin, &j.AtHour, &j.AtMin, &j.Weekday, &en, &j.LastRun, &j.LastStatus, &j.NextRun, &j.CreatedAt, &j.Command)
 	j.Enabled = en != 0
 	return j, err
 }
 
 func (s *Store) CreateCronJob(j model.CronJob) (int64, error) {
-	res, err := s.db.Exec(`INSERT INTO cron_jobs(name,action,target,template_id,guard,kind,interval_min,at_hour,at_min,weekday,enabled,next_run)
-		VALUES(?,?,?,?,?,?,?,?,?,?,1,?)`,
-		j.Name, j.Action, j.Target, j.TemplateID, j.Guard, j.Kind, j.IntervalMin, j.AtHour, j.AtMin, j.Weekday, j.NextRun)
+	res, err := s.db.Exec(`INSERT INTO cron_jobs(name,action,target,template_id,guard,kind,interval_min,at_hour,at_min,weekday,enabled,next_run,command)
+		VALUES(?,?,?,?,?,?,?,?,?,?,1,?,?)`,
+		j.Name, j.Action, j.Target, j.TemplateID, j.Guard, j.Kind, j.IntervalMin, j.AtHour, j.AtMin, j.Weekday, j.NextRun, j.Command)
 	if err != nil {
 		return 0, err
 	}

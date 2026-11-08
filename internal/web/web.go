@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.54.0"
+const Version = "0.55.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -1408,15 +1408,20 @@ func (s *Server) cronPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) cronCreate(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	action := r.FormValue("action")
-	if action != "poll" && action != "backup" && action != "fwcheck" && action != "gitexport" && action != "template" {
+	if action != "poll" && action != "backup" && action != "fwcheck" && action != "gitexport" && action != "template" && action != "command" {
 		http.Redirect(w, r, "/cron?err=invalid+action", http.StatusSeeOther)
 		return
 	}
+	if action == "command" && strings.TrimSpace(r.FormValue("command")) == "" {
+		http.Redirect(w, r, "/cron?err="+urlq(i18n.T(langOf(r), "run.err_empty")), http.StatusSeeOther)
+		return
+	}
 	j := model.CronJob{
-		Name:   strings.TrimSpace(r.FormValue("name")),
-		Action: action,
-		Target: r.FormValue("target"),
-		Kind:   r.FormValue("kind"),
+		Name:    strings.TrimSpace(r.FormValue("name")),
+		Action:  action,
+		Target:  r.FormValue("target"),
+		Kind:    r.FormValue("kind"),
+		Command: strings.TrimRight(r.FormValue("command"), "\r\n "),
 	}
 	if j.Name == "" {
 		j.Name = action
@@ -1439,7 +1444,9 @@ func (s *Server) cronCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	j.Weekday = wd
 	j.Guard, _ = strconv.Atoi(r.FormValue("guard"))
-	if j.Guard == 0 {
+	// A command job keeps guard=0 (no rollback) — the common case is a read-only
+	// command. Other actions default to a 120s rollback guard when unset.
+	if j.Guard == 0 && action != "command" {
 		j.Guard = 120
 	}
 	if tid, e := strconv.ParseInt(r.FormValue("template_id"), 10, 64); e == nil && tid > 0 {

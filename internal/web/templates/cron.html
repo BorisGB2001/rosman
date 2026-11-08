@@ -15,6 +15,7 @@
           <option value="fwcheck">{{t "dev.fw_check"}}</option>
           <option value="gitexport">{{t "git.title"}}</option>
           <option value="template">{{t "tpl.apply"}}</option>
+          <option value="command">{{t "run.title"}}</option>
         </select></label>
       <label>{{t "cron.target"}}
         <select name="target">
@@ -42,6 +43,10 @@
         <span class="inline"><select name="template_id"><option value="">—</option>{{range .Templates}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
         <input name="guard" value="120" style="width:80px"></span></label>
     </div>
+    <label style="margin-top:10px;display:block">{{t "cron.command"}}
+      <textarea name="command" rows="3" spellcheck="false" placeholder="{{t "run.cmd_ph"}}"
+        style="width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;resize:vertical"></textarea></label>
+    <p class="muted small" style="margin:4px 0 0">{{t "cron.command_note"}}</p>
     <div style="margin-top:10px"><button class="btn primary" type="submit">{{t "cron.create"}}</button></div>
     <p class="muted small">{{t "cron.note"}}</p>
   </form>
@@ -54,7 +59,7 @@
     {{range .Jobs}}
       <tr {{if not .Enabled}}style="opacity:.55"{{end}}>
         <td>{{.Name}}</td>
-        <td>{{.Action}}</td>
+        <td>{{.Action}}{{if and (eq .Action "command") .Command}}<br><span class="mono muted small" title="{{.Command}}">{{.Command}}</span>{{end}}</td>
         <td class="muted">{{.Target}}</td>
         <td class="muted">{{if eq .Kind "daily"}}{{t "cron.daily"}} {{printf "%02d:%02d" .AtHour .AtMin}}{{if ge .Weekday 0}} (wd {{.Weekday}}){{end}}{{else}}{{t "cron.interval"}} {{.IntervalMin}}m{{end}}</td>
         <td>{{if .Enabled}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</td>

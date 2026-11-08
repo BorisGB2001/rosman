@@ -504,5 +504,7 @@
   "cs.no_config": "no stored config",
   "cs.view_config": "View config",
   "cs.none": "No device config matched.",
-  "cs.bad_regex": "Invalid regular expression"
+  "cs.bad_regex": "Invalid regular expression",
+  "cron.command": "Command (for the Run-command action)",
+  "cron.command_note": "Used only when the action is Run command. Runs over SSH on the target devices; set a guard above to auto-roll-back a config change that cuts access."
 }

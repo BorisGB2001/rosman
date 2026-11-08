@@ -37,9 +37,10 @@ type ComplianceRule struct {
 type CronJob struct {
 	ID          int64
 	Name        string
-	Action      string // poll|backup|fwcheck|gitexport|template
+	Action      string // poll|backup|fwcheck|gitexport|template|command
 	Target      string // all|site:ID|tag:NAME|device:ID
 	TemplateID  *int64
+	Command     string // for action=command
 	Guard       int
 	Kind        string // interval|daily
 	IntervalMin int
