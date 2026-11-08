@@ -38,7 +38,7 @@
   </div>
   {{end}}
   <div class="scroll"><table id="devtable" class="dtable">
-    <thead><tr>{{if canWrite .User}}<th data-nosort style="width:28px"><input type="checkbox" onclick="document.querySelectorAll('.dchk').forEach(c=>c.checked=this.checked)"></th>{{end}}<th data-col="name" data-label="{{t "col.name"}}">{{t "col.name"}}</th><th data-col="ip" data-label="IP">IP</th><th data-col="mac" data-label="MAC">MAC</th><th data-col="site" data-label="{{t "col.site"}}">{{t "col.site"}}</th><th data-col="tags" data-label="{{t "col.tags"}}">{{t "col.tags"}}</th><th data-col="type" data-label="{{t "col.type"}}">{{t "col.type"}}</th><th data-col="model" data-label="{{t "col.model"}}">{{t "col.model"}}</th><th data-col="ros" data-label="RouterOS">RouterOS</th><th data-col="latest" data-label="{{t "fw.latest"}}">{{t "fw.latest"}}</th><th data-col="alerts" data-label="{{t "nav.alerts"}}">{{t "nav.alerts"}}</th><th data-col="serial" data-label="{{t "dev.serial"}}">{{t "dev.serial"}}</th><th data-col="cpu" data-label="CPU">CPU</th><th data-col="poll" data-label="{{t "col.poll"}}">{{t "col.poll"}}</th><th data-col="seen" data-label="{{t "col.seen"}}">{{t "col.seen"}}</th><th data-col="added" data-label="{{t "col.added"}}">{{t "col.added"}}</th><th data-col="lastfail" data-label="{{t "col.lastfail"}}">{{t "col.lastfail"}}</th><th data-nosort data-col="actions" data-label="{{t "col.actions"}}">{{t "col.actions"}}</th></tr></thead>
+    <thead><tr>{{if canWrite .User}}<th data-nosort style="width:28px"><input type="checkbox" onclick="document.querySelectorAll('.dchk').forEach(c=>c.checked=this.checked)"></th>{{end}}<th data-col="name" data-label="{{t "col.name"}}">{{t "col.name"}}</th><th data-col="ip" data-label="IP">IP</th><th data-col="mac" data-label="MAC">MAC</th><th data-col="site" data-label="{{t "col.site"}}">{{t "col.site"}}</th><th data-col="tags" data-label="{{t "col.tags"}}">{{t "col.tags"}}</th><th data-col="type" data-label="{{t "col.type"}}">{{t "col.type"}}</th><th data-col="model" data-label="{{t "col.model"}}">{{t "col.model"}}</th><th data-col="ros" data-label="RouterOS">RouterOS</th><th data-col="latest" data-label="{{t "fw.latest"}}">{{t "fw.latest"}}</th><th data-col="alerts" data-label="{{t "nav.alerts"}}">{{t "nav.alerts"}}</th><th data-col="serial" data-label="{{t "dev.serial"}}">{{t "dev.serial"}}</th><th data-col="cpu" data-label="CPU">CPU</th><th data-col="poll" data-label="{{t "col.poll"}}">{{t "col.poll"}}</th><th data-col="lte" data-label="LTE">LTE</th><th data-col="seen" data-label="{{t "col.seen"}}">{{t "col.seen"}}</th><th data-col="added" data-label="{{t "col.added"}}">{{t "col.added"}}</th><th data-col="lastfail" data-label="{{t "col.lastfail"}}">{{t "col.lastfail"}}</th><th data-nosort data-col="actions" data-label="{{t "col.actions"}}">{{t "col.actions"}}</th></tr></thead>
     <tbody>
     {{range .Devices}}
       <tr>
@@ -56,6 +56,7 @@
         <td class="mono muted">{{.Serial}}</td>
         <td data-sort="{{.CPU}}">{{.CPU}}%</td>
         <td class="muted" data-sort="{{.PollIntervalSec}}">{{if gt .PollIntervalSec 0}}{{.PollIntervalSec}}s{{else}}<span class="muted">—</span>{{end}}</td>
+        <td data-sort="{{.LTE.RSRP}}">{{if .LTE.Present}}<a href="/devices/{{.ID}}/lte" style="text-decoration:none" title="{{.LTE.Info}}"><span class="badge {{rsrpClass .LTE.RSRP}}">{{if .LTE.Info}}{{.LTE.Info}}{{else}}LTE{{end}}</span></a>{{if .LTE.FwUpgrade}} <span class="badge bad" title="modem firmware update">⬆</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="muted" data-sort="{{tsp .LastSeen}}">{{ago .LastSeen}}</td>
         <td class="muted" data-sort="{{ts .CreatedAt}}">{{dateT .CreatedAt}}</td>
         <td class="muted" data-sort="{{tsp .LastFail}}">{{if .LastFail}}<span class="bad">{{ago .LastFail}}</span>{{else}}—{{end}}</td>
@@ -66,7 +67,7 @@
         </div></td>
       </tr>
     {{else}}
-      <tr><td colspan="18" class="muted">{{t "devices.empty"}} {{if canWrite $.User}}<a href="/devices/new">{{t "devices.add_first"}}</a>{{end}}</td></tr>
+      <tr><td colspan="19" class="muted">{{t "devices.empty"}} {{if canWrite $.User}}<a href="/devices/new">{{t "devices.add_first"}}</a>{{end}}</td></tr>
     {{end}}
     </tbody>
   </table></div>

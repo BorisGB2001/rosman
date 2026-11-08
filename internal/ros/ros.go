@@ -48,6 +48,7 @@ type Health struct {
 	Clients       []model.Client
 	Addrs         []model.NetAddr
 	Macs          []model.NetMac
+	LTE           model.LTEInfo
 }
 
 // parseROSTime parses RouterOS date strings in both the modern ISO form and the
@@ -178,6 +179,35 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 			m := re.Map
 			if m["address"] != "" {
 				h.Addrs = append(h.Addrs, model.NetAddr{Address: m["address"], Iface: m["interface"]})
+			}
+		}
+	}
+	// LTE summary for the device list (only when an LTE interface exists).
+	if r, err := c.Run("/interface/lte/print"); err == nil && len(r.Re) > 0 {
+		name := r.Re[0].Map["name"]
+		if name != "" {
+			h.LTE.Present = true
+			if mr, e := c.Run("/interface/lte/monitor", "=numbers="+name, "=once=yes"); e == nil && len(mr.Re) > 0 {
+				mm := mr.Re[0].Map
+				tech := firstNonEmpty(mm["access-technology"], mm["network-mode"], "lte")
+				oper := firstNonEmpty(mm["current-operator"], mm["operator"])
+				h.LTE.RSRP = mm["rsrp"]
+				parts := []string{tech}
+				if h.LTE.RSRP != "" {
+					parts = append(parts, h.LTE.RSRP+" dBm")
+				}
+				if oper != "" {
+					parts = append(parts, oper)
+				}
+				h.LTE.Info = strings.Join(parts, " · ")
+			}
+			// Best-effort modem firmware upgrade check.
+			if fr, e := c.Run("/interface/lte/firmware-upgrade", "=numbers="+name, "=once=yes"); e == nil && len(fr.Re) > 0 {
+				fm := fr.Re[0].Map
+				inst, latest := fm["installed"], fm["latest"]
+				if latest != "" && inst != "" && latest != inst {
+					h.LTE.FwUpgrade = true
+				}
 			}
 		}
 	}

@@ -250,3 +250,12 @@ CREATE TABLE IF NOT EXISTS device_macs (
     mac       TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_device_macs ON device_macs(device_id);
+
+-- Per-device LTE summary (one modem typical), updated on poll.
+CREATE TABLE IF NOT EXISTS device_lte (
+    device_id  INTEGER PRIMARY KEY,
+    present    INTEGER NOT NULL DEFAULT 0,
+    info       TEXT NOT NULL DEFAULT '',
+    rsrp       TEXT NOT NULL DEFAULT '',
+    fw_upgrade INTEGER NOT NULL DEFAULT 0
+);

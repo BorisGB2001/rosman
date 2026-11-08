@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.44.0"
+const Version = "0.45.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -684,6 +684,7 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		Alerts   int
 		Addrs    []model.NetAddr
 		Macs     []model.NetMac
+		LTE      model.LTEInfo
 	}
 	rows := make([]row, 0, len(devs))
 	for _, d := range devs {
@@ -708,6 +709,7 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		rr.DevTags, _ = s.a.Store.DeviceTags(d.ID)
 		rr.Addrs, _ = s.a.Store.DeviceAddrs(d.ID)
 		rr.Macs, _ = s.a.Store.DeviceMacs(d.ID)
+		rr.LTE, _ = s.a.Store.DeviceLTEInfo(d.ID)
 		if h, err := s.a.Store.LatestHealth(d.ID); err == nil {
 			rr.CPU, rr.Uptime = h.CPU, h.Uptime
 		}

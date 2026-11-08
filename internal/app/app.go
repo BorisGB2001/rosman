@@ -121,6 +121,7 @@ func (a *App) PollDevice(d model.Device) error {
 	_ = a.Store.ReplacePorts(d.ID, h.Ports)
 	_ = a.Store.ReplaceAddrs(d.ID, h.Addrs)
 	_ = a.Store.ReplaceMacs(d.ID, h.Macs)
+	_ = a.Store.SetDeviceLTE(d.ID, h.LTE)
 	_ = a.Store.UpdateCertInfo(d.ID, h.APISSLCert, h.APICertExpiry)
 	a.evalCert(d, h.APICertExpiry)
 	_ = a.Store.UpdateFirmware(d.ID, h.FwLatest, h.FwChannel, h.FwStatus)

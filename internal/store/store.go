@@ -616,6 +616,26 @@ func (s *Store) CountClients() int {
 
 // ---- ports (faceplate) ----
 
+// SetDeviceLTE upserts the per-device LTE summary.
+func (s *Store) SetDeviceLTE(deviceID int64, l model.LTEInfo) error {
+	_, err := s.db.Exec(`INSERT INTO device_lte(device_id,present,info,rsrp,fw_upgrade) VALUES(?,?,?,?,?)
+		ON CONFLICT(device_id) DO UPDATE SET present=excluded.present, info=excluded.info, rsrp=excluded.rsrp, fw_upgrade=excluded.fw_upgrade`,
+		deviceID, b2i(l.Present), l.Info, l.RSRP, b2i(l.FwUpgrade))
+	return err
+}
+
+func (s *Store) DeviceLTEInfo(deviceID int64) (model.LTEInfo, error) {
+	var l model.LTEInfo
+	var pr, fu int
+	err := s.db.QueryRow(`SELECT present,info,rsrp,fw_upgrade FROM device_lte WHERE device_id=?`, deviceID).Scan(&pr, &l.Info, &l.RSRP, &fu)
+	if errors.Is(err, sql.ErrNoRows) {
+		return l, nil
+	}
+	l.Present = pr != 0
+	l.FwUpgrade = fu != 0
+	return l, err
+}
+
 func (s *Store) ReplaceAddrs(deviceID int64, addrs []model.NetAddr) error {
 	tx, err := s.db.Begin()
 	if err != nil {

@@ -201,6 +201,14 @@ type NetMac struct {
 	Mac   string
 }
 
+// LTEInfo is a per-device LTE summary for the device list.
+type LTEInfo struct {
+	Present    bool
+	Info       string // e.g. "lte · -95 dBm · MegaFon"
+	RSRP       string // raw RSRP for colour-coding, e.g. "-95"
+	FwUpgrade  bool   // modem firmware upgrade available
+}
+
 // IfaceSample is one per-interface byte-counter reading.
 type IfaceSample struct {
 	Iface   string
