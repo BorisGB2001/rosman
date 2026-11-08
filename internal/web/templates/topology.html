@@ -9,6 +9,7 @@
     <span id="topo-find-res" class="small"></span>
     {{if or .HiddenCount .ShowHidden}}<a class="btn sm secondary" href="/topology{{if not .ShowHidden}}?hidden=1{{end}}">{{if .ShowHidden}}{{t "topo.hide_hidden"}}{{else}}{{t "topo.show_hidden"}} ({{.HiddenCount}}){{end}}</a>{{end}}
   </div>
+  <div id="topo-path" class="small" style="margin-bottom:8px;color:var(--good);word-break:break-word"></div>
   <div class="topo-legend muted small" style="margin-bottom:8px">
     <span class="badge good">●</span> {{t "topo.online"}}
     <span class="badge bad" style="margin-left:10px">●</span> {{t "topo.offline"}}
@@ -116,9 +117,17 @@
     (adj[a]=adj[a]||[]).push({to:b,edge:e});
     (adj[b]=adj[b]||[]).push({to:a,edge:e});
   });
+  var pathEl=document.getElementById('topo-path');
   function clearHighlights(){
     nodes.forEach(function(g){ var sh=g.querySelector('circle,rect'); if(sh) sh.style.filter=''; g.classList.remove('thit','tpath'); });
     edges.forEach(function(e){ e.classList.remove('tpathedge'); });
+    if(pathEl) pathEl.textContent='';
+  }
+  function nodeName(nid){ var ng=svg.querySelector('.tnode[data-id="'+nid+'"]'); return ng?(ng.dataset.name||nid):nid; }
+  function portBetween(a,b){
+    var hit=(adj[a]||[]).filter(function(x){ return x.to===b; })[0];
+    var tx=hit&&hit.edge.querySelector('text');
+    return tx?tx.textContent.trim():'';
   }
   // BFS from the ROSMan node (id "-1") to the target; returns the list of edges
   // on the shortest path, or null when there is no ROSMan node or no route.
@@ -144,7 +153,15 @@
     if(p){
       p.edges.forEach(function(e){ e.classList.add('tpathedge'); });
       p.nodes.forEach(function(nid){ var ng=svg.querySelector('.tnode[data-id="'+nid+'"]'); if(ng) ng.classList.add('tpath'); });
-    }
+      // Readable route (copyable): ROSMan —ether5→ SW101 —ether1→ … → device.
+      var ordered=p.nodes.slice().reverse();
+      var txt=nodeName(ordered[0]);
+      for(var i=0;i<ordered.length-1;i++){
+        var port=portBetween(ordered[i],ordered[i+1]);
+        txt+=' —'+(port||'?')+'→ '+nodeName(ordered[i+1]);
+      }
+      if(pathEl) pathEl.textContent=txt;
+    } else if(pathEl){ pathEl.textContent=''; }
     g.scrollIntoView({block:'center',inline:'center'});
   }
   window.topoFind=function(){
