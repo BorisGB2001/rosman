@@ -15,11 +15,15 @@ const maxConcurrent = 8 // keep memory/CPU predictable on weak hardware
 func Run(ctx context.Context, a *app.App) {
 	pollT := time.NewTicker(a.Cfg.PollInterval)
 	backupT := time.NewTicker(a.Cfg.BackupInterval)
+	pruneT := time.NewTicker(24 * time.Hour)
 	defer pollT.Stop()
 	defer backupT.Stop()
+	defer pruneT.Stop()
 
-	// An initial poll shortly after start so the UI is populated.
+	// An initial poll shortly after start so the UI is populated, and one
+	// retention sweep so a long-stopped instance trims on restart.
 	go runPoll(a)
+	go runPrune(a)
 
 	for {
 		select {
@@ -29,7 +33,17 @@ func Run(ctx context.Context, a *app.App) {
 			runPoll(a)
 		case <-backupT.C:
 			runBackup(a)
+		case <-pruneT.C:
+			runPrune(a)
 		}
+	}
+}
+
+func runPrune(a *app.App) {
+	if n, err := a.PruneMetrics(); err != nil {
+		log.Printf("prune metrics: %v", err)
+	} else if n > 0 {
+		log.Printf("prune metrics: removed %d old samples (retention %dd)", n, a.MetricsRetentionDays())
 	}
 }
 

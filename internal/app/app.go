@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"strconv"
 	"time"
 
 	"rosman/internal/config"
@@ -626,6 +627,25 @@ func (a *App) BackupMode() string {
 func (a *App) setting(key string) string {
 	v, _ := a.Store.GetSetting(key)
 	return v
+}
+
+// MetricsRetentionDays is how long health samples are kept (default 90).
+func (a *App) MetricsRetentionDays() int {
+	n, _ := strconv.Atoi(a.setting("metrics_retention_days"))
+	if n <= 0 {
+		n = 90
+	}
+	if n > 3650 {
+		n = 3650
+	}
+	return n
+}
+
+// PruneMetrics deletes health samples older than the retention window and
+// returns how many rows were removed.
+func (a *App) PruneMetrics() (int64, error) {
+	cutoff := time.Now().AddDate(0, 0, -a.MetricsRetentionDays())
+	return a.Store.PruneMetricsBefore(cutoff)
 }
 
 func (a *App) settingDecrypt(key string) string {

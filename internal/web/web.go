@@ -43,7 +43,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.30.0"
+const Version = "0.31.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -200,6 +200,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /settings", s.authed(s.requireRole(model.RoleAdmin, s.settingsPage)))
 	mux.Handle("POST /settings", s.authed(s.requireRole(model.RoleAdmin, s.settingsSave)))
 	mux.Handle("POST /settings/gitexport", s.authed(s.requireRole(model.RoleAdmin, s.gitExportNow)))
+	mux.Handle("POST /settings/prune", s.authed(s.requireRole(model.RoleAdmin, s.pruneNow)))
 	mux.Handle("GET /configs/{id}/download", s.authed(s.configDownload))
 	mux.Handle("GET /ca", s.authed(s.requireRole(model.RoleAdmin, s.caPage)))
 	mux.Handle("POST /ca/generate", s.authed(s.requireRole(model.RoleAdmin, s.caGenerate)))
@@ -1685,8 +1686,19 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 		},
 		"BpwSet": get("backup_password_enc") != "", "SmtpPwSet": get("smtp_pass_enc") != "",
 		"GitEnabled": get("git_enabled") == "on",
+		"Retention":  s.a.MetricsRetentionDays(), "MetricCount": func() int64 { n, _ := s.a.Store.CountMetrics(); return n }(),
 		"Msg":        r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
 	})
+}
+
+func (s *Server) pruneNow(w http.ResponseWriter, r *http.Request) {
+	n, err := s.a.PruneMetrics()
+	if err != nil {
+		http.Redirect(w, r, "/settings?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "metrics_prune", fmt.Sprintf("removed %d", n))
+	http.Redirect(w, r, "/settings?msg="+urlq(fmt.Sprintf("pruned %d samples", n)), http.StatusSeeOther)
 }
 
 func (s *Server) gitExportNow(w http.ResponseWriter, r *http.Request) {
@@ -1704,7 +1716,7 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
 	set := func(k, v string) { _ = s.a.Store.SetSetting(k, v) }
 	set("backup_mode", r.FormValue("backup_mode"))
 	set("backup_deliver", strings.Join(r.Form["deliver"], ","))
-	for _, k := range []string{"backup_folder", "tg_token", "tg_chat", "smtp_host", "smtp_port", "smtp_user", "smtp_from", "smtp_to", "git_dir", "git_remote", "git_branch"} {
+	for _, k := range []string{"backup_folder", "tg_token", "tg_chat", "smtp_host", "smtp_port", "smtp_user", "smtp_from", "smtp_to", "git_dir", "git_remote", "git_branch", "metrics_retention_days"} {
 		set(k, strings.TrimSpace(r.FormValue(k)))
 	}
 	if r.FormValue("git_enabled") == "on" {

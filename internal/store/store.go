@@ -592,6 +592,23 @@ func (s *Store) PruneIfaceBefore(t time.Time) error {
 	return err
 }
 
+// PruneMetricsBefore deletes health samples older than t and returns how many
+// rows were removed.
+func (s *Store) PruneMetricsBefore(t time.Time) (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM metrics WHERE ts < ?`, t)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// CountMetrics returns the number of stored health samples.
+func (s *Store) CountMetrics() (int64, error) {
+	var n int64
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM metrics`).Scan(&n)
+	return n, err
+}
+
 // IfaceNames lists interfaces with samples in the recent window (active ones).
 func (s *Store) IfaceNames(deviceID int64, since time.Time) ([]string, error) {
 	rows, err := s.db.Query(`SELECT DISTINCT iface FROM iface_traffic WHERE device_id=? AND ts>=? ORDER BY iface`, deviceID, since)

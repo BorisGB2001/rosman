@@ -34,6 +34,12 @@
   <label>{{t "set.smtp_to"}}<input name="smtp_to" value="{{index .V "smtp_to"}}" placeholder="a@x.com, b@y.com"></label>
 </div>
 <div class="card narrow">
+  <h3>{{t "ret.title"}}</h3>
+  <p class="muted small">{{t "ret.note"}}</p>
+  <label>{{t "ret.days"}}<input name="metrics_retention_days" value="{{.Retention}}" style="width:90px"></label>
+  <p class="muted small">{{t "ret.count"}}: {{.MetricCount}}</p>
+</div>
+<div class="card narrow">
   <h3>{{t "git.title"}} {{if .GitEnabled}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</h3>
   <p class="muted small">{{t "git.note"}}</p>
   <label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="git_enabled" {{if .GitEnabled}}checked{{end}}> {{t "git.enable"}}</label>
@@ -47,5 +53,9 @@
 <div class="card narrow">
   <form method="post" action="/settings/gitexport"><button class="btn" type="submit">{{t "git.now"}}</button></form>
   <p class="muted small">{{t "git.now_note"}}</p>
+</div>
+<div class="card narrow">
+  <form method="post" action="/settings/prune"><button class="btn" type="submit">{{t "ret.now"}}</button></form>
+  <p class="muted small">{{t "ret.now_note"}}</p>
 </div>
 {{template "tail" .}}{{end}}
