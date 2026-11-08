@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.80.0"
+const Version = "0.80.1"
 
 const (
 	cookieName  = "rosman_session"
