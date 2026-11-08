@@ -43,7 +43,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.27.0"
+const Version = "0.28.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -195,6 +195,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /templates/{id}/apply", s.authed(s.requireRole(model.RoleOperator, s.templateApply)))
 	mux.Handle("GET /settings", s.authed(s.requireRole(model.RoleAdmin, s.settingsPage)))
 	mux.Handle("POST /settings", s.authed(s.requireRole(model.RoleAdmin, s.settingsSave)))
+	mux.Handle("POST /settings/gitexport", s.authed(s.requireRole(model.RoleAdmin, s.gitExportNow)))
 	mux.Handle("GET /configs/{id}/download", s.authed(s.configDownload))
 	mux.Handle("GET /ca", s.authed(s.requireRole(model.RoleAdmin, s.caPage)))
 	mux.Handle("POST /ca/generate", s.authed(s.requireRole(model.RoleAdmin, s.caGenerate)))
@@ -1540,10 +1541,23 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 			"backup_folder": get("backup_folder"), "tg_token": get("tg_token"), "tg_chat": get("tg_chat"),
 			"smtp_host": get("smtp_host"), "smtp_port": get("smtp_port"), "smtp_user": get("smtp_user"),
 			"smtp_from": get("smtp_from"), "smtp_to": get("smtp_to"),
+			"git_dir": get("git_dir"), "git_remote": get("git_remote"), "git_branch": get("git_branch"),
+			"git_last": get("git_last"),
 		},
 		"BpwSet": get("backup_password_enc") != "", "SmtpPwSet": get("smtp_pass_enc") != "",
-		"Msg": r.URL.Query().Get("msg"),
+		"GitEnabled": get("git_enabled") == "on",
+		"Msg":        r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
 	})
+}
+
+func (s *Server) gitExportNow(w http.ResponseWriter, r *http.Request) {
+	res, err := s.a.GitExport()
+	if err != nil {
+		http.Redirect(w, r, "/settings?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "git_export", res)
+	http.Redirect(w, r, "/settings?msg="+urlq("git: "+res), http.StatusSeeOther)
 }
 
 func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
@@ -1551,8 +1565,13 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
 	set := func(k, v string) { _ = s.a.Store.SetSetting(k, v) }
 	set("backup_mode", r.FormValue("backup_mode"))
 	set("backup_deliver", strings.Join(r.Form["deliver"], ","))
-	for _, k := range []string{"backup_folder", "tg_token", "tg_chat", "smtp_host", "smtp_port", "smtp_user", "smtp_from", "smtp_to"} {
+	for _, k := range []string{"backup_folder", "tg_token", "tg_chat", "smtp_host", "smtp_port", "smtp_user", "smtp_from", "smtp_to", "git_dir", "git_remote", "git_branch"} {
 		set(k, strings.TrimSpace(r.FormValue(k)))
+	}
+	if r.FormValue("git_enabled") == "on" {
+		set("git_enabled", "on")
+	} else {
+		set("git_enabled", "")
 	}
 	if v := r.FormValue("backup_password"); v != "" {
 		if enc, err := s.a.Box.Encrypt(v); err == nil {

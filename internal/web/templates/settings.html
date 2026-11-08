@@ -1,5 +1,6 @@
 {{define "settings"}}{{template "head" .}}
 {{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
 <div class="cardhead"><h1 style="margin:0">{{t "set.title"}}</h1></div>
 <form method="post" action="/settings">
 <div class="card narrow">
@@ -32,6 +33,19 @@
   <label>{{t "set.smtp_from"}}<input name="smtp_from" value="{{index .V "smtp_from"}}"></label>
   <label>{{t "set.smtp_to"}}<input name="smtp_to" value="{{index .V "smtp_to"}}" placeholder="a@x.com, b@y.com"></label>
 </div>
+<div class="card narrow">
+  <h3>{{t "git.title"}} {{if .GitEnabled}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</h3>
+  <p class="muted small">{{t "git.note"}}</p>
+  <label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="git_enabled" {{if .GitEnabled}}checked{{end}}> {{t "git.enable"}}</label>
+  <label>{{t "git.dir"}}<input name="git_dir" value="{{index .V "git_dir"}}" placeholder="{{t "git.dir_ph"}}"></label>
+  <label>{{t "git.branch"}}<input name="git_branch" value="{{index .V "git_branch"}}" placeholder="main"></label>
+  <label>{{t "git.remote"}}<input name="git_remote" value="{{index .V "git_remote"}}" placeholder="git@host:fleet/configs.git"></label>
+  {{if index .V "git_last"}}<p class="muted small">{{t "git.last"}}: {{index .V "git_last"}}</p>{{end}}
+</div>
 <div class="card narrow"><button class="btn primary" type="submit">{{t "set.save"}}</button></div>
 </form>
+<div class="card narrow">
+  <form method="post" action="/settings/gitexport"><button class="btn" type="submit">{{t "git.now"}}</button></form>
+  <p class="muted small">{{t "git.now_note"}}</p>
+</div>
 {{template "tail" .}}{{end}}

@@ -539,6 +539,17 @@ func (s *Store) Configs(deviceID int64, limit int) ([]model.Config, error) {
 	return out, rows.Err()
 }
 
+// LatestConfig returns the newest snapshot of the given kind, with content.
+func (s *Store) LatestConfig(deviceID int64, kind string) (model.Config, error) {
+	var c model.Config
+	err := s.db.QueryRow(`SELECT id,device_id,taken_at,kind,sha256,content FROM configs WHERE device_id=? AND kind=? ORDER BY taken_at DESC LIMIT 1`, deviceID, kind).
+		Scan(&c.ID, &c.DeviceID, &c.TakenAt, &c.Kind, &c.SHA256, &c.Content)
+	if errors.Is(err, sql.ErrNoRows) {
+		return c, ErrNotFound
+	}
+	return c, err
+}
+
 func (s *Store) ConfigContent(id int64) (model.Config, error) {
 	var c model.Config
 	err := s.db.QueryRow(`SELECT id,device_id,taken_at,kind,sha256,content FROM configs WHERE id=?`, id).

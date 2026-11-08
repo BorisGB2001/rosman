@@ -88,4 +88,6 @@ func runBackup(a *app.App) {
 			log.Printf("backup %s: new config version stored", d.Name)
 		}
 	})
+	// Mirror the latest exports into the git repo, if enabled.
+	a.GitExportIfEnabled()
 }
