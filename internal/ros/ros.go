@@ -41,6 +41,8 @@ type Health struct {
 	FwLatest      string     // latest RouterOS version the device knows about
 	FwChannel     string     // update channel
 	FwStatus      string     // device update status string
+	RBCurrentFw   string     // RouterBOARD firmware running now
+	RBUpgradeFw   string     // RouterBOARD firmware pending (applies on reboot)
 	Neighbors     []model.Neighbor
 	Ifaces        []model.IfaceSample
 	Ports         []model.Port
@@ -138,7 +140,10 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 		h.TotalMem = atoi64(m["total-memory"])
 	}
 	if r, err := c.Run("/system/routerboard/print"); err == nil && len(r.Re) > 0 {
-		h.Serial = r.Re[0].Map["serial-number"]
+		m := r.Re[0].Map
+		h.Serial = m["serial-number"]
+		h.RBCurrentFw = m["current-firmware"]
+		h.RBUpgradeFw = m["upgrade-firmware"]
 	}
 	// api-ssl certificate name + expiry (for cert-expiry alerting).
 	if r, err := c.Run("/ip/service/print", "?name=api-ssl"); err == nil && len(r.Re) > 0 {
@@ -858,6 +863,43 @@ func FirmwareInstall(d model.Device, pass string, timeout time.Duration) (reboot
 	_, _ = c.Run("/system/package/update/install") // device reboots; connection drops
 	c.Close()
 	return true, status, nil
+}
+
+// Reboot reboots the device over the binary API. The box goes down immediately,
+// so the reboot command's own reply may never arrive; that is expected and not
+// treated as an error — a failure to dial is the only real failure here.
+func Reboot(d model.Device, pass string, timeout time.Duration) error {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	_, _ = c.Run("/system/reboot") // connection drops as the device goes down
+	return nil
+}
+
+// RouterboardUpgrade writes the pending RouterBOARD firmware and reboots so it
+// takes effect (current-firmware only catches up to upgrade-firmware after this
+// reboot). rebooting=false means there was nothing to upgrade (already current),
+// and no reboot was issued.
+func RouterboardUpgrade(d model.Device, pass string, timeout time.Duration) (rebooting bool, err error) {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return false, err
+	}
+	defer c.Close()
+	var cur, upg string
+	if r, e := c.Run("/system/routerboard/print"); e == nil && len(r.Re) > 0 {
+		cur, upg = r.Re[0].Map["current-firmware"], r.Re[0].Map["upgrade-firmware"]
+	}
+	if upg == "" || upg == cur {
+		return false, nil // nothing pending
+	}
+	if _, e := c.Run("/system/routerboard/upgrade"); e != nil {
+		return false, e
+	}
+	_, _ = c.Run("/system/reboot") // firmware is applied during the reboot
+	return true, nil
 }
 
 // LoadSigner reads an SSH private key (no passphrase) for /export.

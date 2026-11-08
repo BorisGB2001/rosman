@@ -584,5 +584,16 @@
   "fw.auto_refresh": "auto-refreshing",
   "bk.fix_title": "How to fix devices with no backup",
   "bk.fix_note": "These devices have no backup because the fleet SSH key isn't authorised on them. Add this public key to the 'audit' user on each device (via WinBox or the terminal), then backups/export will work:",
-  "bk.fix_cmd": "On RouterOS: upload the key file, then"
+  "bk.fix_cmd": "On RouterOS: upload the key file, then",
+  "col.rb_fw": "Board FW",
+  "dev.rb_fw": "RouterBOARD firmware",
+  "dev.rb_upgrade": "Upgrade FW to",
+  "dev.rb_available": "Firmware available",
+  "dev.rb_confirm": "The RouterBOARD firmware will be upgraded and the device will REBOOT. Continue?",
+  "dev.reboot": "Reboot",
+  "dev.reboot_confirm": "The device will reboot and drop off the network briefly. Continue?",
+  "dmsg.rebooting": "Reboot command sent",
+  "dmsg.rb_upgrading": "RouterBOARD firmware upgrading, device rebooting",
+  "dmsg.rb_current": "RouterBOARD firmware already up to date",
+  "dmsg.fwchecked": "Update check complete"
 }

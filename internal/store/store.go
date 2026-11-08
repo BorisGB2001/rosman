@@ -54,6 +54,8 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE devices ADD COLUMN poll_interval_sec INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE cron_jobs ADD COLUMN command TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN notes TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE devices ADD COLUMN rb_current_fw TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE devices ADD COLUMN rb_upgrade_fw TEXT NOT NULL DEFAULT ''`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -446,7 +448,8 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	err := row.Scan(&d.ID, &d.Name, &d.IP, &d.APIPort, &tls, &d.APIUser, &d.APIPassEnc,
 		&d.SSHUser, &d.APICertPin, &d.SSHHostPin, &d.Model, &d.Serial, &d.ROSVersion, &last, &d.CreatedAt,
 		&d.APISSLCert, &exp, &d.FwLatest, &d.FwChannel, &d.FwStatus, &site,
-		&snmpEn, &d.SNMPCommEnc, &d.SNMPPort, &d.DeviceType, &fail, &d.PollIntervalSec, &d.Notes)
+		&snmpEn, &d.SNMPCommEnc, &d.SNMPPort, &d.DeviceType, &fail, &d.PollIntervalSec, &d.Notes,
+		&d.RBCurrentFw, &d.RBUpgradeFw)
 	d.APITLS = tls != 0
 	d.SNMPEnabled = snmpEn != 0
 	if fail.Valid {
@@ -464,7 +467,7 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	return d, err
 }
 
-const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id,snmp_enabled,snmp_community_enc,snmp_port,device_type,last_fail_at,poll_interval_sec,notes`
+const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id,snmp_enabled,snmp_community_enc,snmp_port,device_type,last_fail_at,poll_interval_sec,notes,rb_current_fw,rb_upgrade_fw`
 
 // SetDeviceType sets a device's role (router/switch/mix, or "" for unknown).
 func (s *Store) SetDeviceType(id int64, t string) error {
@@ -1424,6 +1427,15 @@ func (s *Store) DeleteTemplate(id int64) error {
 
 func (s *Store) UpdateFirmware(id int64, latest, channel, status string) error {
 	_, err := s.db.Exec(`UPDATE devices SET fw_latest=?, fw_channel=?, fw_status=? WHERE id=?`, latest, channel, status, id)
+	return err
+}
+
+// SetRouterboardFw stores the RouterBOARD firmware state from a poll:
+// current-firmware (running now) and upgrade-firmware (applied on next reboot
+// after /system/routerboard upgrade). Both empty for devices without a
+// RouterBOARD (CHR, x86), which simply show no FW column value.
+func (s *Store) SetRouterboardFw(id int64, current, upgrade string) error {
+	_, err := s.db.Exec(`UPDATE devices SET rb_current_fw=?, rb_upgrade_fw=? WHERE id=?`, current, upgrade, id)
 	return err
 }
 

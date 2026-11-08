@@ -109,6 +109,8 @@ type Device struct {
 	FwLatest      string     // latest RouterOS version known to the device
 	FwChannel     string     // update channel (stable/testing/...)
 	FwStatus      string     // device's update status string
+	RBCurrentFw   string     // RouterBOARD firmware running now (/system/routerboard)
+	RBUpgradeFw   string     // RouterBOARD firmware available after upgrade+reboot
 	SiteID        *int64     // location
 	SiteName      string     // joined for display
 	Tags          []string   // grouping tags (filled on demand)

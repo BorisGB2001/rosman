@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.74.1"
+const Version = "0.75.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -127,6 +127,12 @@ func New(a *app.App) (*Server, error) {
 		"lang":  func() string { return i18n.Default },
 		"theme": func() string { return "" },
 		"path":  func() string { return "/" },
+		"dmsg": func(code string) string {
+			if v := i18n.T(i18n.Default, "dmsg."+code); code != "" && v != "dmsg."+code {
+				return v
+			}
+			return code
+		},
 	}
 	t, err := template.New("").Funcs(funcs).ParseFS(tmplFS, "templates/*.html")
 	if err != nil {
@@ -182,6 +188,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /firmware/progress", s.authed(s.firmwareProgress))
 	mux.Handle("POST /firmware/upgrade", s.authed(s.requireRole(model.RoleOperator, s.firmwareUpgrade)))
 	mux.Handle("POST /devices/{id}/upgrade", s.authed(s.requireRole(model.RoleOperator, s.deviceUpgrade)))
+	mux.Handle("POST /devices/{id}/rbupgrade", s.authed(s.requireRole(model.RoleOperator, s.deviceRBUpgrade)))
+	mux.Handle("POST /devices/{id}/reboot", s.authed(s.requireRole(model.RoleOperator, s.deviceReboot)))
 	mux.Handle("GET /sites", s.authed(s.sitesPage))
 	mux.Handle("POST /sites/new", s.authed(s.requireRole(model.RoleOperator, s.siteCreate)))
 	mux.Handle("POST /sites/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.siteDelete)))
@@ -333,6 +341,18 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		"lang":  func() string { return lang },
 		"theme": func() string { return theme },
 		"path":  func() string { return path },
+		// dmsg localizes a short redirect message code (dmsg.<code>), falling
+		// back to the raw code when no translation exists so a new code never
+		// renders as a blank or a bare "dmsg.foo".
+		"dmsg": func(code string) string {
+			if code == "" {
+				return ""
+			}
+			if v := i18n.T(lang, "dmsg."+code); v != "dmsg."+code {
+				return v
+			}
+			return code
+		},
 	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.ExecuteTemplate(w, name, data); err != nil {
@@ -1045,6 +1065,47 @@ func (s *Server) deviceUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "fw_upgrade", r.PathValue("id"))
 	http.Redirect(w, r, "/firmware", http.StatusSeeOther)
+}
+
+// deviceRBUpgrade applies the pending RouterBOARD firmware and reboots the
+// device. The operator confirms in the browser first (the device reboots).
+func (s *Server) deviceRBUpgrade(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	dst := "/devices/" + r.PathValue("id")
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	rebooting, err := s.a.RouterboardUpgrade(d)
+	if err != nil {
+		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "rb_fw_upgrade", r.PathValue("id"))
+	if rebooting {
+		http.Redirect(w, r, dst+"?msg=rb_upgrading", http.StatusSeeOther)
+	} else {
+		http.Redirect(w, r, dst+"?msg=rb_current", http.StatusSeeOther)
+	}
+}
+
+// deviceReboot reboots a single device. The operator confirms in the browser
+// first (the device drops off the network for the reboot).
+func (s *Server) deviceReboot(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	dst := "/devices/" + r.PathValue("id")
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	if err := s.a.Reboot(d); err != nil {
+		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "reboot", r.PathValue("id"))
+	http.Redirect(w, r, dst+"?msg=rebooting", http.StatusSeeOther)
 }
 
 func (s *Server) sitesPage(w http.ResponseWriter, r *http.Request) {

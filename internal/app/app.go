@@ -137,6 +137,7 @@ func (a *App) PollDevice(d model.Device) error {
 	a.evalCert(d, h.APICertExpiry)
 	a.evalThresholds(d, h)
 	_ = a.Store.UpdateFirmware(d.ID, h.FwLatest, h.FwChannel, h.FwStatus)
+	_ = a.Store.SetRouterboardFw(d.ID, h.RBCurrentFw, h.RBUpgradeFw)
 	a.evalFirmware(d, h.Version, h.FwLatest)
 	_ = a.Store.ReplaceNeighbors(d.ID, h.Neighbors)
 	_ = a.Store.ReplaceBridgeHosts(d.ID, h.BridgeHosts)
@@ -160,6 +161,28 @@ func (a *App) RefreshFirmware(d model.Device) error {
 	_ = a.Store.UpdateFirmware(d.ID, latest, channel, status)
 	a.evalFirmware(d, d.ROSVersion, latest)
 	return nil
+}
+
+// Reboot reboots a single device over the API. The caller is responsible for
+// confirming with the operator first — the device drops off the network for the
+// duration of the reboot.
+func (a *App) Reboot(d model.Device) error {
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return err
+	}
+	return ros.Reboot(d, pass, a.Cfg.APITimeout)
+}
+
+// RouterboardUpgrade applies the pending RouterBOARD firmware and reboots the
+// device so it takes effect. rebooting=false means the firmware was already
+// current and nothing was done.
+func (a *App) RouterboardUpgrade(d model.Device) (rebooting bool, err error) {
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return false, err
+	}
+	return ros.RouterboardUpgrade(d, pass, a.Cfg.APITimeout)
 }
 
 // RestoreConfig restores a stored config version to its device. Binary/archive
