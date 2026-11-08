@@ -1,0 +1,51 @@
+{{define "bulk"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "bulk.title"}}</h1></div>
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+{{if .Results}}<div class="note ok">{{t "bulk.done"}}: {{.RanAction}} ({{len .Results}})</div>{{end}}
+
+<form method="post" action="/bulk">
+<div class="card">
+  <h3>{{t "bulk.action"}}</h3>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+    <label style="flex-direction:row;gap:6px;align-items:center"><input type="radio" name="action" value="poll" checked> {{t "dev.poll"}}</label>
+    <label style="flex-direction:row;gap:6px;align-items:center"><input type="radio" name="action" value="backup"> {{t "dev.backup"}}</label>
+    <label style="flex-direction:row;gap:6px;align-items:center"><input type="radio" name="action" value="fwcheck"> {{t "dev.fw_check"}}</label>
+    <label style="flex-direction:row;gap:6px;align-items:center"><input type="radio" name="action" value="template"> {{t "tpl.apply"}}</label>
+  </div>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:8px">
+    <label>{{t "tpl.list"}}
+      <select name="template_id">
+        {{range .Templates}}<option value="{{.ID}}">{{.Name}}</option>{{else}}<option value="">—</option>{{end}}
+      </select></label>
+    <label>{{t "tpl.guard"}}<input name="guard" value="120" style="width:90px"></label>
+  </div>
+  <p class="muted small">{{t "bulk.tpl_note"}}</p>
+</div>
+
+<div class="card">
+  <h3>{{t "bulk.devices"}} <label style="font-weight:normal;font-size:.85em;margin-left:10px"><input type="checkbox" onclick="document.querySelectorAll('.bchk').forEach(c=>c.checked=this.checked)"> {{t "bulk.all"}}</label></h3>
+  <div class="scroll"><table>
+    <thead><tr><th></th><th>{{t "col.name"}}</th><th>IP</th><th>{{t "col.site"}}</th><th>RouterOS</th></tr></thead>
+    <tbody>
+    {{range .Devices}}
+      <tr><td><input class="bchk" type="checkbox" name="ids" value="{{.ID}}"></td>
+        <td>{{.Name}}</td><td class="mono">{{.IP}}</td><td class="muted">{{.SiteName}}</td><td>{{.ROSVersion}}</td></tr>
+    {{else}}<tr><td colspan="5" class="muted">{{t "devices.empty"}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+  <div style="margin-top:10px"><button class="btn primary" type="submit" onclick="return confirm('{{t "bulk.confirm"}}')">{{t "bulk.run"}}</button></div>
+</div>
+</form>
+
+{{if .Results}}
+<div class="card">
+  <h3>{{t "tpl.results"}}</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "al.device"}}</th><th>{{t "al.state"}}</th><th>{{t "al.detail"}}</th></tr></thead>
+    <tbody>
+    {{range .Results}}<tr><td>{{.Device}}</td><td>{{if .OK}}<span class="badge good">ok</span>{{else}}<span class="badge bad">fail</span>{{end}}</td><td class="muted">{{.Detail}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+{{end}}
+{{template "tail" .}}{{end}}

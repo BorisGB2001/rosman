@@ -43,7 +43,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.28.0"
+const Version = "0.29.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -164,6 +164,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/site", s.authed(s.requireRole(model.RoleOperator, s.deviceSetSite)))
 	mux.Handle("POST /devices/{id}/tag", s.authed(s.requireRole(model.RoleOperator, s.deviceTag)))
 	mux.Handle("GET /clients", s.authed(s.clientsPage))
+	mux.Handle("GET /bulk", s.authed(s.bulkPage))
+	mux.Handle("POST /bulk", s.authed(s.requireRole(model.RoleOperator, s.bulkRun)))
 	mux.Handle("GET /security", s.authed(s.securityPage))
 	mux.Handle("GET /devices/{id}/cve", s.authed(s.cvePage))
 	mux.Handle("GET /users", s.authed(s.requireRole(model.RoleAdmin, s.usersPage)))
@@ -1315,6 +1317,83 @@ func (s *Server) cvePage(w http.ResponseWriter, r *http.Request) {
 	fs := cve.Scan(d.ROSVersion)
 	s.render(w, r, "cve", map[string]any{"Active": "devices", "D": d,
 		"Findings": fs, "Worst": cve.Worst(fs), "DBCount": len(cve.Data)})
+}
+
+func (s *Server) bulkPage(w http.ResponseWriter, r *http.Request) {
+	s.renderBulk(w, r, nil, "", "")
+}
+
+func (s *Server) renderBulk(w http.ResponseWriter, r *http.Request, results []app.ApplyResult, action, errMsg string) {
+	devs, _ := s.a.Store.Devices()
+	tpls, _ := s.a.Store.Templates()
+	s.render(w, r, "bulk", map[string]any{"Active": "bulk", "Devices": devs,
+		"Templates": tpls, "Results": results, "RanAction": action, "Err": errMsg})
+}
+
+func (s *Server) bulkRun(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	action := r.FormValue("action")
+	ids := r.Form["ids"]
+	if len(ids) == 0 {
+		s.renderBulk(w, r, nil, "", "no devices selected")
+		return
+	}
+	guard, _ := strconv.Atoi(r.FormValue("guard"))
+	if guard == 0 {
+		guard = 120
+	}
+	var tpl model.Template
+	if action == "template" {
+		tid, _ := strconv.ParseInt(r.FormValue("template_id"), 10, 64)
+		var err error
+		if tpl, err = s.a.Store.Template(tid); err != nil {
+			s.renderBulk(w, r, nil, "", "template not found")
+			return
+		}
+	}
+	results := make([]app.ApplyResult, 0, len(ids))
+	for _, sid := range ids {
+		id, _ := strconv.ParseInt(sid, 10, 64)
+		d, err := s.a.Store.Device(id)
+		if err != nil {
+			continue
+		}
+		res := app.ApplyResult{Device: d.Name, OK: true, Detail: "ok"}
+		switch action {
+		case "poll":
+			if err := s.a.PollDevice(d); err != nil {
+				res.OK, res.Detail = false, err.Error()
+			}
+		case "backup":
+			if changed, err := s.a.BackupDevice(d, ""); err != nil {
+				res.OK, res.Detail = false, err.Error()
+			} else if changed {
+				res.Detail = "new version"
+			} else {
+				res.Detail = "no change"
+			}
+		case "fwcheck":
+			if err := s.a.RefreshFirmware(d); err != nil {
+				res.OK, res.Detail = false, err.Error()
+			} else {
+				res.Detail = d.FwStatus
+			}
+		case "template":
+			if err := s.a.ApplyTemplate(d, tpl.Body, guard); err != nil {
+				res.OK, res.Detail = false, err.Error()
+			}
+		default:
+			s.renderBulk(w, r, nil, "", "unknown action")
+			return
+		}
+		results = append(results, res)
+	}
+	detail := action
+	if action == "template" {
+		detail = "template:" + tpl.Name
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "bulk_"+action, fmt.Sprintf("%d devices (%s)", len(results), detail))
+	s.renderBulk(w, r, results, action, "")
 }
 
 func (s *Server) securityPage(w http.ResponseWriter, r *http.Request) {
