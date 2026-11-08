@@ -193,6 +193,8 @@ table.dtable th.sort-desc::after { content: " ▼"; font-size: 9px; opacity: .7;
 .gearbtn { cursor: pointer; }
 .dtable-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
 .dtable-bar input[type=search] { width: 180px; }
+table th.col-drop { box-shadow: inset 2px 0 0 var(--accent); }
+table th[draggable=true] { -webkit-user-drag: element; }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--bg); color: var(--muted); white-space: nowrap; }
 .badge.good { background: var(--good-bg); color: var(--good); }
 .badge.warn { background: var(--warn-bg); color: var(--warn); }
