@@ -634,5 +634,6 @@
   "dmsg.webhook-added": "Webhook добавлен",
   "dmsg.webhook-removed": "Webhook удалён",
   "dmsg.window-added": "Окно обслуживания добавлено",
-  "dmsg.window-removed": "Окно обслуживания удалено"
+  "dmsg.window-removed": "Окно обслуживания удалено",
+  "dev.export_csv": "Экспорт инвентаря в CSV"
 }

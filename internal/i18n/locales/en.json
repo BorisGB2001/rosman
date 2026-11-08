@@ -634,5 +634,6 @@
   "dmsg.webhook-added": "Webhook added",
   "dmsg.webhook-removed": "Webhook removed",
   "dmsg.window-added": "Maintenance window added",
-  "dmsg.window-removed": "Maintenance window removed"
+  "dmsg.window-removed": "Maintenance window removed",
+  "dev.export_csv": "Export inventory to CSV"
 }

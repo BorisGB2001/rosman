@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.80.1"
+const Version = "0.81.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -201,6 +201,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /find", s.authed(s.findPage))
 	mux.Handle("GET /backups", s.authed(s.backupsPage))
 	mux.Handle("GET /ports", s.authed(s.portsPage))
+	mux.Handle("GET /devices.csv", s.authed(s.devicesCSV))
 	mux.Handle("GET /ports.csv", s.authed(s.portsCSV))
 	mux.Handle("GET /vlans", s.authed(s.vlansPage))
 	mux.Handle("GET /vlans.csv", s.authed(s.vlansCSV))
@@ -2514,6 +2515,56 @@ func (s *Server) backupsPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "backups", map[string]any{"Active": "backups", "Rows": rows,
 		"OkN": okN, "StaleN": staleN, "NeverN": neverN, "Total": len(devs),
 		"SSHPubKey": s.a.SSHPublicKey()})
+}
+
+// devicesCSV exports the device inventory — identity, model/serial, RouterOS
+// version and RouterBOARD firmware with their up-to-date flags — for asset and
+// firmware audits. Read-only; one row per managed device.
+func (s *Server) devicesCSV(w http.ResponseWriter, r *http.Request) {
+	devs, _ := s.a.Store.Devices()
+	sites, _ := s.a.Store.Sites()
+	siteName := map[int64]string{}
+	for _, st := range sites {
+		siteName[st.ID] = st.Name
+	}
+	alertN := map[int64]int{}
+	if al, e := s.a.Store.ActiveAlerts(); e == nil {
+		for _, a := range al {
+			alertN[a.DeviceID]++
+		}
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="rosman-devices-%s.csv"`, time.Now().Format("2006-01-02")))
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"name", "ip", "mac", "model", "serial", "ros_version", "ros_latest", "ros_outdated",
+		"board_fw", "board_fw_available", "board_fw_outdated", "type", "site", "last_seen", "alerts"})
+	for _, d := range devs {
+		mac := ""
+		if macs, _ := s.a.Store.DeviceMacs(d.ID); len(macs) > 0 {
+			mac = macs[0].Mac
+		}
+		site := ""
+		if d.SiteID != nil {
+			site = siteName[*d.SiteID]
+		}
+		rosLatest := fwFirst(d.FwLatest)
+		rosOutdated := rosLatest != "" && rosLatest != fwFirst(d.ROSVersion)
+		rbOutdated := d.RBUpgradeFw != "" && d.RBUpgradeFw != d.RBCurrentFw
+		seen := ""
+		if d.LastSeen != nil {
+			seen = d.LastSeen.Format("2006-01-02 15:04")
+		}
+		_ = cw.Write([]string{d.Name, d.IP, mac, d.Model, d.Serial, d.ROSVersion, rosLatest, boolStr(rosOutdated),
+			d.RBCurrentFw, d.RBUpgradeFw, boolStr(rbOutdated), d.DeviceType, site, seen, strconv.Itoa(alertN[d.ID])})
+	}
+	cw.Flush()
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
 }
 
 // portsCSV exports per-device port capacity.
