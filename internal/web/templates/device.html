@@ -77,7 +77,7 @@
   <tr><th>{{t "col.model"}}</th><td>{{.D.Model}}</td><th>{{t "dev.serial"}}</th><td>{{.D.Serial}}</td></tr>
   <tr><th>RouterOS</th><td>{{.D.ROSVersion}}</td><th>{{t "col.uptime"}}</th><td>{{.H.Uptime}}</td></tr>
   <tr><th>{{t "dev.rb_fw"}}</th><td>{{if .D.RBCurrentFw}}{{.D.RBCurrentFw}}{{if and .D.RBUpgradeFw (ne .D.RBUpgradeFw .D.RBCurrentFw)}} <span class="badge bad" title="{{t "dev.rb_available"}}">→ {{.D.RBUpgradeFw}}</span>{{else}} <span class="badge good">{{t "fw.uptodate"}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td><th>{{t "dev.fw_status"}}</th><td class="muted">{{.D.FwStatus}}</td></tr>
-  <tr><th>{{t "dev.firmware"}}</th><td>{{if .D.FwLatest}}{{.D.FwLatest}} <small class="muted">{{.D.FwChannel}}</small>{{else}}—{{end}}</td><th></th><td></td></tr>
+  <tr><th>{{t "dev.firmware"}}</th><td>{{if .D.FwLatest}}{{.D.FwLatest}} <small class="muted">{{.D.FwChannel}}</small>{{else}}—{{end}}</td><th>{{t "dev.uplink"}}</th><td>{{if .UplinkName}}<a href="/devices/{{.UplinkID}}">{{.UplinkName}}</a>{{if .UplinkPort}} <span class="muted">· {{.UplinkPort}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td></tr>
   <tr><th>CPU</th><td>{{.H.CPU}}%</td><th>{{t "dev.mem"}}</th><td>{{mb .H.FreeMem}} {{t "dev.free"}} / {{mb .H.TotalMem}}</td></tr>
   <tr><th>api-ssl cert</th><td>{{if .D.APISSLCert}}{{.D.APISSLCert}}{{else}}—{{end}}</td><th>{{t "dev.expires"}}</th><td>{{date .D.APICertExpiry}}</td></tr>
   <tr><th>{{t "col.seen"}}</th><td class="muted">{{ago .D.LastSeen}}</td><th>{{t "dev.sshuser"}}</th><td>{{.D.SSHUser}}</td></tr>

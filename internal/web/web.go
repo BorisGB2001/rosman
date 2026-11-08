@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.86.0"
+const Version = "0.87.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -1433,11 +1433,27 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 			temp = append(temp, m.Temp)
 		}
 	}
+	// Uplink: the managed device (and its port) this device sits behind, from the
+	// bridge FDB — where this device's own MAC is learned on another device's
+	// fewest-MAC physical (access) port.
+	var uplinkID int64
+	var uplinkName, uplinkPort string
+	if macs, _ := s.a.Store.DeviceMacs(id); len(macs) > 0 {
+		for _, m := range macs {
+			if updev, uport := s.bestFDBAttach(m.Mac); updev != 0 && updev != id {
+				if ud, e := s.a.Store.Device(updev); e == nil {
+					uplinkID, uplinkName, uplinkPort = updev, ud.Name, uport
+					break
+				}
+			}
+		}
+	}
 	s.render(w, r, "device", map[string]any{"Active": "devices",
 		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors, "Traffic": traffic,
 		"Sites": sites, "DevTags": devTags, "BackupMode": s.a.BackupMode(),
 		"Clients":  clients,
 		"Images":   images, "ModelImg": modelImgPath(s.a.Cfg.DataDir, d.Model),
+		"UplinkID": uplinkID, "UplinkName": uplinkName, "UplinkPort": uplinkPort,
 		"PortConns": s.portConnections(id),
 		"Faceplate": facePlateSVG(ports),
 		"CPUGraph":  graphSVG(cpu, 100, "var(--accent)"), "RAMGraph": graphSVG(ram, 100, "var(--warn)"),
