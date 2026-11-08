@@ -21,6 +21,18 @@ type User struct {
 	TOTPEnabled   bool
 }
 
+// Webhook is an outgoing integration endpoint fired on events.
+type Webhook struct {
+	ID         int64
+	URL        string
+	Events     string // comma-separated event types, or "all"
+	SecretEnc  string
+	Enabled    bool
+	LastStatus string
+	LastAt     *time.Time
+	CreatedAt  time.Time
+}
+
 // MaintenanceWindow suppresses alert notifications for a device (or the whole
 // fleet when DeviceID is nil) during [StartsAt, EndsAt].
 type MaintenanceWindow struct {

@@ -664,6 +664,12 @@ func (a *App) BackupDevice(d model.Device, mode string) (changed bool, err error
 	if a.signer == nil {
 		return false, fmt.Errorf("no SSH key configured (set ROSMAN_SSH_KEY) — backup needs SSH")
 	}
+	// Fire a config_changed webhook once, on any path that stores a new version.
+	defer func() {
+		if changed && err == nil {
+			a.fireWebhooks("config_changed", map[string]any{"device": d.Name, "ip": d.IP})
+		}
+	}()
 	if mode == "" {
 		mode = a.BackupMode()
 	}
@@ -777,6 +783,9 @@ func (a *App) smtp() notify.SMTP {
 // currently inside a maintenance window, in which case alert state is still
 // recorded by the caller but no Telegram/email/webhook is sent.
 func (a *App) alertNotifyDev(d model.Device, subject, text string) {
+	// Webhooks fire for integrations even during maintenance; human channels
+	// (Telegram/email/webhook env) are suppressed while a window is active.
+	a.fireWebhooks("alert", map[string]any{"device": d.Name, "ip": d.IP, "message": subject, "detail": text})
 	if a.Store.InMaintenance(d.ID, time.Now()) {
 		return
 	}

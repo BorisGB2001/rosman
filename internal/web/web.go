@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.33.0"
+const Version = "0.35.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -176,6 +176,10 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /bulk", s.authed(s.requireRole(model.RoleOperator, s.bulkRun)))
 	mux.Handle("GET /security", s.authed(s.securityPage))
 	mux.Handle("GET /devices/{id}/cve", s.authed(s.cvePage))
+	mux.Handle("GET /webhooks", s.authed(s.requireRole(model.RoleAdmin, s.webhooksPage)))
+	mux.Handle("POST /webhooks", s.authed(s.requireRole(model.RoleAdmin, s.webhookCreate)))
+	mux.Handle("POST /webhooks/{id}/delete", s.authed(s.requireRole(model.RoleAdmin, s.webhookDelete)))
+	mux.Handle("POST /webhooks/{id}/test", s.authed(s.requireRole(model.RoleAdmin, s.webhookTest)))
 	mux.Handle("GET /users", s.authed(s.requireRole(model.RoleAdmin, s.usersPage)))
 	mux.Handle("POST /users", s.authed(s.requireRole(model.RoleAdmin, s.userCreate)))
 	mux.Handle("POST /users/{id}/role", s.authed(s.requireRole(model.RoleAdmin, s.userRole)))
@@ -1163,6 +1167,53 @@ func validRole(r string) bool {
 }
 
 var userNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]{2,32}$`)
+
+func (s *Server) webhooksPage(w http.ResponseWriter, r *http.Request) {
+	hooks, _ := s.a.Store.Webhooks()
+	s.render(w, r, "webhooks", map[string]any{"Active": "webhooks", "Hooks": hooks,
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
+}
+
+func (s *Server) webhookCreate(w http.ResponseWriter, r *http.Request) {
+	url := strings.TrimSpace(r.FormValue("url"))
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		http.Redirect(w, r, "/webhooks?err=url+must+be+http(s)", http.StatusSeeOther)
+		return
+	}
+	events := strings.TrimSpace(r.FormValue("events"))
+	if events == "" {
+		events = "all"
+	}
+	secEnc := ""
+	if sec := r.FormValue("secret"); sec != "" {
+		if enc, err := s.a.Box.Encrypt(sec); err == nil {
+			secEnc = enc
+		}
+	}
+	if err := s.a.Store.CreateWebhook(url, events, secEnc); err != nil {
+		http.Redirect(w, r, "/webhooks?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "webhook_create", url)
+	http.Redirect(w, r, "/webhooks?msg=webhook-added", http.StatusSeeOther)
+}
+
+func (s *Server) webhookDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	_ = s.a.Store.DeleteWebhook(id)
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "webhook_delete", r.PathValue("id"))
+	http.Redirect(w, r, "/webhooks?msg=webhook-removed", http.StatusSeeOther)
+}
+
+func (s *Server) webhookTest(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	st, err := s.a.TestWebhook(id)
+	if err != nil {
+		http.Redirect(w, r, "/webhooks?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/webhooks?msg="+urlq("test: "+st), http.StatusSeeOther)
+}
 
 func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {
 	users, _ := s.a.Store.Users()
@@ -2204,8 +2255,8 @@ func graphSVG(series []float64, maxFixed float64, color string) template.HTML {
 		fmt.Fprintf(&pts, "%.1f,%.1f", x, y)
 	}
 	return template.HTML(fmt.Sprintf(
-		`<svg viewBox="0 0 %d %d" width="100%%" style="max-width:%dpx;height:auto" preserveAspectRatio="none"><polyline fill="none" stroke="%s" stroke-width="1.8" points="%s"/></svg>`,
-		w, h, w, color, pts.String()))
+		`<svg viewBox="0 0 %d %d" width="100%%" style="width:100%%;height:58px;display:block" preserveAspectRatio="none"><polyline fill="none" stroke="%s" stroke-width="1.8" points="%s"/></svg>`,
+		w, h, color, pts.String()))
 }
 
 func fmtbps(v float64) string {

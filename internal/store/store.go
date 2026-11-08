@@ -140,6 +140,46 @@ func (s *Store) SetTOTP(userID int64, secretEnc string, enabled bool) error {
 	return err
 }
 
+// ---- webhooks ----
+
+func (s *Store) CreateWebhook(url, events, secretEnc string) error {
+	_, err := s.db.Exec(`INSERT INTO webhooks(url,events,secret_enc,enabled) VALUES(?,?,?,1)`, url, events, secretEnc)
+	return err
+}
+
+func scanWebhook(sc interface{ Scan(...any) error }) (model.Webhook, error) {
+	var h model.Webhook
+	err := sc.Scan(&h.ID, &h.URL, &h.Events, &h.SecretEnc, &h.Enabled, &h.LastStatus, &h.LastAt, &h.CreatedAt)
+	return h, err
+}
+
+func (s *Store) Webhooks() ([]model.Webhook, error) {
+	rows, err := s.db.Query(`SELECT id,url,events,secret_enc,enabled,last_status,last_at,created_at FROM webhooks ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Webhook
+	for rows.Next() {
+		h, err := scanWebhook(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteWebhook(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM webhooks WHERE id=?`, id)
+	return err
+}
+
+func (s *Store) SetWebhookStatus(id int64, status string) error {
+	_, err := s.db.Exec(`UPDATE webhooks SET last_status=?, last_at=CURRENT_TIMESTAMP WHERE id=?`, status, id)
+	return err
+}
+
 // ---- maintenance windows ----
 
 func (s *Store) CreateWindow(deviceID *int64, start, end time.Time, note, by string) error {

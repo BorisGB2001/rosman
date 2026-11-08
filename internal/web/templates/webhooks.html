@@ -1,0 +1,35 @@
+{{define "webhooks"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "wh.title"}}</h1></div>
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+<div class="card narrow">
+  <h3>{{t "wh.new"}}</h3>
+  <form method="post" action="/webhooks">
+    <label>URL<input name="url" placeholder="https://example.com/hook" required></label>
+    <label style="margin-top:8px">{{t "wh.events"}}<input name="events" placeholder="all" value="all"></label>
+    <label style="margin-top:8px">{{t "wh.secret"}}<input name="secret" placeholder="{{t "wh.secret_ph"}}"></label>
+    <div style="margin-top:10px"><button class="btn primary" type="submit">{{t "common.add"}}</button></div>
+  </form>
+  <p class="muted small">{{t "wh.note"}}</p>
+</div>
+<div class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>URL</th><th>{{t "wh.events"}}</th><th>{{t "wh.sig"}}</th><th>{{t "wh.last"}}</th><th></th></tr></thead>
+    <tbody>
+    {{range .Hooks}}
+      <tr>
+        <td class="mono">{{.URL}}</td>
+        <td>{{.Events}}</td>
+        <td>{{if .SecretEnc}}<span class="badge good">HMAC</span>{{else}}<span class="badge">—</span>{{end}}</td>
+        <td class="muted">{{if .LastAt}}{{tsp .LastAt}} · {{.LastStatus}}{{else}}—{{end}}</td>
+        <td>
+          <form class="inline" method="post" action="/webhooks/{{.ID}}/test"><button class="btn sm" type="submit">{{t "wh.test"}}</button></form>
+          <form class="inline" method="post" action="/webhooks/{{.ID}}/delete"><button class="link" type="submit" onclick="return confirm('{{t "wh.del_confirm"}}')">{{t "site.delete"}}</button></form>
+        </td>
+      </tr>
+    {{else}}<tr><td colspan="5" class="muted">{{t "wh.none"}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+  <p class="muted small">{{t "wh.events_hint"}}</p>
+</div>
+{{template "tail" .}}{{end}}

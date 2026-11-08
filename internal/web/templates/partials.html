@@ -45,6 +45,7 @@
     <div class="navsep">{{t "nav.sec_system"}}</div>
     <a href="/sites" class="{{if eq .Active "sites"}}on{{end}}">{{template "ico" "site"}}{{t "nav.sites"}}</a>
     <a href="/maintenance" class="{{if eq .Active "maintenance"}}on{{end}}">{{template "ico" "maint"}}{{t "nav.maint"}}</a>
+    {{if isAdmin .User}}<a href="/webhooks" class="{{if eq .Active "webhooks"}}on{{end}}">{{template "ico" "topo"}}{{t "wh.title"}}</a>{{end}}
     {{if isAdmin .User}}<a href="/users" class="{{if eq .Active "users"}}on{{end}}">{{template "ico" "clients"}}{{t "nav.users"}}</a>{{end}}
     {{if isAdmin .User}}<a href="/settings" class="{{if eq .Active "settings"}}on{{end}}">{{template "ico" "set"}}{{t "nav.settings"}}</a>{{end}}
   </nav>

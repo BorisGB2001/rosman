@@ -204,3 +204,15 @@ CREATE TABLE IF NOT EXISTS maintenance_windows (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_maint_dev ON maintenance_windows(device_id);
+
+-- Outgoing webhooks: POST a JSON payload to subscribed URLs on events.
+CREATE TABLE IF NOT EXISTS webhooks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    url         TEXT NOT NULL,
+    events      TEXT NOT NULL DEFAULT 'all',
+    secret_enc  TEXT NOT NULL DEFAULT '',
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    last_status TEXT NOT NULL DEFAULT '',
+    last_at     TIMESTAMP,
+    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

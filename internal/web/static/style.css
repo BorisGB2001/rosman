@@ -131,8 +131,12 @@ body.bare .pseg a.on { background: var(--info-bg); color: var(--fg); }
 button.link { background: none; border: 0; color: var(--side-fg); padding: 4px 10px; cursor: pointer; font: inherit; text-align: left; }
 button.link:hover { color: var(--side-on); }
 
-main { padding: 24px 28px 48px; min-width: 0; }
-body.bare main { padding: 16px; width: 100%; max-width: 380px; }
+main { padding: 24px 28px 48px; min-width: 0; max-width: 1280px; margin-inline: auto; width: 100%; }
+body.bare main { padding: 16px; width: 100%; max-width: 380px; margin-inline: auto; }
+/* boris.gb 2026-11-08 04:10 - графики нагрузки растягиваются на всю колонку (было max-width:240px, из-за чего жались влево) */
+.loadgraph svg { width: 100% !important; max-width: none !important; height: 60px !important; }
+/* действия в таблице версий конфига не переносятся по словам */
+td.nowrap, .nowrap { white-space: nowrap; }
 
 /* cards */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; }
