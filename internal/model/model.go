@@ -98,6 +98,8 @@ type Site struct {
 	ID    int64
 	Name  string
 	Count int // devices in it
+	Lat   *float64
+	Lon   *float64
 }
 
 // Health is one health sample.

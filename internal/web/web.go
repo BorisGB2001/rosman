@@ -43,7 +43,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.29.0"
+const Version = "0.30.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -161,6 +161,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /sites", s.authed(s.sitesPage))
 	mux.Handle("POST /sites/new", s.authed(s.requireRole(model.RoleOperator, s.siteCreate)))
 	mux.Handle("POST /sites/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.siteDelete)))
+	mux.Handle("POST /sites/{id}/geo", s.authed(s.requireRole(model.RoleOperator, s.siteGeo)))
+	mux.Handle("GET /map", s.authed(s.mapPage))
 	mux.Handle("POST /devices/{id}/site", s.authed(s.requireRole(model.RoleOperator, s.deviceSetSite)))
 	mux.Handle("POST /devices/{id}/tag", s.authed(s.requireRole(model.RoleOperator, s.deviceTag)))
 	mux.Handle("GET /clients", s.authed(s.clientsPage))
@@ -799,6 +801,64 @@ func (s *Server) siteCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/sites?msg=site-created", http.StatusSeeOther)
+}
+
+func (s *Server) siteGeo(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	latS := strings.TrimSpace(r.FormValue("lat"))
+	lonS := strings.TrimSpace(r.FormValue("lon"))
+	if latS == "" || lonS == "" {
+		_ = s.a.Store.UpdateSiteGeo(id, nil, nil) // clear
+		http.Redirect(w, r, "/sites?msg=geo-cleared", http.StatusSeeOther)
+		return
+	}
+	lat, e1 := strconv.ParseFloat(latS, 64)
+	lon, e2 := strconv.ParseFloat(lonS, 64)
+	if e1 != nil || e2 != nil || lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		http.Redirect(w, r, "/sites?err=invalid+coordinates", http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.UpdateSiteGeo(id, &lat, &lon)
+	http.Redirect(w, r, "/sites?msg=geo-saved", http.StatusSeeOther)
+}
+
+func (s *Server) mapPage(w http.ResponseWriter, r *http.Request) {
+	sites, _ := s.a.Store.Sites()
+	devs, _ := s.a.Store.Devices()
+	type mdev struct {
+		Name string `json:"name"`
+		Up   int    `json:"up"`
+	}
+	type msite struct {
+		Name    string `json:"name"`
+		Lat     float64 `json:"lat"`
+		Lon     float64 `json:"lon"`
+		Devices []mdev `json:"devices"`
+		Online  int    `json:"online"`
+		Total   int    `json:"total"`
+	}
+	var out []msite
+	for _, st := range sites {
+		if st.Lat == nil || st.Lon == nil {
+			continue
+		}
+		ms := msite{Name: st.Name, Lat: *st.Lat, Lon: *st.Lon}
+		for _, d := range devs {
+			if d.SiteID == nil || *d.SiteID != st.ID {
+				continue
+			}
+			up := 0
+			if d.LastSeen != nil && time.Since(*d.LastSeen) < 3*s.a.Cfg.PollInterval {
+				up = 1
+			}
+			ms.Devices = append(ms.Devices, mdev{Name: d.Name, Up: up})
+			ms.Total++
+			ms.Online += up
+		}
+		out = append(out, ms)
+	}
+	js, _ := json.Marshal(out)
+	s.render(w, r, "map", map[string]any{"Active": "map", "MapData": template.JS(js), "SiteN": len(out)})
 }
 
 func (s *Server) siteDelete(w http.ResponseWriter, r *http.Request) {

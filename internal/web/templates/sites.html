@@ -1,17 +1,26 @@
 {{define "sites"}}{{template "head" .}}
 {{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
 {{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
-<div class="cardhead"><h1 style="margin:0">{{t "site.title"}}</h1></div>
+<div class="cardhead"><h1 style="margin:0">{{t "site.title"}}</h1>
+  <a class="btn sm secondary" href="/map">{{t "map.title"}}</a></div>
 <div class="card">
   <div class="scroll"><table>
-    <thead><tr><th>{{t "site.name"}}</th><th>{{t "site.devices"}}</th><th></th></tr></thead>
+    <thead><tr><th>{{t "site.name"}}</th><th>{{t "site.devices"}}</th><th>{{t "site.geo"}}</th><th></th></tr></thead>
     <tbody>
     {{range .Sites}}
       <tr><td><a href="/?site={{.ID}}">{{.Name}}</a></td><td>{{.Count}}</td>
+        <td>
+          <form class="inline" method="post" action="/sites/{{.ID}}/geo">
+            <input name="lat" value="{{if .Lat}}{{.Lat}}{{end}}" placeholder="lat" style="width:90px">
+            <input name="lon" value="{{if .Lon}}{{.Lon}}{{end}}" placeholder="lon" style="width:90px">
+            <button class="btn sm" type="submit">{{t "set.save"}}</button>
+          </form>
+        </td>
         <td><form class="inline" method="post" action="/sites/{{.ID}}/delete"><button class="btn sm danger" type="submit">{{t "site.delete"}}</button></form></td></tr>
-    {{else}}<tr><td colspan="3" class="muted">{{t "site.none"}}</td></tr>{{end}}
+    {{else}}<tr><td colspan="4" class="muted">{{t "site.none"}}</td></tr>{{end}}
     </tbody>
   </table></div>
+  <p class="muted small">{{t "site.geo_hint"}}</p>
 </div>
 <div class="card narrow">
   <h3>{{t "site.new"}}</h3>

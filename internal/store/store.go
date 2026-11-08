@@ -46,6 +46,8 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE devices ADD COLUMN snmp_port INTEGER NOT NULL DEFAULT 161`,
 		`ALTER TABLE users ADD COLUMN totp_secret_enc TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE sites ADD COLUMN lat REAL`,
+		`ALTER TABLE sites ADD COLUMN lon REAL`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -895,7 +897,7 @@ func (s *Store) RecentAudit(limit int) ([]model.Audit, error) {
 // ---- sites ----
 
 func (s *Store) Sites() ([]model.Site, error) {
-	rows, err := s.db.Query(`SELECT s.id,s.name,(SELECT COUNT(*) FROM devices d WHERE d.site_id=s.id) FROM sites s ORDER BY s.name`)
+	rows, err := s.db.Query(`SELECT s.id,s.name,s.lat,s.lon,(SELECT COUNT(*) FROM devices d WHERE d.site_id=s.id) FROM sites s ORDER BY s.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -903,12 +905,18 @@ func (s *Store) Sites() ([]model.Site, error) {
 	var out []model.Site
 	for rows.Next() {
 		var st model.Site
-		if err := rows.Scan(&st.ID, &st.Name, &st.Count); err != nil {
+		if err := rows.Scan(&st.ID, &st.Name, &st.Lat, &st.Lon, &st.Count); err != nil {
 			return nil, err
 		}
 		out = append(out, st)
 	}
 	return out, rows.Err()
+}
+
+// UpdateSiteGeo sets or clears a location's coordinates (nil clears).
+func (s *Store) UpdateSiteGeo(id int64, lat, lon *float64) error {
+	_, err := s.db.Exec(`UPDATE sites SET lat=?, lon=? WHERE id=?`, lat, lon, id)
+	return err
 }
 
 func (s *Store) CreateSite(name string) (int64, error) {
