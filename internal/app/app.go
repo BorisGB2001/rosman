@@ -54,6 +54,16 @@ func New(cfg config.Config, st *store.Store, box *secret.Box) (*App, error) {
 // HasSSHKey reports whether config backup over SSH is possible.
 func (a *App) HasSSHKey() bool { return a.signer != nil }
 
+// SSHPublicKey returns the fleet SSH public key in authorized_keys form, so an
+// operator can authorise it on devices that have no backup yet. Empty when no
+// key is configured.
+func (a *App) SSHPublicKey() string {
+	if a.signer == nil {
+		return ""
+	}
+	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(a.signer.PublicKey())))
+}
+
 // AddDevice probes the device once (API) to capture its cert pin and identity,
 // then stores it. The API password is encrypted at rest.
 func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser string) (int64, error) {

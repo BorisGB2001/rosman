@@ -11,6 +11,14 @@
   </div>
 </div>
 
+{{if and .NeverN .SSHPubKey}}
+<details class="card" style="border-color:var(--warn)">
+  <summary style="cursor:pointer;font-weight:600">{{t "bk.fix_title"}} ({{.NeverN}})</summary>
+  <p class="muted small" style="margin:8px 0">{{t "bk.fix_note"}}</p>
+  <pre style="background:var(--bg2,#0d1117);padding:10px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-all;margin:0">{{.SSHPubKey}}</pre>
+  <p class="muted small" style="margin:8px 0 0">{{t "bk.fix_cmd"}} <code class="mono">/user/ssh-keys/import user=audit public-key-file=rosman.pub</code></p>
+</details>
+{{end}}
 <div class="card">
   <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
     <input type="search" data-search-for="bktable" placeholder="{{t "col.search"}}" style="width:200px">

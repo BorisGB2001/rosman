@@ -581,5 +581,8 @@
   "bk.export": "Last export",
   "bk.binary": "Last binary",
   "bk.note": "\"Recent\" = a backup within 7 days. \"never\" usually means the fleet SSH key isn't authorised on that device, so /export can't run.",
-  "fw.auto_refresh": "auto-refreshing"
+  "fw.auto_refresh": "auto-refreshing",
+  "bk.fix_title": "How to fix devices with no backup",
+  "bk.fix_note": "These devices have no backup because the fleet SSH key isn't authorised on them. Add this public key to the 'audit' user on each device (via WinBox or the terminal), then backups/export will work:",
+  "bk.fix_cmd": "On RouterOS: upload the key file, then"
 }

@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.71.0"
+const Version = "0.72.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -2354,7 +2354,8 @@ func (s *Server) backupsPage(w http.ResponseWriter, r *http.Request) {
 		return rows[i].Name < rows[j].Name
 	})
 	s.render(w, r, "backups", map[string]any{"Active": "backups", "Rows": rows,
-		"OkN": okN, "StaleN": staleN, "NeverN": neverN, "Total": len(devs)})
+		"OkN": okN, "StaleN": staleN, "NeverN": neverN, "Total": len(devs),
+		"SSHPubKey": s.a.SSHPublicKey()})
 }
 
 // portsCSV exports per-device port capacity.
