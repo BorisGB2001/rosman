@@ -307,6 +307,11 @@ CREATE TABLE IF NOT EXISTS topo_pos (
     y         REAL NOT NULL
 );
 
+-- Devices hidden from the topology map (device_id present = hidden).
+CREATE TABLE IF NOT EXISTS topo_hidden (
+    device_id INTEGER PRIMARY KEY
+);
+
 -- Config compliance rules checked against each device's latest /export.
 CREATE TABLE IF NOT EXISTS compliance_rules (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

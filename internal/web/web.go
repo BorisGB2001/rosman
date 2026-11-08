@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.82.0"
+const Version = "0.83.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -251,6 +251,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /metrics", s.apiAuth(s.metricsEndpoint))
 	mux.Handle("GET /topology", s.authed(s.topologyPage))
 	mux.Handle("POST /topology/pos", s.authed(s.requireRole(model.RoleOperator, s.topoSavePos)))
+	mux.Handle("POST /topology/hide", s.authed(s.requireRole(model.RoleOperator, s.topoHide)))
 	mux.Handle("GET /topology/find", s.authed(s.topoFind))
 	mux.Handle("GET /alerts", s.authed(s.alerts))
 	mux.Handle("GET /audit", s.authed(s.auditPage))
@@ -3073,6 +3074,8 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 	addrOwner, _ := s.a.Store.AddrOwners()
 	macOwner, _ := s.a.Store.MacOwners()
 	saved, _ := s.a.Store.TopoPositions()
+	hidden, _ := s.a.Store.HiddenTopoNodes()
+	showHidden := r.URL.Query().Get("hidden") == "1"
 	byIdent := map[string]int64{}
 	for _, d := range devs {
 		if d.Name != "" {
@@ -3124,14 +3127,26 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 		X, Y                   float64
 		Status                 string // up|down|unknown
 		Server                 bool
+		Hidden                 bool
 	}
 	const cx, cy, rad = 500.0, 360.0, 300.0
 	nn := len(devs)
 	if nn == 0 {
 		nn = 1
 	}
+	// skipped: hidden devices not rendered this view (so their edges drop too).
+	skipped := map[int64]bool{}
+	hiddenCount := 0
 	nodes := make([]Node, 0, len(devs)+1)
 	for i, d := range devs {
+		isHidden := hidden[d.ID]
+		if isHidden {
+			hiddenCount++
+			if !showHidden {
+				skipped[d.ID] = true
+				continue
+			}
+		}
 		ang := 2 * math.Pi * float64(i) / float64(nn)
 		x := cx + rad*math.Cos(ang)
 		y := cy + rad*math.Sin(ang)
@@ -3147,7 +3162,7 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		nodes = append(nodes, Node{ID: d.ID, Name: d.Name, IP: d.IP, MAC: macByDev[d.ID],
-			Model: d.Model, ROS: d.ROSVersion, X: x, Y: y, Status: st})
+			Model: d.Model, ROS: d.ROSVersion, X: x, Y: y, Status: st, Hidden: isHidden})
 	}
 	type Edge struct {
 		A, B int64
@@ -3155,6 +3170,9 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 	}
 	edges := make([]Edge, 0, len(edgePort)+1)
 	for k, port := range edgePort {
+		if skipped[k[0]] || skipped[k[1]] {
+			continue
+		}
 		// Prefer the exact physical port from the bridge FDB: the port on A where
 		// B's MAC is learned (or vice-versa) beats the MNDP interface guess.
 		if p := s.a.Store.BridgePortOn(k[0], macByDev[k[1]]); physicalPort(p) != "" {
@@ -3176,10 +3194,13 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 		}
 		nodes = append(nodes, Node{ID: rosmanNodeID, Name: "ROSMan", IP: srvIP, MAC: srvMAC,
 			Model: "monitoring", ROS: Version, X: sx, Y: sy, Status: "up", Server: true})
-		edges = append(edges, Edge{A: rosmanNodeID, B: attachID, Port: port})
+		if !skipped[attachID] { // don't dangle the edge onto a hidden device
+			edges = append(edges, Edge{A: rosmanNodeID, B: attachID, Port: port})
+		}
 	}
 	s.render(w, r, "topology", map[string]any{"Active": "topology", "CanWrite": roleRank(userFrom(r).Role) >= roleRank(model.RoleOperator),
-		"Nodes": nodes, "Edges": edges, "Count": len(devs), "EdgeCount": len(edges)})
+		"Nodes": nodes, "Edges": edges, "Count": len(devs), "EdgeCount": len(edges),
+		"ShowHidden": showHidden, "HiddenCount": hiddenCount})
 }
 
 // bestFDBAttach picks the device and physical port where a MAC is most likely
@@ -3418,6 +3439,22 @@ func (s *Server) topoSavePos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.a.Store.SaveTopoPos(id, x, y); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// topoHide hides or unhides one device on the topology map. Only real devices
+// (positive id) can be hidden — the ROSMan node always stays visible.
+func (s *Server) topoHide(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	id, _ := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	if id <= 0 {
+		http.Error(w, "bad id", 400)
+		return
+	}
+	if err := s.a.Store.SetTopoHidden(id, r.FormValue("hidden") == "1"); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}

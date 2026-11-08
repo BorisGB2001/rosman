@@ -426,7 +426,7 @@ func (s *Store) DeleteDevice(id int64) error {
 		return err
 	}
 	for _, t := range []string{"metrics", "configs", "alerts", "device_tags", "device_ports",
-		"device_clients", "device_neighbors", "iface_traffic", "topo_pos", "device_images", "bridge_hosts", "device_vlans"} {
+		"device_clients", "device_neighbors", "iface_traffic", "topo_pos", "topo_hidden", "device_images", "bridge_hosts", "device_vlans"} {
 		if _, err := tx.Exec(`DELETE FROM `+t+` WHERE device_id=?`, id); err != nil {
 			tx.Rollback()
 			return err
@@ -1000,6 +1000,33 @@ func (s *Store) TopoPositions() (map[int64][2]float64, error) {
 func (s *Store) SaveTopoPos(id int64, x, y float64) error {
 	_, err := s.db.Exec(`INSERT INTO topo_pos(device_id,x,y) VALUES(?,?,?)
 		ON CONFLICT(device_id) DO UPDATE SET x=excluded.x, y=excluded.y`, id, x, y)
+	return err
+}
+
+// HiddenTopoNodes returns the set of device ids hidden from the topology map.
+func (s *Store) HiddenTopoNodes() (map[int64]bool, error) {
+	m := map[int64]bool{}
+	rows, err := s.db.Query(`SELECT device_id FROM topo_hidden`)
+	if err != nil {
+		return m, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if rows.Scan(&id) == nil {
+			m[id] = true
+		}
+	}
+	return m, rows.Err()
+}
+
+// SetTopoHidden hides or unhides one device on the topology map.
+func (s *Store) SetTopoHidden(id int64, hidden bool) error {
+	if hidden {
+		_, err := s.db.Exec(`INSERT INTO topo_hidden(device_id) VALUES(?) ON CONFLICT(device_id) DO NOTHING`, id)
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM topo_hidden WHERE device_id=?`, id)
 	return err
 }
 

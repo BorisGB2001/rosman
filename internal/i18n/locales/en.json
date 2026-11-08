@@ -640,5 +640,10 @@
   "fw.rb_upgrade_all": "Upgrade board FW on all outdated",
   "fw.rb_confirm": "Devices will UPGRADE board firmware and REBOOT in waves (canary first). Each is backed up first. Continue?",
   "fw.rb_start": "Start board FW upgrade",
-  "fw.rb_note": "Same safe pipeline as RouterOS: canary wave first, then waves of N, backup before each, version check after reboot, halt on failure."
+  "fw.rb_note": "Same safe pipeline as RouterOS: canary wave first, then waves of N, backup before each, version check after reboot, halt on failure.",
+  "topo.show_hidden": "Show hidden",
+  "topo.hide_hidden": "Hide hidden",
+  "topo.hide_hint": "right-click a device to hide/show",
+  "topo.hide_confirm": "Hide device from topology:",
+  "topo.unhide_confirm": "Show device in topology:"
 }
