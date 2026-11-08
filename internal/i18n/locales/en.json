@@ -580,5 +580,6 @@
   "bk.never": "never",
   "bk.export": "Last export",
   "bk.binary": "Last binary",
-  "bk.note": "\"Recent\" = a backup within 7 days. \"never\" usually means the fleet SSH key isn't authorised on that device, so /export can't run."
+  "bk.note": "\"Recent\" = a backup within 7 days. \"never\" usually means the fleet SSH key isn't authorised on that device, so /export can't run.",
+  "fw.auto_refresh": "auto-refreshing"
 }

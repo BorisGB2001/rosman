@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.70.0"
+const Version = "0.71.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -944,8 +944,24 @@ func (s *Server) firmwarePage(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"Active": "firmware", "Rows": rows}
 	if job, ok := s.a.Store.LatestFwJob(); ok {
 		items, _ := s.a.Store.FwItems(job.ID)
+		done := 0
+		for _, it := range items {
+			if it.Status == "done" || it.Status == "failed" || it.Status == "skipped" {
+				done++
+			}
+		}
+		pct := 0
+		if len(items) > 0 {
+			pct = done * 100 / len(items)
+		}
 		data["Job"] = job
 		data["Items"] = items
+		data["FwDone"] = done
+		data["FwTotal"] = len(items)
+		data["FwPct"] = pct
+		// Auto-refresh only while a recent job is still in flight — a stale
+		// "running" job left over from the past must not reload the page forever.
+		data["FwActive"] = job.Status != "done" && done < len(items) && time.Since(job.CreatedAt) < 30*time.Minute
 	}
 	s.render(w, r, "firmware", data)
 }

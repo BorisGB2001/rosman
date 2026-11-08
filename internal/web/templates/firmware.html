@@ -3,9 +3,16 @@
 <div class="cardhead"><h1 style="margin:0">{{t "fw.title"}}</h1></div>
 
 {{if .Job}}
-<div class="card">
+<div class="card"{{if .FwActive}} data-fw-active="1"{{end}}>
   <h3>{{t "fw.job"}} #{{.Job.ID}} <span class="badge {{if eq .Job.Status "done"}}good{{else}}info{{end}}">{{.Job.Status}}</span>
-    <span class="muted small">{{ts .Job.CreatedAt}} · {{.Job.Actor}}</span></h3>
+    <span class="muted small">{{ts .Job.CreatedAt}} · {{.Job.Actor}}</span>
+    {{if .FwActive}}<span class="muted small" id="fw-auto"> · {{t "fw.auto_refresh"}} <span class="fwspin">⟳</span></span>{{end}}</h3>
+  <div style="margin:6px 0 12px">
+    <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line)">
+      <div style="background:{{if .FwActive}}var(--accent){{else}}var(--good){{end}};width:{{.FwPct}}%;transition:width .4s"></div>
+    </div>
+    <div class="muted small" style="margin-top:4px">{{.FwDone}} / {{.FwTotal}} · {{.FwPct}}%</div>
+  </div>
   <div class="scroll"><table>
     <thead><tr><th>{{t "al.device"}}</th><th>{{t "fw.latest"}}</th><th>{{t "fw.status"}}</th><th>{{t "al.detail"}}</th></tr></thead>
     <tbody>
@@ -48,6 +55,14 @@
 </div>
 {{end}}
 </form>
+<script>
+(function(){
+  if(document.querySelector('[data-fw-active="1"]')){
+    setTimeout(function(){ location.reload(); }, 5000);
+  }
+})();
+</script>
+<style>.fwspin{display:inline-block;animation:fwsp 1.1s linear infinite}@keyframes fwsp{to{transform:rotate(360deg)}}</style>
 {{template "tail" .}}{{end}}
 
 {{define "fwstatus"}}<span class="badge {{if eq . "done"}}good{{else if eq . "failed"}}bad{{else if eq . "skipped"}}{{else}}info{{end}}">{{.}}</span>{{end}}
