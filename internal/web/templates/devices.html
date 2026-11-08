@@ -14,6 +14,12 @@
         <option value="">{{t "filter.all_tags"}}</option>
         {{range .AllTags}}<option value="{{.}}" {{if eq . $.FTag}}selected{{end}}>{{.}}</option>{{end}}
       </select>
+      <select name="type" onchange="this.form.submit()">
+        <option value="">{{t "filter.all_types"}}</option>
+        <option value="router" {{if eq .FType "router"}}selected{{end}}>{{t "dtype.router"}}</option>
+        <option value="switch" {{if eq .FType "switch"}}selected{{end}}>{{t "dtype.switch"}}</option>
+        <option value="mix" {{if eq .FType "mix"}}selected{{end}}>{{t "dtype.mix"}}</option>
+      </select>
     </form>
     <button type="button" class="btn sm secondary gearbtn" data-cols-for="devtable" title="{{t "col.columns"}}">⚙</button>
     {{if canWrite .User}}<a class="btn secondary sm" href="/devices/import">{{t "imp.title"}}</a>
@@ -32,7 +38,7 @@
   </div>
   {{end}}
   <div class="scroll"><table id="devtable" class="dtable">
-    <thead><tr>{{if canWrite .User}}<th data-nosort style="width:28px"><input type="checkbox" onclick="document.querySelectorAll('.dchk').forEach(c=>c.checked=this.checked)"></th>{{end}}<th data-col="name" data-label="{{t "col.name"}}">{{t "col.name"}}</th><th data-col="ip" data-label="IP">IP</th><th data-col="site" data-label="{{t "col.site"}}">{{t "col.site"}}</th><th data-col="tags" data-label="{{t "col.tags"}}">{{t "col.tags"}}</th><th data-col="model" data-label="{{t "col.model"}}">{{t "col.model"}}</th><th data-col="ros" data-label="RouterOS">RouterOS</th><th data-col="latest" data-label="{{t "fw.latest"}}">{{t "fw.latest"}}</th><th data-col="alerts" data-label="{{t "nav.alerts"}}">{{t "nav.alerts"}}</th><th data-col="serial" data-label="{{t "dev.serial"}}">{{t "dev.serial"}}</th><th data-col="cpu" data-label="CPU">CPU</th><th data-col="seen" data-label="{{t "col.seen"}}">{{t "col.seen"}}</th><th data-col="added" data-label="{{t "col.added"}}">{{t "col.added"}}</th><th data-nosort data-col="actions" data-label="{{t "col.actions"}}">{{t "col.actions"}}</th></tr></thead>
+    <thead><tr>{{if canWrite .User}}<th data-nosort style="width:28px"><input type="checkbox" onclick="document.querySelectorAll('.dchk').forEach(c=>c.checked=this.checked)"></th>{{end}}<th data-col="name" data-label="{{t "col.name"}}">{{t "col.name"}}</th><th data-col="ip" data-label="IP">IP</th><th data-col="site" data-label="{{t "col.site"}}">{{t "col.site"}}</th><th data-col="tags" data-label="{{t "col.tags"}}">{{t "col.tags"}}</th><th data-col="type" data-label="{{t "col.type"}}">{{t "col.type"}}</th><th data-col="model" data-label="{{t "col.model"}}">{{t "col.model"}}</th><th data-col="ros" data-label="RouterOS">RouterOS</th><th data-col="latest" data-label="{{t "fw.latest"}}">{{t "fw.latest"}}</th><th data-col="alerts" data-label="{{t "nav.alerts"}}">{{t "nav.alerts"}}</th><th data-col="serial" data-label="{{t "dev.serial"}}">{{t "dev.serial"}}</th><th data-col="cpu" data-label="CPU">CPU</th><th data-col="seen" data-label="{{t "col.seen"}}">{{t "col.seen"}}</th><th data-col="added" data-label="{{t "col.added"}}">{{t "col.added"}}</th><th data-col="lastfail" data-label="{{t "col.lastfail"}}">{{t "col.lastfail"}}</th><th data-nosort data-col="actions" data-label="{{t "col.actions"}}">{{t "col.actions"}}</th></tr></thead>
     <tbody>
     {{range .Devices}}
       <tr>
@@ -41,6 +47,7 @@
         <td class="mono">{{.IP}}</td>
         <td class="muted">{{.SiteName}}</td>
         <td>{{range .DevTags}}<span class="badge">{{.}}</span> {{end}}</td>
+        <td>{{if .DeviceType}}<span class="badge">{{t (printf "dtype.%s" .DeviceType)}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
         <td>{{.Model}}</td>
         <td>{{.ROSVersion}}</td>
         <td>{{if .FwLatest}}{{if .Outdated}}<span class="badge bad" title="{{t "fw.outdated"}}">{{fwfirst .FwLatest}}</span>{{else}}<span class="muted">{{fwfirst .FwLatest}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
@@ -49,6 +56,7 @@
         <td data-sort="{{.CPU}}">{{.CPU}}%</td>
         <td class="muted" data-sort="{{tsp .LastSeen}}">{{ago .LastSeen}}</td>
         <td class="muted" data-sort="{{ts .CreatedAt}}">{{dateT .CreatedAt}}</td>
+        <td class="muted" data-sort="{{tsp .LastFail}}">{{if .LastFail}}<span class="bad">{{ago .LastFail}}</span>{{else}}—{{end}}</td>
         <td><div style="display:flex;gap:12px;align-items:center;font-size:15px">
           <a href="/devices/{{.ID}}" title="{{t "act.edit"}}" style="text-decoration:none">✏️</a>
           <a href="#" title="{{t "act.copy"}}" style="text-decoration:none" onclick="navigator.clipboard&&navigator.clipboard.writeText('{{.IP}}');return false;">⧉</a>
@@ -56,7 +64,7 @@
         </div></td>
       </tr>
     {{else}}
-      <tr><td colspan="14" class="muted">{{t "devices.empty"}} {{if canWrite $.User}}<a href="/devices/new">{{t "devices.add_first"}}</a>{{end}}</td></tr>
+      <tr><td colspan="16" class="muted">{{t "devices.empty"}} {{if canWrite $.User}}<a href="/devices/new">{{t "devices.add_first"}}</a>{{end}}</td></tr>
     {{end}}
     </tbody>
   </table></div>

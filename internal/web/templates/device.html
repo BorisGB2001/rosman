@@ -75,7 +75,15 @@
 </div>
 {{if canWrite .User}}
 <div class="card narrow">
-  <h3>{{t "dev.site"}} / {{t "dev.tags"}}</h3>
+  <h3>{{t "dev.site"}} / {{t "dev.tags"}} / {{t "col.type"}}</h3>
+  <form class="inline" method="post" action="/devices/{{.D.ID}}/type" style="margin-bottom:10px">
+    <select name="device_type" onchange="this.form.submit()">
+      <option value="" {{if eq .D.DeviceType ""}}selected{{end}}>— {{t "col.type"}} —</option>
+      <option value="router" {{if eq .D.DeviceType "router"}}selected{{end}}>{{t "dtype.router"}}</option>
+      <option value="switch" {{if eq .D.DeviceType "switch"}}selected{{end}}>{{t "dtype.switch"}}</option>
+      <option value="mix" {{if eq .D.DeviceType "mix"}}selected{{end}}>{{t "dtype.mix"}}</option>
+    </select>
+  </form>
   <form class="inline" method="post" action="/devices/{{.D.ID}}/site" style="margin-bottom:10px">
     <select name="site_id" onchange="this.form.submit()">
       <option value="">—</option>

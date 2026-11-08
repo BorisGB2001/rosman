@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.38.0"
+const Version = "0.39.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -141,6 +141,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /devices/new", s.authed(s.requireRole(model.RoleOperator, s.newDeviceForm)))
 	mux.Handle("POST /devices/new", s.authed(s.requireRole(model.RoleOperator, s.newDeviceSubmit)))
 	mux.Handle("POST /devices/{id}/delete", s.authed(s.requireRole(model.RoleAdmin, s.deviceDelete)))
+	mux.Handle("POST /devices/{id}/type", s.authed(s.requireRole(model.RoleOperator, s.deviceSetType)))
 	mux.Handle("GET /devices/import", s.authed(s.requireRole(model.RoleOperator, s.importForm)))
 	mux.Handle("POST /devices/import", s.authed(s.requireRole(model.RoleOperator, s.importRun)))
 	mux.Handle("GET /devices/{id}", s.authed(s.deviceDetail))
@@ -654,6 +655,7 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 	allTags, _ := s.a.Store.AllTags()
 	fSite := r.URL.Query().Get("site")
 	fTag := r.URL.Query().Get("tag")
+	fType := r.URL.Query().Get("type")
 	var tagged map[int64]bool
 	if fTag != "" {
 		tagged, _ = s.a.Store.DeviceIDsByTag(fTag)
@@ -684,6 +686,9 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		if fTag != "" && !tagged[d.ID] {
 			continue
 		}
+		if fType != "" && d.DeviceType != fType {
+			continue
+		}
 		rr := row{Device: d, Alerts: alertN[d.ID]}
 		if l := fwFirst(d.FwLatest); l != "" && l != fwFirst(d.ROSVersion) {
 			rr.Outdated = true
@@ -698,7 +703,7 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, rr)
 	}
 	s.render(w, r, "devices", map[string]any{"Active": "devices", "Devices": rows,
-		"Sites": sites, "AllTags": allTags, "FSite": fSite, "FTag": fTag,
+		"Sites": sites, "AllTags": allTags, "FSite": fSite, "FTag": fTag, "FType": fType,
 		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
 }
 
@@ -921,6 +926,16 @@ func (s *Server) deviceTag(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) newDeviceForm(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "new_device", map[string]any{"Active": "devices"})
+}
+
+func (s *Server) deviceSetType(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	t := r.FormValue("device_type")
+	if t != "router" && t != "switch" && t != "mix" {
+		t = ""
+	}
+	_ = s.a.Store.SetDeviceType(id, t)
+	http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?msg=type-saved", http.StatusSeeOther)
 }
 
 func (s *Server) deviceDelete(w http.ResponseWriter, r *http.Request) {

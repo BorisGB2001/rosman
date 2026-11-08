@@ -80,6 +80,7 @@ func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser 
 		return 0, err
 	}
 	now := time.Now()
+	_ = a.Store.SetDeviceType(id, guessType(h.Model))
 	_ = a.Store.UpdateInventory(id, h.Model, h.Serial, h.Version, now)
 	_ = a.Store.UpdateCertInfo(id, h.APISSLCert, h.APICertExpiry)
 	_ = a.Store.AddHealth(model.Health{DeviceID: id, TS: now, CPU: h.CPU, FreeMem: h.FreeMem, TotalMem: h.TotalMem, Uptime: h.Uptime})
@@ -87,6 +88,19 @@ func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser 
 }
 
 // PollDevice refreshes health/inventory over the API and evaluates alerts.
+// guessType makes a rough router/switch guess from the board model. It is only
+// a default; the type can be changed by hand on the device page.
+func guessType(model string) string {
+	m := strings.ToUpper(model)
+	switch {
+	case strings.HasPrefix(m, "CRS"), strings.HasPrefix(m, "CSS"),
+		strings.Contains(m, "SWITCH"), strings.HasPrefix(m, "NETPOWER"):
+		return "switch"
+	default:
+		return "router"
+	}
+}
+
 func (a *App) PollDevice(d model.Device) error {
 	pass, err := a.Box.Decrypt(d.APIPassEnc)
 	if err != nil {
@@ -94,6 +108,7 @@ func (a *App) PollDevice(d model.Device) error {
 	}
 	h, pin, err := ros.Poll(d, pass, a.Cfg.APITimeout)
 	if err != nil {
+		_ = a.Store.MarkDeviceFail(d.ID)
 		a.evalDown(d, true, err.Error())
 		return err
 	}
