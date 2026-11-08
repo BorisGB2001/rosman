@@ -136,7 +136,8 @@ body.bare .pseg a.on { background: var(--info-bg); color: var(--fg); }
 button.link { background: none; border: 0; color: var(--side-fg); padding: 4px 10px; cursor: pointer; font: inherit; text-align: left; }
 button.link:hover { color: var(--side-on); }
 
-main { padding: 24px 28px 48px; min-width: 0; max-width: 1280px; margin-inline: auto; width: 100%; }
+/* boris.gb 2026-11-08 08:55 - контент на всю ширину (пользователь просил не фиксировать); «пустоту» решают графики/панель, растянутые на всю колонку, а не узкий контейнер */
+main { padding: 24px 28px 48px; min-width: 0; }
 body.bare main { padding: 16px; width: 100%; max-width: 380px; margin-inline: auto; }
 /* boris.gb 2026-11-08 04:10 - графики нагрузки растягиваются на всю колонку (было max-width:240px, из-за чего жались влево) */
 .loadgraph svg { width: 100% !important; max-width: none !important; height: 60px !important; }

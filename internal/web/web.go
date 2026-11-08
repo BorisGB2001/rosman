@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.36.0"
+const Version = "0.37.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -2102,37 +2102,46 @@ func facePlateSVG(ports []model.Port) template.HTML {
 	if len(ph) == 0 {
 		return ""
 	}
-	const cw, ch, gap, perRow = 30, 30, 6, 16
+	const cw, ch, gap, lbl, pad, perRow = 44, 38, 10, 16, 12, 16
 	cols := perRow
 	if len(ph) < cols {
 		cols = len(ph)
 	}
 	rows := (len(ph) + perRow - 1) / perRow
-	W := cols*(cw+gap) + gap
-	H := rows*(ch+gap+12) + gap
+	W := cols*(cw+gap) - gap + 2*pad
+	H := rows*(ch+gap+lbl) - gap + 2*pad
 	var b strings.Builder
-	fmt.Fprintf(&b, `<svg viewBox="0 0 %d %d" width="100%%" style="max-width:%dpx;height:auto">`, W, H, W)
-	fmt.Fprintf(&b, `<rect x="0" y="0" width="%d" height="%d" rx="8" fill="var(--bg)" stroke="var(--line)"/>`, W, H)
+	// A fixed display size keeps a 2-port panel from being tiny and a 24-port
+	// panel from being huge; the SVG scales within these bounds.
+	fmt.Fprintf(&b, `<svg viewBox="0 0 %d %d" width="100%%" preserveAspectRatio="xMinYMid meet" style="width:100%%;max-width:%dpx;height:%dpx;max-height:%dpx">`,
+		W, H, int(float64(W)*1.2)+40, H, 150)
+	fmt.Fprintf(&b, `<rect x="0.5" y="0.5" width="%d" height="%d" rx="9" fill="var(--bg)" stroke="var(--line)"/>`, W-1, H-1)
 	for i, p := range ph {
 		c, r := i%perRow, i/perRow
-		x := gap + c*(cw+gap)
-		y := gap + r*(ch+gap+12)
-		color := "var(--muted)"
+		x := pad + c*(cw+gap)
+		y := pad + r*(ch+gap+lbl)
+		color, led := "var(--muted)", ""
 		if p.Disabled {
 			color = "var(--line)"
 		} else if p.Running {
 			color = "var(--good)"
+			led = fmt.Sprintf(`<circle cx="%d" cy="%d" r="3" fill="#22c55e"/>`, x+cw-8, y+8)
 		}
 		title := template.HTMLEscapeString(p.Name + " (" + p.Type + ")")
-		if strings.Contains(p.Type, "sfp") || strings.Contains(p.Type, "qsfp") {
-			fmt.Fprintf(&b, `<g><title>%s</title><rect x="%d" y="%d" width="%d" height="%d" rx="3" fill="%s" opacity="0.85"/><line x1="%d" y1="%d" x2="%d" y2="%d" stroke="var(--surface)" stroke-width="2"/></g>`,
-				title, x, y, cw, ch, color, x+6, y+ch-6, x+cw-6, y+6)
+		isFiber := strings.Contains(p.Type, "sfp") || strings.Contains(p.Type, "qsfp")
+		b.WriteString(`<g><title>` + title + `</title>`)
+		// Port body with a subtle bevel and a connector notch/slot on top.
+		fmt.Fprintf(&b, `<rect x="%d" y="%d" width="%d" height="%d" rx="5" fill="%s" opacity="0.92" stroke="#0004"/>`, x, y, cw, ch, color)
+		fmt.Fprintf(&b, `<rect x="%d" y="%d" width="%d" height="%d" rx="3" fill="#0003"/>`, x+7, y+7, cw-14, ch-16)
+		if isFiber {
+			fmt.Fprintf(&b, `<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="var(--surface)" stroke-width="2"/>`, x+9, y+ch-10, x+cw-9, y+10)
 		} else {
-			fmt.Fprintf(&b, `<g><title>%s</title><rect x="%d" y="%d" width="%d" height="%d" rx="3" fill="%s" opacity="0.9"/><rect x="%d" y="%d" width="8" height="4" fill="var(--surface)"/></g>`,
-				title, x, y, cw, ch, color, x+cw/2-4, y)
+			fmt.Fprintf(&b, `<rect x="%d" y="%d" width="10" height="5" rx="1" fill="var(--surface)"/>`, x+cw/2-5, y+ch-8)
 		}
-		fmt.Fprintf(&b, `<text x="%d" y="%d" text-anchor="middle" font-size="8" fill="var(--muted)">%s</text>`,
-			x+cw/2, y+ch+10, template.HTMLEscapeString(portLabel(p.Name)))
+		b.WriteString(led)
+		b.WriteString(`</g>`)
+		fmt.Fprintf(&b, `<text x="%d" y="%d" text-anchor="middle" font-size="10" fill="var(--muted)">%s</text>`,
+			x+cw/2, y+ch+13, template.HTMLEscapeString(portLabel(p.Name)))
 	}
 	b.WriteString("</svg>")
 	return template.HTML(b.String())
