@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.75.0"
+const Version = "0.76.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -955,14 +955,21 @@ func (s *Server) firmwarePage(w http.ResponseWriter, r *http.Request) {
 		ID                            int64
 		Name, Installed, Latest, Chan string
 		Outdated                      bool
+		RBCurrent, RBUpgrade          string // RouterBOARD firmware now / pending
+		RBOutdated                    bool   // a board firmware upgrade is pending
 	}
 	rows := make([]Row, 0, len(devs))
+	rbPending := 0
 	for _, d := range devs {
 		inst, lat := fwFirst(d.ROSVersion), fwFirst(d.FwLatest)
+		rbOut := d.RBUpgradeFw != "" && d.RBUpgradeFw != d.RBCurrentFw
+		if rbOut {
+			rbPending++
+		}
 		rows = append(rows, Row{ID: d.ID, Name: d.Name, Installed: inst, Latest: lat, Chan: d.FwChannel,
-			Outdated: lat != "" && lat != inst})
+			Outdated: lat != "" && lat != inst, RBCurrent: d.RBCurrentFw, RBUpgrade: d.RBUpgradeFw, RBOutdated: rbOut})
 	}
-	data := map[string]any{"Active": "firmware", "Rows": rows}
+	data := map[string]any{"Active": "firmware", "Rows": rows, "RBPending": rbPending}
 	if job, ok := s.a.Store.LatestFwJob(); ok {
 		items, _ := s.a.Store.FwItems(job.ID)
 		done := 0

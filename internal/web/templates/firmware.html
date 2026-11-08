@@ -1,6 +1,7 @@
 {{define "firmware"}}{{template "head" .}}
 {{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
-<div class="cardhead"><h1 style="margin:0">{{t "fw.title"}}</h1></div>
+<div class="cardhead"><h1 style="margin:0">{{t "fw.title"}}</h1>
+  {{if .RBPending}}<span class="muted small">· {{t "fw.rb_pending_pre"}} {{.RBPending}} {{t "fw.rb_pending_post"}}</span>{{end}}</div>
 
 {{if .Job}}
 <div class="card"{{if .FwActive}} data-fw-active="1"{{end}}>
@@ -26,7 +27,7 @@
 <form method="post" action="/firmware/upgrade">
 <div class="card">
   <div class="scroll"><table>
-    <thead><tr><th></th><th>{{t "al.device"}}</th><th>{{t "fw.installed"}}</th><th>{{t "fw.latest"}}</th><th>{{t "fw.channel"}}</th><th></th></tr></thead>
+    <thead><tr><th></th><th>{{t "al.device"}}</th><th>{{t "fw.installed"}}</th><th>{{t "fw.latest"}}</th><th>{{t "fw.channel"}}</th><th>{{t "col.rb_fw"}}</th><th></th></tr></thead>
     <tbody>
     {{range .Rows}}
       <tr>
@@ -35,6 +36,7 @@
         <td>{{.Installed}}</td>
         <td>{{.Latest}}</td>
         <td class="muted">{{.Chan}}</td>
+        <td>{{if .RBCurrent}}{{if .RBOutdated}}<a href="/devices/{{.ID}}" style="text-decoration:none" title="{{t "dev.rb_available"}}: {{.RBUpgrade}}"><span class="badge warn">{{.RBCurrent}} → {{.RBUpgrade}}</span></a>{{else}}<span class="muted">{{.RBCurrent}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td>{{if .Outdated}}<span class="badge warn">{{t "fw.outdated"}}</span>{{else if .Latest}}<span class="badge good">{{t "fw.uptodate"}}</span>{{end}}</td>
       </tr>
     {{end}}

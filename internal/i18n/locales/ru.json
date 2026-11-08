@@ -595,5 +595,7 @@
   "dmsg.rebooting": "Команда перезагрузки отправлена",
   "dmsg.rb_upgrading": "Прошивка RouterBOARD обновляется, устройство перезагружается",
   "dmsg.rb_current": "Прошивка RouterBOARD уже актуальна",
-  "dmsg.fwchecked": "Проверка обновлений выполнена"
+  "dmsg.fwchecked": "Проверка обновлений выполнена",
+  "fw.rb_pending_pre": "у",
+  "fw.rb_pending_post": "устройств устарела прошивка платы"
 }

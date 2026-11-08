@@ -595,5 +595,7 @@
   "dmsg.rebooting": "Reboot command sent",
   "dmsg.rb_upgrading": "RouterBOARD firmware upgrading, device rebooting",
   "dmsg.rb_current": "RouterBOARD firmware already up to date",
-  "dmsg.fwchecked": "Update check complete"
+  "dmsg.fwchecked": "Update check complete",
+  "fw.rb_pending_pre": "",
+  "fw.rb_pending_post": "devices have outdated board firmware"
 }
