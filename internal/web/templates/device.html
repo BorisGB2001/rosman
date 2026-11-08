@@ -84,6 +84,12 @@
       <option value="mix" {{if eq .D.DeviceType "mix"}}selected{{end}}>{{t "dtype.mix"}}</option>
     </select>
   </form>
+  <form class="inline" method="post" action="/devices/{{.D.ID}}/pollinterval" style="margin-bottom:10px">
+    <label style="flex-direction:row;gap:6px;align-items:center">{{t "poll.interval"}}
+      <input name="poll_interval_sec" value="{{.D.PollIntervalSec}}" style="width:80px" placeholder="0">
+      <span class="muted small">{{t "poll.sec_default" }} {{.GlobalPollSec}}s</span></label>
+    <button class="btn sm" type="submit">{{t "set.save"}}</button>
+  </form>
   <form class="inline" method="post" action="/devices/{{.D.ID}}/site" style="margin-bottom:10px">
     <select name="site_id" onchange="this.form.submit()">
       <option value="">—</option>

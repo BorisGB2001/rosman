@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.40.0"
+const Version = "0.41.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -142,6 +142,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/new", s.authed(s.requireRole(model.RoleOperator, s.newDeviceSubmit)))
 	mux.Handle("POST /devices/{id}/delete", s.authed(s.requireRole(model.RoleAdmin, s.deviceDelete)))
 	mux.Handle("POST /devices/{id}/type", s.authed(s.requireRole(model.RoleOperator, s.deviceSetType)))
+	mux.Handle("POST /devices/{id}/pollinterval", s.authed(s.requireRole(model.RoleOperator, s.deviceSetPollInterval)))
 	mux.Handle("GET /devices/import", s.authed(s.requireRole(model.RoleOperator, s.importForm)))
 	mux.Handle("POST /devices/import", s.authed(s.requireRole(model.RoleOperator, s.importRun)))
 	mux.Handle("GET /devices/{id}", s.authed(s.deviceDetail))
@@ -943,6 +944,16 @@ func (s *Server) deviceSetType(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?msg=type-saved", http.StatusSeeOther)
 }
 
+func (s *Server) deviceSetPollInterval(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	sec, _ := strconv.Atoi(r.FormValue("poll_interval_sec"))
+	if sec < 0 {
+		sec = 0
+	}
+	_ = s.a.Store.SetDevicePollInterval(id, sec)
+	http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?msg=poll-interval-saved", http.StatusSeeOther)
+}
+
 func (s *Server) deviceDelete(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	d, err := s.a.Store.Device(id)
@@ -1074,7 +1085,8 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 		"CPUGraph":  graphSVG(cpu, 100, "var(--accent)"), "RAMGraph": graphSVG(ram, 100, "var(--warn)"),
 		"TempGraph": graphSVG(temp, 0, "var(--bad)"), "HasTemp": len(temp) > 0,
 		"HasSSH": s.a.HasSSHKey(), "Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
-		"InMaint": s.a.Store.InMaintenance(d.ID, time.Now()),
+		"InMaint":       s.a.Store.InMaintenance(d.ID, time.Now()),
+		"GlobalPollSec": int(s.a.Cfg.PollInterval.Seconds()),
 	})
 }
 

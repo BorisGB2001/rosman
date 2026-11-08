@@ -102,8 +102,9 @@ type Device struct {
 	SNMPEnabled   bool
 	SNMPCommEnc   string // encrypted community
 	SNMPPort      int
-	DeviceType    string     // router | switch | mix | "" (unknown)
-	LastFail      *time.Time // last poll failure
+	DeviceType      string     // router | switch | mix | "" (unknown)
+	LastFail        *time.Time // last poll failure
+	PollIntervalSec int        // per-device poll interval in seconds (0 = global default)
 }
 
 // FwJob is a firmware upgrade run.

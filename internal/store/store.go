@@ -50,6 +50,7 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE sites ADD COLUMN lon REAL`,
 		`ALTER TABLE devices ADD COLUMN device_type TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN last_fail_at TIMESTAMP`,
+		`ALTER TABLE devices ADD COLUMN poll_interval_sec INTEGER NOT NULL DEFAULT 0`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -405,7 +406,7 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	err := row.Scan(&d.ID, &d.Name, &d.IP, &d.APIPort, &tls, &d.APIUser, &d.APIPassEnc,
 		&d.SSHUser, &d.APICertPin, &d.SSHHostPin, &d.Model, &d.Serial, &d.ROSVersion, &last, &d.CreatedAt,
 		&d.APISSLCert, &exp, &d.FwLatest, &d.FwChannel, &d.FwStatus, &site,
-		&snmpEn, &d.SNMPCommEnc, &d.SNMPPort, &d.DeviceType, &fail)
+		&snmpEn, &d.SNMPCommEnc, &d.SNMPPort, &d.DeviceType, &fail, &d.PollIntervalSec)
 	d.APITLS = tls != 0
 	d.SNMPEnabled = snmpEn != 0
 	if fail.Valid {
@@ -423,11 +424,20 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	return d, err
 }
 
-const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id,snmp_enabled,snmp_community_enc,snmp_port,device_type,last_fail_at`
+const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id,snmp_enabled,snmp_community_enc,snmp_port,device_type,last_fail_at,poll_interval_sec`
 
 // SetDeviceType sets a device's role (router/switch/mix, or "" for unknown).
 func (s *Store) SetDeviceType(id int64, t string) error {
 	_, err := s.db.Exec(`UPDATE devices SET device_type=? WHERE id=?`, t, id)
+	return err
+}
+
+// SetDevicePollInterval sets a per-device poll interval in seconds (0 = global).
+func (s *Store) SetDevicePollInterval(id int64, sec int) error {
+	if sec < 0 {
+		sec = 0
+	}
+	_, err := s.db.Exec(`UPDATE devices SET poll_interval_sec=? WHERE id=?`, sec, id)
 	return err
 }
 
