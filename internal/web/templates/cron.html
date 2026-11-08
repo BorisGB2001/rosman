@@ -1,0 +1,75 @@
+{{define "cron"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "cron.title"}}</h1></div>
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+
+<div class="card">
+  <h3>{{t "cron.new"}}</h3>
+  <form method="post" action="/cron">
+    <div class="grid2">
+      <label>{{t "cron.name"}}<input name="name" placeholder="{{t "cron.name_ph"}}"></label>
+      <label>{{t "bulk.action"}}
+        <select name="action">
+          <option value="backup">{{t "dev.backup"}}</option>
+          <option value="poll">{{t "dev.poll"}}</option>
+          <option value="fwcheck">{{t "dev.fw_check"}}</option>
+          <option value="gitexport">{{t "git.title"}}</option>
+          <option value="template">{{t "tpl.apply"}}</option>
+        </select></label>
+      <label>{{t "cron.target"}}
+        <select name="target">
+          <option value="all">{{t "tpl.all"}}</option>
+          {{range .Sites}}<option value="site:{{.ID}}">{{t "col.site"}}: {{.Name}}</option>{{end}}
+          {{range .Tags}}<option value="tag:{{.}}">{{t "col.tags"}}: {{.}}</option>{{end}}
+          {{range .Devices}}<option value="device:{{.ID}}">{{.Name}}</option>{{end}}
+        </select></label>
+      <label>{{t "cron.sched"}}
+        <select name="kind">
+          <option value="interval">{{t "cron.interval"}}</option>
+          <option value="daily">{{t "cron.daily"}}</option>
+        </select></label>
+      <label>{{t "cron.every_min"}}<input name="interval_min" value="60" style="width:90px"></label>
+      <label>{{t "cron.at"}}<input name="at_hour" value="3" style="width:50px" placeholder="HH"> : <input name="at_min" value="0" style="width:50px" placeholder="MM"></label>
+      <label>{{t "cron.weekday"}}
+        <select name="weekday">
+          <option value="-1">{{t "cron.everyday"}}</option>
+          <option value="1">{{t "wd.mon"}}</option><option value="2">{{t "wd.tue"}}</option>
+          <option value="3">{{t "wd.wed"}}</option><option value="4">{{t "wd.thu"}}</option>
+          <option value="5">{{t "wd.fri"}}</option><option value="6">{{t "wd.sat"}}</option>
+          <option value="0">{{t "wd.sun"}}</option>
+        </select></label>
+      <label>{{t "tpl.list"}} / {{t "tpl.guard"}}
+        <span class="inline"><select name="template_id"><option value="">—</option>{{range .Templates}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+        <input name="guard" value="120" style="width:80px"></span></label>
+    </div>
+    <div style="margin-top:10px"><button class="btn primary" type="submit">{{t "cron.create"}}</button></div>
+    <p class="muted small">{{t "cron.note"}}</p>
+  </form>
+</div>
+
+<div class="card">
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "cron.name"}}</th><th>{{t "bulk.action"}}</th><th>{{t "cron.target"}}</th><th>{{t "cron.sched"}}</th><th>{{t "al.state"}}</th><th>{{t "cron.last"}}</th><th>{{t "cron.next"}}</th><th></th></tr></thead>
+    <tbody>
+    {{range .Jobs}}
+      <tr {{if not .Enabled}}style="opacity:.55"{{end}}>
+        <td>{{.Name}}</td>
+        <td>{{.Action}}</td>
+        <td class="muted">{{.Target}}</td>
+        <td class="muted">{{if eq .Kind "daily"}}{{t "cron.daily"}} {{printf "%02d:%02d" .AtHour .AtMin}}{{if ge .Weekday 0}} (wd {{.Weekday}}){{end}}{{else}}{{t "cron.interval"}} {{.IntervalMin}}m{{end}}</td>
+        <td>{{if .Enabled}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</td>
+        <td class="muted">{{if .LastRun}}{{tsp .LastRun}}<br><span class="small">{{.LastStatus}}</span>{{else}}—{{end}}</td>
+        <td class="muted">{{tsp .NextRun}}</td>
+        <td class="nowrap">
+          <form class="inline" method="post" action="/cron/{{.ID}}/run"><button class="btn sm" type="submit">{{t "cron.run"}}</button></form>
+          <form class="inline" method="post" action="/cron/{{.ID}}/toggle"><button class="link" type="submit">{{if .Enabled}}{{t "cron.disable"}}{{else}}{{t "cron.enable"}}{{end}}</button></form>
+          <form class="inline" method="post" action="/cron/{{.ID}}/delete"><button class="link" type="submit" onclick="return confirm('{{t "cron.del_confirm"}}')">{{t "site.delete"}}</button></form>
+        </td>
+      </tr>
+    {{else}}
+      <tr><td colspan="8" class="muted">{{t "cron.none"}}</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
+{{template "tail" .}}{{end}}

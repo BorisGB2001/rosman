@@ -21,6 +21,26 @@ type User struct {
 	TOTPEnabled   bool
 }
 
+// CronJob is a scheduled task run by the scheduler.
+type CronJob struct {
+	ID          int64
+	Name        string
+	Action      string // poll|backup|fwcheck|gitexport|template
+	Target      string // all|site:ID|tag:NAME|device:ID
+	TemplateID  *int64
+	Guard       int
+	Kind        string // interval|daily
+	IntervalMin int
+	AtHour      int
+	AtMin       int
+	Weekday     int // -1 any day, 0..6
+	Enabled     bool
+	LastRun     *time.Time
+	LastStatus  string
+	NextRun     *time.Time
+	CreatedAt   time.Time
+}
+
 // Webhook is an outgoing integration endpoint fired on events.
 type Webhook struct {
 	ID         int64

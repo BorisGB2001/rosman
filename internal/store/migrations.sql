@@ -216,3 +216,23 @@ CREATE TABLE IF NOT EXISTS webhooks (
     last_at     TIMESTAMP,
     created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Scheduled (cron-like) jobs run by the scheduler.
+CREATE TABLE IF NOT EXISTS cron_jobs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT NOT NULL DEFAULT '',
+    action       TEXT NOT NULL,              -- poll|backup|fwcheck|gitexport|template
+    target       TEXT NOT NULL DEFAULT 'all',-- all|site:ID|tag:NAME|device:ID
+    template_id  INTEGER,
+    guard        INTEGER NOT NULL DEFAULT 120,
+    kind         TEXT NOT NULL DEFAULT 'interval', -- interval|daily
+    interval_min INTEGER NOT NULL DEFAULT 60,
+    at_hour      INTEGER NOT NULL DEFAULT 3,
+    at_min       INTEGER NOT NULL DEFAULT 0,
+    weekday      INTEGER NOT NULL DEFAULT -1, -- -1 any day, 0..6 Sun..Sat
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    last_run     TIMESTAMP,
+    last_status  TEXT NOT NULL DEFAULT '',
+    next_run     TIMESTAMP,
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

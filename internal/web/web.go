@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.39.1"
+const Version = "0.40.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -180,6 +180,11 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /bulk", s.authed(s.requireRole(model.RoleOperator, s.bulkRun)))
 	mux.Handle("GET /security", s.authed(s.securityPage))
 	mux.Handle("GET /devices/{id}/cve", s.authed(s.cvePage))
+	mux.Handle("GET /cron", s.authed(s.requireRole(model.RoleAdmin, s.cronPage)))
+	mux.Handle("POST /cron", s.authed(s.requireRole(model.RoleAdmin, s.cronCreate)))
+	mux.Handle("POST /cron/{id}/delete", s.authed(s.requireRole(model.RoleAdmin, s.cronDelete)))
+	mux.Handle("POST /cron/{id}/toggle", s.authed(s.requireRole(model.RoleAdmin, s.cronToggle)))
+	mux.Handle("POST /cron/{id}/run", s.authed(s.requireRole(model.RoleAdmin, s.cronRunNow)))
 	mux.Handle("GET /webhooks", s.authed(s.requireRole(model.RoleAdmin, s.webhooksPage)))
 	mux.Handle("POST /webhooks", s.authed(s.requireRole(model.RoleAdmin, s.webhookCreate)))
 	mux.Handle("POST /webhooks/{id}/delete", s.authed(s.requireRole(model.RoleAdmin, s.webhookDelete)))
@@ -1213,6 +1218,100 @@ func validRole(r string) bool {
 }
 
 var userNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]{2,32}$`)
+
+func (s *Server) cronPage(w http.ResponseWriter, r *http.Request) {
+	jobs, _ := s.a.Store.CronJobs()
+	tpls, _ := s.a.Store.Templates()
+	sites, _ := s.a.Store.Sites()
+	tags, _ := s.a.Store.AllTags()
+	devs, _ := s.a.Store.Devices()
+	s.render(w, r, "cron", map[string]any{"Active": "cron", "Jobs": jobs, "Templates": tpls,
+		"Sites": sites, "Tags": tags, "Devices": devs,
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
+}
+
+func (s *Server) cronCreate(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	action := r.FormValue("action")
+	if action != "poll" && action != "backup" && action != "fwcheck" && action != "gitexport" && action != "template" {
+		http.Redirect(w, r, "/cron?err=invalid+action", http.StatusSeeOther)
+		return
+	}
+	j := model.CronJob{
+		Name:   strings.TrimSpace(r.FormValue("name")),
+		Action: action,
+		Target: r.FormValue("target"),
+		Kind:   r.FormValue("kind"),
+	}
+	if j.Name == "" {
+		j.Name = action
+	}
+	if j.Target == "" {
+		j.Target = "all"
+	}
+	if j.Kind != "daily" {
+		j.Kind = "interval"
+	}
+	j.IntervalMin, _ = strconv.Atoi(r.FormValue("interval_min"))
+	if j.IntervalMin < 1 {
+		j.IntervalMin = 60
+	}
+	j.AtHour, _ = strconv.Atoi(r.FormValue("at_hour"))
+	j.AtMin, _ = strconv.Atoi(r.FormValue("at_min"))
+	wd, err := strconv.Atoi(r.FormValue("weekday"))
+	if err != nil {
+		wd = -1
+	}
+	j.Weekday = wd
+	j.Guard, _ = strconv.Atoi(r.FormValue("guard"))
+	if j.Guard == 0 {
+		j.Guard = 120
+	}
+	if tid, e := strconv.ParseInt(r.FormValue("template_id"), 10, 64); e == nil && tid > 0 {
+		j.TemplateID = &tid
+	}
+	next := app.CronNext(j, time.Now())
+	j.NextRun = &next
+	if _, err := s.a.Store.CreateCronJob(j); err != nil {
+		http.Redirect(w, r, "/cron?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "cron_create", j.Name+" ("+action+")")
+	http.Redirect(w, r, "/cron?msg=job-created", http.StatusSeeOther)
+}
+
+func (s *Server) cronDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	_ = s.a.Store.DeleteCronJob(id)
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "cron_delete", r.PathValue("id"))
+	http.Redirect(w, r, "/cron?msg=job-removed", http.StatusSeeOther)
+}
+
+func (s *Server) cronToggle(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	j, err := s.a.Store.CronJob(id)
+	if err != nil {
+		http.Redirect(w, r, "/cron?err=not+found", http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.SetCronEnabled(id, !j.Enabled)
+	http.Redirect(w, r, "/cron?msg=toggled", http.StatusSeeOther)
+}
+
+func (s *Server) cronRunNow(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	j, err := s.a.Store.CronJob(id)
+	if err != nil {
+		http.Redirect(w, r, "/cron?err=not+found", http.StatusSeeOther)
+		return
+	}
+	status, rerr := s.a.RunCronJob(j)
+	if rerr != nil {
+		status = "error: " + rerr.Error()
+	}
+	_ = s.a.Store.UpdateCronRun(id, time.Now(), status, app.CronNext(j, time.Now()))
+	http.Redirect(w, r, "/cron?msg="+urlq("run: "+status), http.StatusSeeOther)
+}
 
 func (s *Server) webhooksPage(w http.ResponseWriter, r *http.Request) {
 	hooks, _ := s.a.Store.Webhooks()

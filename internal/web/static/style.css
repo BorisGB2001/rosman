@@ -111,8 +111,9 @@ b.bad { color: var(--bad); }
 .me { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid rgba(255,255,255,.08); padding-top: 12px; }
 .me small { opacity: .7; }
 .me .ver { padding: 0 10px; font-size: 11px; }
-.me .ver.footrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.footicons { display: flex; gap: 10px; align-items: center; }
+.me .ver.footrow { display: flex; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 8px; width: 100%; box-sizing: border-box; }
+.me .ver.footrow .verbadge { flex: none; white-space: nowrap; }
+.footicons { display: flex; gap: 11px; align-items: center; flex: none; }
 .footicons a { color: var(--muted); display: inline-flex; }
 .footicons a:hover { color: var(--fg); }
 /* boris.gb 2026-11-08 04:30 - индикатор версии: зелёная точка = актуально, красная = есть релиз */

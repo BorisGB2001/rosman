@@ -16,9 +16,11 @@ func Run(ctx context.Context, a *app.App) {
 	pollT := time.NewTicker(a.Cfg.PollInterval)
 	backupT := time.NewTicker(a.Cfg.BackupInterval)
 	pruneT := time.NewTicker(24 * time.Hour)
+	cronT := time.NewTicker(60 * time.Second)
 	defer pollT.Stop()
 	defer backupT.Stop()
 	defer pruneT.Stop()
+	defer cronT.Stop()
 
 	// An initial poll shortly after start so the UI is populated, and one
 	// retention sweep so a long-stopped instance trims on restart.
@@ -35,6 +37,8 @@ func Run(ctx context.Context, a *app.App) {
 			runBackup(a)
 		case <-pruneT.C:
 			runPrune(a)
+		case <-cronT.C:
+			a.RunDueCronJobs()
 		}
 	}
 }

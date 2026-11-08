@@ -146,6 +146,65 @@ func (s *Store) SetTOTP(userID int64, secretEnc string, enabled bool) error {
 	return err
 }
 
+// ---- cron jobs ----
+
+const cronCols = `id,name,action,target,template_id,guard,kind,interval_min,at_hour,at_min,weekday,enabled,last_run,last_status,next_run,created_at`
+
+func scanCron(sc interface{ Scan(...any) error }) (model.CronJob, error) {
+	var j model.CronJob
+	var en int
+	err := sc.Scan(&j.ID, &j.Name, &j.Action, &j.Target, &j.TemplateID, &j.Guard, &j.Kind,
+		&j.IntervalMin, &j.AtHour, &j.AtMin, &j.Weekday, &en, &j.LastRun, &j.LastStatus, &j.NextRun, &j.CreatedAt)
+	j.Enabled = en != 0
+	return j, err
+}
+
+func (s *Store) CreateCronJob(j model.CronJob) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO cron_jobs(name,action,target,template_id,guard,kind,interval_min,at_hour,at_min,weekday,enabled,next_run)
+		VALUES(?,?,?,?,?,?,?,?,?,?,1,?)`,
+		j.Name, j.Action, j.Target, j.TemplateID, j.Guard, j.Kind, j.IntervalMin, j.AtHour, j.AtMin, j.Weekday, j.NextRun)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) CronJobs() ([]model.CronJob, error) {
+	rows, err := s.db.Query(`SELECT ` + cronCols + ` FROM cron_jobs ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.CronJob
+	for rows.Next() {
+		j, err := scanCron(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CronJob(id int64) (model.CronJob, error) {
+	return scanCron(s.db.QueryRow(`SELECT `+cronCols+` FROM cron_jobs WHERE id=?`, id))
+}
+
+func (s *Store) DeleteCronJob(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM cron_jobs WHERE id=?`, id)
+	return err
+}
+
+func (s *Store) SetCronEnabled(id int64, enabled bool) error {
+	_, err := s.db.Exec(`UPDATE cron_jobs SET enabled=? WHERE id=?`, b2i(enabled), id)
+	return err
+}
+
+func (s *Store) UpdateCronRun(id int64, lastRun time.Time, status string, next time.Time) error {
+	_, err := s.db.Exec(`UPDATE cron_jobs SET last_run=?, last_status=?, next_run=? WHERE id=?`, lastRun, status, next, id)
+	return err
+}
+
 // ---- webhooks ----
 
 func (s *Store) CreateWebhook(url, events, secretEnc string) error {
