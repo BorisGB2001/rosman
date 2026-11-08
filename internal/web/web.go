@@ -15,6 +15,7 @@ import (
 	"html/template"
 	"io/fs"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -46,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.59.0"
+const Version = "0.60.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -232,6 +233,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /metrics", s.apiAuth(s.metricsEndpoint))
 	mux.Handle("GET /topology", s.authed(s.topologyPage))
 	mux.Handle("POST /topology/pos", s.authed(s.requireRole(model.RoleOperator, s.topoSavePos)))
+	mux.Handle("GET /topology/find", s.authed(s.topoFind))
 	mux.Handle("GET /alerts", s.authed(s.alerts))
 	mux.Handle("GET /audit", s.authed(s.auditPage))
 	mux.Handle("GET /templates", s.authed(s.templatesPage))
@@ -2376,18 +2378,20 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 			edgePort[k] = port
 		}
 	}
+	macByDev, _ := s.a.Store.DeviceMacMap()
 	type Node struct {
-		ID     int64
-		Name   string
-		X, Y   float64
-		Status string // up|down|unknown
+		ID                     int64
+		Name, IP, MAC, Model, ROS string
+		X, Y                   float64
+		Status                 string // up|down|unknown
+		Server                 bool
 	}
 	const cx, cy, rad = 500.0, 360.0, 300.0
 	nn := len(devs)
 	if nn == 0 {
 		nn = 1
 	}
-	nodes := make([]Node, 0, len(devs))
+	nodes := make([]Node, 0, len(devs)+1)
 	for i, d := range devs {
 		ang := 2 * math.Pi * float64(i) / float64(nn)
 		x := cx + rad*math.Cos(ang)
@@ -2403,18 +2407,133 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 				st = "down"
 			}
 		}
-		nodes = append(nodes, Node{ID: d.ID, Name: d.Name, X: x, Y: y, Status: st})
+		nodes = append(nodes, Node{ID: d.ID, Name: d.Name, IP: d.IP, MAC: macByDev[d.ID],
+			Model: d.Model, ROS: d.ROSVersion, X: x, Y: y, Status: st})
 	}
 	type Edge struct {
 		A, B int64
 		Port string
 	}
-	edges := make([]Edge, 0, len(edgePort))
+	edges := make([]Edge, 0, len(edgePort)+1)
 	for k, port := range edgePort {
 		edges = append(edges, Edge{A: k[0], B: k[1], Port: port})
 	}
+	// ROSMan monitoring host node: find which managed device sees this server's
+	// own MAC/IP as a client, and attach a special node to it on that port.
+	if attachID, port, srvIP, srvMAC := s.rosmanAttachment(); attachID != 0 {
+		sx, sy := cx, cy
+		if p, ok := saved[0]; ok {
+			sx, sy = p[0], p[1]
+		}
+		nodes = append(nodes, Node{ID: 0, Name: "ROSMan", IP: srvIP, MAC: srvMAC,
+			Model: "monitoring", ROS: Version, X: sx, Y: sy, Status: "up", Server: true})
+		edges = append(edges, Edge{A: 0, B: attachID, Port: port})
+	}
 	s.render(w, r, "topology", map[string]any{"Active": "topology", "CanWrite": roleRank(userFrom(r).Role) >= roleRank(model.RoleOperator),
 		"Nodes": nodes, "Edges": edges, "Count": len(devs), "EdgeCount": len(edges)})
+}
+
+// serverNICs returns this host's non-loopback interface MACs (upper-case) and
+// IPv4 addresses.
+func serverNICs() (macs, ips []string) {
+	ifaces, _ := net.Interfaces()
+	for _, i := range ifaces {
+		if i.Flags&net.FlagLoopback != 0 || len(i.HardwareAddr) == 0 {
+			continue
+		}
+		macs = append(macs, strings.ToUpper(i.HardwareAddr.String()))
+		addrs, _ := i.Addrs()
+		for _, a := range addrs {
+			if ipn, ok := a.(*net.IPNet); ok && ipn.IP.To4() != nil && !ipn.IP.IsLoopback() {
+				ips = append(ips, ipn.IP.String())
+			}
+		}
+	}
+	return
+}
+
+// rosmanAttachment finds the managed device (and port) whose client table sees
+// this server's own MAC or IP, i.e. where the monitoring host is plugged in.
+func (s *Server) rosmanAttachment() (deviceID int64, port, ip, mac string) {
+	macs, ips := serverNICs()
+	macSet := map[string]bool{}
+	for _, m := range macs {
+		macSet[m] = true
+	}
+	ipSet := map[string]bool{}
+	for _, p := range ips {
+		ipSet[p] = true
+	}
+	clients, _ := s.a.Store.AllClients(100000)
+	for _, c := range clients {
+		if (c.MAC != "" && macSet[strings.ToUpper(c.MAC)]) || (c.IP != "" && ipSet[c.IP]) {
+			mac = strings.ToUpper(c.MAC)
+			if mac == "" && len(macs) > 0 {
+				mac = macs[0]
+			}
+			ipv := c.IP
+			if ipv == "" && len(ips) > 0 {
+				ipv = ips[0]
+			}
+			return c.DeviceID, physicalPort(c.Iface), ipv, mac
+		}
+	}
+	return 0, "", "", ""
+}
+
+// topoFind resolves a MAC/IP/name query to the managed device it belongs to or
+// is connected through, for the topology search box.
+func (s *Server) topoFind(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	w.Header().Set("Content-Type", "application/json")
+	if q == "" {
+		_, _ = w.Write([]byte(`{"found":false}`))
+		return
+	}
+	uq := strings.ToUpper(q)
+	write := func(id int64, label string) {
+		_, _ = fmt.Fprintf(w, `{"found":true,"id":%d,"label":%q}`, id, label)
+	}
+	// Managed device by its own MAC / IP / name.
+	if macOwner, _ := s.a.Store.MacOwners(); macOwner[uq] != 0 {
+		id := macOwner[uq]
+		d, _ := s.a.Store.Device(id)
+		write(id, i18n.T(langOf(r), "topo.is_device")+": "+d.Name)
+		return
+	}
+	if addrOwner, _ := s.a.Store.AddrOwners(); addrOwner[q] != 0 {
+		id := addrOwner[q]
+		d, _ := s.a.Store.Device(id)
+		write(id, i18n.T(langOf(r), "topo.is_device")+": "+d.Name)
+		return
+	}
+	devs, _ := s.a.Store.Devices()
+	for _, d := range devs {
+		if strings.EqualFold(d.Name, q) {
+			write(d.ID, i18n.T(langOf(r), "topo.is_device")+": "+d.Name)
+			return
+		}
+	}
+	// Client / endpoint MAC or IP seen by a managed device.
+	clients, _ := s.a.Store.AllClients(100000)
+	for _, c := range clients {
+		if strings.EqualFold(c.MAC, q) || c.IP == q {
+			port := physicalPort(c.Iface)
+			if port == "" {
+				port = c.Iface
+			}
+			lbl := i18n.T(langOf(r), "topo.connected_to") + " " + c.DeviceName
+			if port != "" {
+				lbl += " · " + port
+			}
+			if c.Hostname != "" {
+				lbl += " (" + c.Hostname + ")"
+			}
+			write(c.DeviceID, lbl)
+			return
+		}
+	}
+	_, _ = fmt.Fprintf(w, `{"found":false,"label":%q}`, i18n.T(langOf(r), "topo.not_found"))
 }
 
 // normModel reduces a RouterOS model string to a filename-safe key:

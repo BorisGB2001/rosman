@@ -3,13 +3,20 @@
   <span class="muted small">{{.Count}} {{t "nav.devices"}} · {{.EdgeCount}} {{t "topo.links"}}</span></div>
 <div class="card">
   {{if .Nodes}}
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+    <input type="search" id="topo-find" placeholder="{{t "topo.find_ph"}}" style="width:260px">
+    <button class="btn sm" type="button" onclick="topoFind()">{{t "topo.find"}}</button>
+    <span id="topo-find-res" class="small"></span>
+  </div>
   <div class="topo-legend muted small" style="margin-bottom:8px">
     <span class="badge good">●</span> {{t "topo.online"}}
     <span class="badge bad" style="margin-left:10px">●</span> {{t "topo.offline"}}
     <span class="badge" style="margin-left:10px">●</span> {{t "topo.unknown"}}
+    <span style="margin-left:10px">▧ ROSMan</span>
     {{if .CanWrite}}<span style="margin-left:14px">{{t "topo.drag_hint"}}</span>{{end}}
   </div>
-  <div class="scroll">
+  <div class="scroll" style="position:relative">
+  <div id="topo-tip" style="position:absolute;display:none;pointer-events:none;z-index:20;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;box-shadow:0 8px 28px #0007;font-size:12px;max-width:260px"></div>
   <svg id="topo" viewBox="0 0 1000 720" width="100%" style="min-width:680px;height:auto;touch-action:none;user-select:none"
        data-canwrite="{{if .CanWrite}}1{{end}}">
     <g id="topo-edges">
@@ -19,10 +26,15 @@
     </g>{{end}}
     </g>
     <g id="topo-nodes">
-    {{range .Nodes}}<g class="tnode" data-id="{{.ID}}" transform="translate({{printf "%.1f" .X}},{{printf "%.1f" .Y}})" style="cursor:pointer">
+    {{range .Nodes}}<g class="tnode{{if .Server}} tserver{{end}}" data-id="{{.ID}}" data-name="{{.Name}}" data-ip="{{.IP}}" data-mac="{{.MAC}}" data-model="{{.Model}}" data-ros="{{.ROS}}" data-status="{{.Status}}" transform="translate({{printf "%.1f" .X}},{{printf "%.1f" .Y}})" style="cursor:pointer">
+      {{if .Server}}
+      <rect x="-30" y="-20" width="60" height="40" rx="6" fill="var(--surface)" stroke="var(--accent)" stroke-width="3"/>
+      <text text-anchor="middle" dominant-baseline="central" font-size="9" fill="var(--fg)" style="pointer-events:none">▧ {{.Name}}</text>
+      {{else}}
       <circle r="26" fill="var(--surface)" stroke="{{if eq .Status "up"}}var(--good){{else if eq .Status "down"}}var(--bad){{else}}var(--muted){{end}}" stroke-width="3"/>
       <circle r="6" cx="18" cy="-18" fill="{{if eq .Status "up"}}var(--good){{else if eq .Status "down"}}var(--bad){{else}}var(--muted){{end}}"/>
       <text text-anchor="middle" dominant-baseline="central" font-size="9" fill="var(--fg)" style="pointer-events:none">{{.Name}}</text>
+      {{end}}
     </g>{{end}}
     </g>
   </svg>
@@ -36,8 +48,7 @@
 (function(){
   var svg=document.getElementById('topo'); if(!svg) return;
   var canWrite=svg.dataset.canwrite==='1';
-  var pos={}; // id -> {x,y}
-  var nodes=Array.prototype.slice.call(svg.querySelectorAll('.tnode'));
+  var pos={}, nodes=Array.prototype.slice.call(svg.querySelectorAll('.tnode'));
   nodes.forEach(function(g){
     var t=g.getAttribute('transform').match(/translate\(([-\d.]+),([-\d.]+)\)/);
     pos[g.dataset.id]={x:parseFloat(t[1]),y:parseFloat(t[2])};
@@ -52,38 +63,65 @@
     });
   }
   layoutEdges();
-  function svgPoint(evt){
-    var p=svg.createSVGPoint(); p.x=evt.clientX; p.y=evt.clientY;
-    return p.matrixTransform(svg.getScreenCTM().inverse());
-  }
+  function svgPoint(evt){ var p=svg.createSVGPoint(); p.x=evt.clientX; p.y=evt.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); }
+  // hover tooltip
+  var tip=document.getElementById('topo-tip'), wrap=svg.parentNode;
+  function esc(s){ return (s||'').replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
+  nodes.forEach(function(g){
+    g.addEventListener('pointerenter', function(){
+      var d=g.dataset, rows=[];
+      if(d.ip) rows.push('<div><span class="muted">IP</span> '+esc(d.ip)+'</div>');
+      if(d.mac) rows.push('<div><span class="muted">MAC</span> '+esc(d.mac)+'</div>');
+      if(d.model) rows.push('<div><span class="muted">Model</span> '+esc(d.model)+'</div>');
+      if(d.ros) rows.push('<div><span class="muted">ROS</span> '+esc(d.ros)+'</div>');
+      tip.innerHTML='<div style="font-weight:600;margin-bottom:3px">'+esc(d.name)+'</div>'+rows.join('');
+      tip.style.display='block';
+    });
+    g.addEventListener('pointermove', function(evt){
+      var r=wrap.getBoundingClientRect();
+      tip.style.left=(evt.clientX-r.left+14)+'px'; tip.style.top=(evt.clientY-r.top+14)+'px';
+    });
+    g.addEventListener('pointerleave', function(){ tip.style.display='none'; });
+  });
+  // drag
   var drag=null, moved=false;
   nodes.forEach(function(g){
     g.addEventListener('pointerdown', function(evt){
-      evt.preventDefault();
-      var pt=svgPoint(evt); var id=g.dataset.id;
-      drag={g:g,id:id,dx:pos[id].x-pt.x,dy:pos[id].y-pt.y}; moved=false;
-      g.setPointerCapture(evt.pointerId);
+      evt.preventDefault(); var pt=svgPoint(evt), id=g.dataset.id;
+      drag={g:g,id:id,dx:pos[id].x-pt.x,dy:pos[id].y-pt.y}; moved=false; g.setPointerCapture(evt.pointerId);
     });
     g.addEventListener('pointermove', function(evt){
-      if(!drag||drag.g!==g) return;
-      var pt=svgPoint(evt);
+      if(!drag||drag.g!==g) return; var pt=svgPoint(evt);
       var nx=pt.x+drag.dx, ny=pt.y+drag.dy;
       if(Math.abs(nx-pos[drag.id].x)>2||Math.abs(ny-pos[drag.id].y)>2) moved=true;
-      pos[drag.id]={x:nx,y:ny};
-      g.setAttribute('transform','translate('+nx.toFixed(1)+','+ny.toFixed(1)+')');
-      layoutEdges();
+      pos[drag.id]={x:nx,y:ny}; g.setAttribute('transform','translate('+nx.toFixed(1)+','+ny.toFixed(1)+')'); layoutEdges();
     });
     g.addEventListener('pointerup', function(evt){
-      if(!drag||drag.g!==g) return;
-      var id=drag.id, p=pos[id]; drag=null;
+      if(!drag||drag.g!==g) return; var id=drag.id, p=pos[id]; drag=null;
       try{ g.releasePointerCapture(evt.pointerId); }catch(e){}
-      if(!moved){ window.location='/devices/'+id; return; }
-      if(canWrite){
-        var body='id='+encodeURIComponent(id)+'&x='+p.x.toFixed(1)+'&y='+p.y.toFixed(1);
-        fetch('/topology/pos',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).catch(function(){});
-      }
+      tip.style.display='none';
+      if(!moved){ if(id!=='0') window.location='/devices/'+id; return; }
+      if(canWrite){ fetch('/topology/pos',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'id='+encodeURIComponent(id)+'&x='+p.x.toFixed(1)+'&y='+p.y.toFixed(1)}).catch(function(){}); }
     });
   });
+  // search / highlight
+  function highlight(id){
+    nodes.forEach(function(g){ var sh=g.querySelector('circle,rect'); if(sh) sh.style.filter=''; g.classList.remove('thit'); });
+    var g=svg.querySelector('.tnode[data-id="'+id+'"]'); if(!g) return;
+    var sh=g.querySelector('circle,rect'); if(sh) sh.style.filter='drop-shadow(0 0 8px var(--accent))';
+    g.classList.add('thit'); g.scrollIntoView({block:'center',inline:'center'});
+  }
+  window.topoFind=function(){
+    var q=document.getElementById('topo-find').value.trim(); var res=document.getElementById('topo-find-res');
+    if(!q){ res.textContent=''; return; }
+    fetch('/topology/find?q='+encodeURIComponent(q)).then(function(r){return r.json();}).then(function(j){
+      if(j.found){ res.className='small'; res.style.color='var(--good)'; res.textContent=j.label; highlight(String(j.id)); }
+      else { res.style.color='var(--bad)'; res.textContent=j.label||'—'; }
+    }).catch(function(){ res.textContent='error'; });
+  };
+  var fi=document.getElementById('topo-find');
+  if(fi) fi.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); window.topoFind(); } });
 })();
 </script>
+<style>.tnode.thit text{font-weight:700}</style>
 {{template "tail" .}}{{end}}

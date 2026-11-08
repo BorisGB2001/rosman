@@ -709,7 +709,7 @@ func (s *Store) AllManagedMacs() (map[string]bool, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var m string
-		if rows.Scan(&m) == nil && m != "" {
+		if rows.Scan(&m) == nil && !zeroMAC(m) {
 			set[strings.ToUpper(m)] = true
 		}
 	}
@@ -750,6 +750,32 @@ func (s *Store) AddrOwners() (map[string]int64, error) {
 	return m, nil
 }
 
+// zeroMAC reports whether a MAC is empty or the all-zero placeholder many
+// virtual interfaces report, which must never be used as an identifier.
+func zeroMAC(mac string) bool {
+	return mac == "" || strings.ToUpper(mac) == "00:00:00:00:00:00"
+}
+
+// DeviceMacMap maps each device id to one representative interface MAC.
+func (s *Store) DeviceMacMap() (map[int64]string, error) {
+	m := map[int64]string{}
+	rows, err := s.db.Query(`SELECT device_id,mac FROM device_macs`)
+	if err != nil {
+		return m, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var mac string
+		if rows.Scan(&id, &mac) == nil && !zeroMAC(mac) {
+			if _, ok := m[id]; !ok {
+				m[id] = strings.ToUpper(mac)
+			}
+		}
+	}
+	return m, rows.Err()
+}
+
 // MacOwners maps every managed interface MAC (upper-case) to its device id.
 func (s *Store) MacOwners() (map[string]int64, error) {
 	m := map[string]int64{}
@@ -761,7 +787,7 @@ func (s *Store) MacOwners() (map[string]int64, error) {
 	for rows.Next() {
 		var id int64
 		var mac string
-		if rows.Scan(&id, &mac) == nil && mac != "" {
+		if rows.Scan(&id, &mac) == nil && !zeroMAC(mac) {
 			m[strings.ToUpper(mac)] = id
 		}
 	}

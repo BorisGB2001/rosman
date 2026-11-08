@@ -536,5 +536,10 @@
   "img.notes": "Notes",
   "img.notes_ph": "Notes for colleagues — rack position, quirks, anything worth knowing…",
   "img.notes_save": "Save notes",
-  "img.notes_none": "No notes."
+  "img.notes_none": "No notes.",
+  "topo.find_ph": "Find by MAC / IP / name…",
+  "topo.find": "Find",
+  "topo.is_device": "Managed device",
+  "topo.connected_to": "Connected to",
+  "topo.not_found": "Not found in any device's clients/neighbours"
 }
