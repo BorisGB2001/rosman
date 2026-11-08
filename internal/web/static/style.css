@@ -111,6 +111,10 @@ b.bad { color: var(--bad); }
 .me { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid rgba(255,255,255,.08); padding-top: 12px; }
 .me small { opacity: .7; }
 .me .ver { padding: 0 10px; font-size: 11px; }
+.me .ver.footrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.footicons { display: flex; gap: 10px; align-items: center; }
+.footicons a { color: var(--muted); display: inline-flex; }
+.footicons a:hover { color: var(--fg); }
 /* boris.gb 2026-11-08 04:30 - индикатор версии: зелёная точка = актуально, красная = есть релиз */
 .verbadge { text-decoration: none; color: var(--muted); }
 .verbadge .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 5px; vertical-align: baseline; background: #22c55e; }

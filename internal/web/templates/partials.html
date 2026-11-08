@@ -61,7 +61,14 @@
         <a href="/theme/dark?next={{qesc .Path}}" class="{{if eq .Theme "dark"}}on{{end}}" title="{{t "theme.dark"}}">☾</a>
       </span>
     </div>
-    <div class="ver">{{$u := update}}{{if $u.Outdated}}<a href="https://github.com/BorisGB2001/rosman/releases/latest" target="_blank" rel="noopener" class="verbadge old" title="{{t "upd.available"}} {{$u.Latest}}">ROSMan v{{version}}<span class="dot"></span> {{t "upd.new"}} {{$u.Latest}}</a>{{else}}<span class="verbadge ok" title="{{if $u.Latest}}{{t "upd.current"}}{{else}}{{t "upd.unknown"}}{{end}}">ROSMan v{{version}}<span class="dot"></span></span>{{end}}</div>
+    <div class="ver footrow">
+      {{$u := update}}{{if $u.Outdated}}<a href="https://github.com/BorisGB2001/rosman/releases/latest" target="_blank" rel="noopener" class="verbadge old" title="{{t "upd.available"}} {{$u.Latest}}">v{{version}}<span class="dot"></span></a>{{else}}<span class="verbadge ok" title="{{if $u.Latest}}{{t "upd.current"}}{{else}}{{t "upd.unknown"}}{{end}}">v{{version}}<span class="dot"></span></span>{{end}}
+      <span class="footicons">
+        <a href="https://github.com/BorisGB2001/rosman" target="_blank" rel="noopener" title="GitHub" aria-label="GitHub"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.2-3.1-.12-.3-.52-1.48.11-3.08 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.5 3.17-1.18 3.17-1.18.63 1.6.23 2.78.11 3.08.75.81 1.2 1.84 1.2 3.1 0 4.43-2.7 5.4-5.26 5.69.41.36.78 1.06.78 2.14v3.17c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5z"/></svg></a>
+        <a href="https://t.me/" target="_blank" rel="noopener" title="Telegram" aria-label="Telegram"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M21.9 4.3 2.9 11.6c-1.1.4-1.1 1.6-.2 1.9l4.8 1.5 1.8 5.8c.2.6.4.8.9.8.4 0 .6-.2.9-.5l2.6-2.5 4.9 3.6c.9.5 1.5.2 1.7-.8l3.1-14.5c.3-1.3-.5-1.9-1.3-1.6zM9.3 14.3l9.3-5.9c.4-.3.8 0 .5.3l-7.8 7.1c-.3.3-.4.4-.4.8l-.2 2.3-1.4-4.6z"/></svg></a>
+        <a href="https://claude.com/claude-code" target="_blank" rel="noopener" title="Claude" aria-label="Claude"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.3 3 .9 4.5 1.9 5.6S16.5 9.4 19 9.7v.6c-2.5.3-4 .9-5.1 2s-1.6 2.6-1.9 5.7h-.6c-.3-3.1-.9-4.6-2-5.7s-2.6-1.7-5.4-2v-.6c2.8-.3 4.3-.9 5.4-2S11.1 5 11.4 2z"/></svg></a>
+      </span>
+    </div>
   </div>
 </aside>
 <main>{{end}}
