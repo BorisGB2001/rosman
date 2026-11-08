@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.60.0"
+const Version = "0.60.1"
 
 const (
 	cookieName  = "rosman_session"
@@ -2465,20 +2465,35 @@ func (s *Server) rosmanAttachment() (deviceID int64, port, ip, mac string) {
 		ipSet[p] = true
 	}
 	clients, _ := s.a.Store.AllClients(100000)
-	for _, c := range clients {
+	var fb *model.Client // first match, as a fallback when none is on a physical port
+	for i := range clients {
+		c := clients[i]
 		if (c.MAC != "" && macSet[strings.ToUpper(c.MAC)]) || (c.IP != "" && ipSet[c.IP]) {
-			mac = strings.ToUpper(c.MAC)
-			if mac == "" && len(macs) > 0 {
-				mac = macs[0]
+			if physicalPort(c.Iface) != "" {
+				return c.DeviceID, physicalPort(c.Iface), srvAddr(c.IP, ips), srvAddr(strings.ToUpper(c.MAC), macs)
 			}
-			ipv := c.IP
-			if ipv == "" && len(ips) > 0 {
-				ipv = ips[0]
+			if fb == nil {
+				fb = &clients[i]
 			}
-			return c.DeviceID, physicalPort(c.Iface), ipv, mac
 		}
 	}
+	if fb != nil {
+		// No physical-port sighting (e.g. seen on a VLAN/DHCP interface); show that
+		// logical interface rather than nothing.
+		return fb.DeviceID, fb.Iface, srvAddr(fb.IP, ips), srvAddr(strings.ToUpper(fb.MAC), macs)
+	}
 	return 0, "", "", ""
+}
+
+// srvAddr returns v when non-empty, else the first of fallback, else "".
+func srvAddr(v string, fallback []string) string {
+	if v != "" {
+		return v
+	}
+	if len(fallback) > 0 {
+		return fallback[0]
+	}
+	return ""
 }
 
 // topoFind resolves a MAC/IP/name query to the managed device it belongs to or
