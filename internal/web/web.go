@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.74.0"
+const Version = "0.74.1"
 
 const (
 	cookieName  = "rosman_session"
@@ -2270,7 +2270,7 @@ func (s *Server) findPage(w http.ResponseWriter, r *http.Request) {
 		}
 		if frag != "" {
 			for mac, id := range macOwner {
-				if strings.Contains(macFragment(mac), frag) {
+				if strings.Contains(macHex(mac), frag) {
 					add(HostHit{DeviceID: id, Device: devName[id], MAC: mac, Vendor: oui.Vendor(mac), Managed: true})
 				}
 			}
@@ -2292,7 +2292,7 @@ func (s *Server) findPage(w http.ResponseWriter, r *http.Request) {
 		match := strings.EqualFold(c.MAC, q) || c.IP == q ||
 			(len(lq) >= 2 && strings.Contains(strings.ToLower(c.Hostname), lq)) ||
 			(len(lq) >= 3 && strings.Contains(strings.ToLower(c.IP), lq)) ||
-			(frag != "" && strings.Contains(macFragment(c.MAC), frag))
+			(frag != "" && strings.Contains(macHex(c.MAC), frag))
 		if !match {
 			continue
 		}
@@ -2336,17 +2336,13 @@ func (s *Server) findPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "find", data)
 }
 
-// macFragment normalizes a query into a lowercase hex run (separators ':','-','.'
-// stripped) when it looks like a partial MAC an operator typed from a device
-// label — 4..11 hex digits. A full 12-digit MAC, an IP (contains '.'), or any
-// non-hex character yields "", so the caller falls back to exact matching and
-// IP/hostname handling. Returning "" disables the partial-MAC pass entirely.
-func macFragment(q string) string {
-	if strings.ContainsRune(q, '.') { // looks like an IP, not a MAC label
-		return ""
-	}
+// macHex normalizes a MAC-ish string to a lowercase hex run, dropping ':' and
+// '-' separators. Any character outside [0-9a-fA-F:-] (e.g. '.') yields "".
+// It has no length limit: callers use it to normalize a full stored MAC into
+// the haystack that a partial fragment is searched within.
+func macHex(s string) string {
 	var b strings.Builder
-	for _, r := range q {
+	for _, r := range s {
 		switch {
 		case r >= '0' && r <= '9', r >= 'a' && r <= 'f':
 			b.WriteRune(r)
@@ -2355,10 +2351,22 @@ func macFragment(q string) string {
 		case r == ':' || r == '-':
 			// separator, skip
 		default:
-			return "" // any other char: not a MAC fragment
+			return "" // not a clean MAC-hex string
 		}
 	}
-	h := b.String()
+	return b.String()
+}
+
+// macFragment normalizes a query into a lowercase hex run when it looks like a
+// partial MAC an operator typed from a device label — 4..11 hex digits. A full
+// 12-digit MAC, an IP (contains '.'), or any non-hex character yields "", so the
+// caller falls back to exact matching and IP/hostname handling. Returning ""
+// disables the partial-MAC pass entirely.
+func macFragment(q string) string {
+	if strings.ContainsRune(q, '.') { // looks like an IP, not a MAC label
+		return ""
+	}
+	h := macHex(q)
 	if len(h) < 4 || len(h) >= 12 {
 		return ""
 	}

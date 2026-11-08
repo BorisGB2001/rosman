@@ -107,6 +107,22 @@ func TestMacFragment(t *testing.T) {
 	}
 }
 
+func TestMacHex(t *testing.T) {
+	cases := map[string]string{
+		"C4:AD:34:74:E6:99": "c4ad3474e699", // full MAC → 12 hex, no length cap
+		"74e6":              "74e6",
+		"08-55-31":          "085531",
+		"10.0.0.1":          "", // '.' is not a separator here → non-hex → ""
+		"host":              "",
+		"":                  "",
+	}
+	for in, want := range cases {
+		if got := macHex(in); got != want {
+			t.Errorf("macHex(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestEthLess(t *testing.T) {
 	// ether2 must sort before ether10 (numeric-aware).
 	if !ethLess("ether2", "ether10") {
