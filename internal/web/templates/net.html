@@ -11,7 +11,7 @@
     <thead><tr><th data-col="addr" data-label="IP">IP</th><th data-col="mac" data-label="MAC">MAC</th><th data-col="host" data-label="{{t "net.host"}}">{{t "net.host"}}</th><th data-col="server" data-label="{{t "net.server"}}">{{t "net.server"}}</th><th data-col="expires" data-label="{{t "net.expires"}}">{{t "net.expires"}}</th><th data-col="status" data-label="{{t "al.state"}}">{{t "al.state"}}</th></tr></thead>
     <tbody>
     {{range .Leases}}<tr>
-      <td class="mono">{{.Address}}</td><td class="mono">{{.MAC}}</td>
+      <td class="mono">{{.Address}}</td><td class="mono">{{if .MAC}}<a href="/find?q={{.MAC}}" title="{{t "find.locate"}}">{{.MAC}}</a>{{else}}<span class="muted">—</span>{{end}}</td>
       <td>{{if .Host}}{{.Host}}{{else}}<span class="muted">—</span>{{end}}</td>
       <td class="muted">{{.Server}}</td><td class="muted">{{if .Expires}}{{.Expires}}{{else}}—{{end}}</td>
       <td>{{if eq .Status "bound"}}<span class="badge good">bound</span>{{else}}<span class="badge">{{.Status}}</span>{{end}}{{if .Dynamic}} <span class="badge" title="dynamic">dyn</span>{{end}}</td>
@@ -27,7 +27,7 @@
     <tbody>
     {{range .ARP}}<tr>
       <td class="mono">{{.Address}}</td>
-      <td class="mono">{{if .MAC}}{{.MAC}}{{else}}<span class="muted">—</span>{{end}}</td>
+      <td class="mono">{{if .MAC}}<a href="/find?q={{.MAC}}" title="{{t "find.locate"}}">{{.MAC}}</a>{{else}}<span class="muted">—</span>{{end}}</td>
       <td class="muted">{{.Iface}}</td>
       <td>{{if .Complete}}<span class="badge good">complete</span>{{else if .Status}}<span class="badge">{{.Status}}</span>{{else}}<span class="muted">—</span>{{end}}{{if .Dynamic}} <span class="badge" title="dynamic">dyn</span>{{end}}</td>
     </tr>{{else}}<tr><td colspan="4" class="muted">{{t "net.empty"}}</td></tr>{{end}}

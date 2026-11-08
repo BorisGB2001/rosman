@@ -188,7 +188,7 @@
   <div class="scroll"><table>
     <thead><tr><th>IP</th><th>MAC</th><th>{{t "cl.vendor"}}</th><th>{{t "cl.hostname"}}</th><th>{{t "neigh.iface"}}</th><th>{{t "cl.source"}}</th></tr></thead>
     <tbody>
-    {{range .Clients}}<tr><td class="mono">{{.IP}}</td><td class="mono">{{.MAC}}</td><td>{{vendor .MAC}}</td><td>{{.Hostname}}</td><td class="muted">{{.Iface}}</td><td class="muted">{{.Source}}</td></tr>
+    {{range .Clients}}<tr><td class="mono">{{.IP}}</td><td class="mono">{{if .MAC}}<a href="/find?q={{.MAC}}" title="{{t "find.locate"}}">{{.MAC}}</a>{{else}}—{{end}}</td><td>{{vendor .MAC}}</td><td>{{.Hostname}}</td><td class="muted">{{.Iface}}</td><td class="muted">{{.Source}}</td></tr>
     {{else}}<tr><td colspan="6" class="muted">{{t "cl.none"}}</td></tr>{{end}}
     </tbody>
   </table></div>

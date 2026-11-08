@@ -571,5 +571,6 @@
   "find.ph": "MAC, IP or hostname…",
   "find.note": "Searches every device's clients (ARP/DHCP/wireless) and bridge FDB. The port is the exact physical port the host sits behind.",
   "find.is_device": "managed",
-  "find.none": "Not found in any device's clients or forwarding database."
+  "find.none": "Not found in any device's clients or forwarding database.",
+  "find.locate": "Locate across the fleet"
 }
