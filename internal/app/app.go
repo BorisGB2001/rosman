@@ -260,13 +260,24 @@ func firstField(s string) string {
 // in the background (canary wave first, then waves of `concurrency`, optionally
 // halting after a failure). Each device is backed up before upgrading.
 func (a *App) StartUpgrade(ids []int64, canary, concurrency int, halt bool, actor string) (int64, error) {
+	return a.startUpgrade(ids, canary, concurrency, halt, actor, "ros")
+}
+
+// StartRouterboardUpgrade runs the same safe wave-based pipeline (backup →
+// canary → concurrency waves → halt-on-failure → verify) but applies the
+// pending RouterBOARD firmware and reboots, instead of a RouterOS install.
+func (a *App) StartRouterboardUpgrade(ids []int64, canary, concurrency int, halt bool, actor string) (int64, error) {
+	return a.startUpgrade(ids, canary, concurrency, halt, actor, "routerboard")
+}
+
+func (a *App) startUpgrade(ids []int64, canary, concurrency int, halt bool, actor, kind string) (int64, error) {
 	if a.signer == nil {
 		return 0, fmt.Errorf("no SSH key configured (ROSMAN_SSH_KEY) — pre-upgrade backup needs SSH")
 	}
 	if len(ids) == 0 {
 		return 0, fmt.Errorf("no devices selected")
 	}
-	job, err := a.Store.CreateFwJob(actor, fmt.Sprintf("%d устр.", len(ids)))
+	job, err := a.Store.CreateFwJob(actor, fmt.Sprintf("%d устр.", len(ids)), kind)
 	if err != nil {
 		return 0, err
 	}
@@ -275,13 +286,18 @@ func (a *App) StartUpgrade(ids []int64, canary, concurrency int, halt bool, acto
 		if err != nil {
 			continue
 		}
-		target := firstField(d.FwLatest)
-		if target == "" {
-			target = firstField(d.ROSVersion)
+		var target string
+		if kind == "routerboard" {
+			target = d.RBUpgradeFw // the firmware that applies after reboot
+		} else {
+			target = firstField(d.FwLatest)
+			if target == "" {
+				target = firstField(d.ROSVersion)
+			}
 		}
 		_, _ = a.Store.AddFwItem(job, id, d.Name, target)
 	}
-	go a.runUpgradeJob(job, canary, concurrency, halt)
+	go a.runUpgradeJob(job, canary, concurrency, halt, kind)
 	return job, nil
 }
 
@@ -295,7 +311,7 @@ func (a *App) jobHasFailure(jobID int64) bool {
 	return false
 }
 
-func (a *App) runUpgradeJob(jobID int64, canary, concurrency int, halt bool) {
+func (a *App) runUpgradeJob(jobID int64, canary, concurrency int, halt bool, kind string) {
 	items, _ := a.Store.FwItems(jobID)
 	idx := 0
 	waveSize := canary
@@ -311,7 +327,7 @@ func (a *App) runUpgradeJob(jobID int64, canary, concurrency int, halt bool) {
 		var wg sync.WaitGroup
 		for _, it := range wave {
 			wg.Add(1)
-			go func(it model.FwItem) { defer wg.Done(); a.upgradeItem(it) }(it)
+			go func(it model.FwItem) { defer wg.Done(); a.upgradeItem(it, kind) }(it)
 		}
 		wg.Wait()
 		idx = end
@@ -329,7 +345,7 @@ func (a *App) runUpgradeJob(jobID int64, canary, concurrency int, halt bool) {
 	_ = a.Store.FinishFwJob(jobID, "done")
 }
 
-func (a *App) upgradeItem(it model.FwItem) {
+func (a *App) upgradeItem(it model.FwItem, kind string) {
 	d, err := a.Store.Device(it.DeviceID)
 	if err != nil {
 		_ = a.Store.SetFwItem(it.ID, "failed", "устройство не найдено")
@@ -346,14 +362,28 @@ func (a *App) upgradeItem(it model.FwItem) {
 		return
 	}
 	_ = a.Store.SetFwItem(it.ID, "installing", "")
-	rebooting, status, err := ros.FirmwareInstall(d, pass, a.Cfg.APITimeout+10*time.Second)
-	if err != nil {
-		_ = a.Store.SetFwItem(it.ID, "failed", "установка: "+err.Error())
-		return
-	}
-	if !rebooting {
-		_ = a.Store.SetFwItem(it.ID, "done", "уже актуально ("+status+")")
-		return
+	var rebooting bool
+	if kind == "routerboard" {
+		rebooting, err = ros.RouterboardUpgrade(d, pass, a.Cfg.APITimeout+10*time.Second)
+		if err != nil {
+			_ = a.Store.SetFwItem(it.ID, "failed", "обновление FW платы: "+err.Error())
+			return
+		}
+		if !rebooting {
+			_ = a.Store.SetFwItem(it.ID, "done", "FW платы уже актуальна")
+			return
+		}
+	} else {
+		var status string
+		rebooting, status, err = ros.FirmwareInstall(d, pass, a.Cfg.APITimeout+10*time.Second)
+		if err != nil {
+			_ = a.Store.SetFwItem(it.ID, "failed", "установка: "+err.Error())
+			return
+		}
+		if !rebooting {
+			_ = a.Store.SetFwItem(it.ID, "done", "уже актуально ("+status+")")
+			return
+		}
 	}
 	_ = a.Store.SetFwItem(it.ID, "rebooting", "ожидание перезагрузки")
 	time.Sleep(20 * time.Second)
@@ -371,6 +401,15 @@ func (a *App) upgradeItem(it model.FwItem) {
 		return
 	}
 	_ = a.Store.UpdateInventory(d.ID, h.Model, h.Serial, h.Version, time.Now())
+	if kind == "routerboard" {
+		_ = a.Store.SetRouterboardFw(d.ID, h.RBCurrentFw, h.RBUpgradeFw)
+		if h.RBCurrentFw == it.Target {
+			_ = a.Store.SetFwItem(it.ID, "done", "FW платы обновлена до "+h.RBCurrentFw)
+		} else {
+			_ = a.Store.SetFwItem(it.ID, "failed", "FW платы "+h.RBCurrentFw+", ожидалась "+it.Target)
+		}
+		return
+	}
 	if firstField(h.Version) == it.Target {
 		_ = a.Store.SetFwItem(it.ID, "done", "обновлено до "+h.Version)
 	} else {

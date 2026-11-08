@@ -152,7 +152,8 @@ CREATE TABLE IF NOT EXISTS fw_jobs (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     actor      TEXT NOT NULL DEFAULT '',
     note       TEXT NOT NULL DEFAULT '',
-    status     TEXT NOT NULL DEFAULT 'running'
+    status     TEXT NOT NULL DEFAULT 'running',
+    kind       TEXT NOT NULL DEFAULT 'ros'
 );
 CREATE TABLE IF NOT EXISTS fw_job_items (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

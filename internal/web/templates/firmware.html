@@ -57,6 +57,22 @@
 </div>
 {{end}}
 </form>
+{{if and (canWrite .User) .RBPending}}
+<form method="post" action="/firmware/rbupgrade">
+<div class="card narrow" style="border-color:var(--warn)">
+  <h3>{{t "fw.rb_upgrade_title"}}</h3>
+  <p class="muted small" style="margin:4px 0 10px">{{t "fw.rb_pending_pre"}} {{.RBPending}} {{t "fw.rb_pending_post"}}.</p>
+  <label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="all_outdated" checked> {{t "fw.rb_upgrade_all"}}</label>
+  <div style="display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap;margin-top:8px">
+    <label>{{t "fw.canary"}}<input name="canary" value="1" style="width:70px"></label>
+    <label>{{t "fw.concurrency"}}<input name="concurrency" value="3" style="width:70px"></label>
+    <label style="flex-direction:row;gap:6px;align-items:center;height:34px"><input type="checkbox" name="halt" checked> {{t "fw.halt"}}</label>
+  </div>
+  <div style="margin-top:10px"><button class="btn danger" type="submit" onclick="return confirm('{{t "fw.rb_confirm"}}')">{{t "fw.rb_start"}}</button></div>
+  <p class="muted small">{{t "fw.rb_note"}}</p>
+</div>
+</form>
+{{end}}
 <script>
 (function(){
   if(!document.querySelector('[data-fw-active="1"]')) return;

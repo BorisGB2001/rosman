@@ -130,6 +130,7 @@ type FwJob struct {
 	Actor     string
 	Note      string
 	Status    string
+	Kind      string // "ros" (RouterOS) | "routerboard" (RouterBOARD firmware)
 }
 
 // FwItem is one device's progress within a firmware upgrade job.

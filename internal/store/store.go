@@ -56,6 +56,7 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE devices ADD COLUMN notes TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN rb_current_fw TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN rb_upgrade_fw TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE fw_jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'ros'`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -1501,8 +1502,11 @@ func (s *Store) AllAlerts(limit int) ([]model.Alert, error) {
 
 // ---- firmware jobs ----
 
-func (s *Store) CreateFwJob(actor, note string) (int64, error) {
-	res, err := s.db.Exec(`INSERT INTO fw_jobs(actor,note) VALUES(?,?)`, actor, note)
+func (s *Store) CreateFwJob(actor, note, kind string) (int64, error) {
+	if kind == "" {
+		kind = "ros"
+	}
+	res, err := s.db.Exec(`INSERT INTO fw_jobs(actor,note,kind) VALUES(?,?,?)`, actor, note, kind)
 	if err != nil {
 		return 0, err
 	}
@@ -1529,7 +1533,7 @@ func (s *Store) FinishFwJob(id int64, status string) error {
 }
 
 func (s *Store) FwJobs(limit int) ([]model.FwJob, error) {
-	rows, err := s.db.Query(`SELECT id,created_at,actor,note,status FROM fw_jobs ORDER BY id DESC LIMIT ?`, limit)
+	rows, err := s.db.Query(`SELECT id,created_at,actor,note,status,kind FROM fw_jobs ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1537,7 +1541,7 @@ func (s *Store) FwJobs(limit int) ([]model.FwJob, error) {
 	var out []model.FwJob
 	for rows.Next() {
 		var j model.FwJob
-		if err := rows.Scan(&j.ID, &j.CreatedAt, &j.Actor, &j.Note, &j.Status); err != nil {
+		if err := rows.Scan(&j.ID, &j.CreatedAt, &j.Actor, &j.Note, &j.Status, &j.Kind); err != nil {
 			return nil, err
 		}
 		out = append(out, j)

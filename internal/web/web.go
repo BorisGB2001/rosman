@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.81.0"
+const Version = "0.82.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -187,6 +187,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /firmware", s.authed(s.firmwarePage))
 	mux.Handle("GET /firmware/progress", s.authed(s.firmwareProgress))
 	mux.Handle("POST /firmware/upgrade", s.authed(s.requireRole(model.RoleOperator, s.firmwareUpgrade)))
+	mux.Handle("POST /firmware/rbupgrade", s.authed(s.requireRole(model.RoleOperator, s.firmwareRBUpgradeBulk)))
 	mux.Handle("POST /devices/{id}/upgrade", s.authed(s.requireRole(model.RoleOperator, s.deviceUpgrade)))
 	mux.Handle("POST /devices/{id}/rbupgrade", s.authed(s.requireRole(model.RoleOperator, s.deviceRBUpgrade)))
 	mux.Handle("POST /devices/{id}/reboot", s.authed(s.requireRole(model.RoleOperator, s.deviceReboot)))
@@ -1066,6 +1067,45 @@ func (s *Server) firmwareUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "fw_upgrade", fmt.Sprintf("%d devices", len(ids)))
+	http.Redirect(w, r, "/firmware", http.StatusSeeOther)
+}
+
+// firmwareRBUpgradeBulk upgrades RouterBOARD firmware on the selected (or all
+// outdated) devices through the same safe wave pipeline as the RouterOS bulk
+// upgrade. Only devices with a pending board firmware are ever included.
+func (s *Server) firmwareRBUpgradeBulk(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	outdated := map[int64]bool{}
+	devs, _ := s.a.Store.Devices()
+	for _, d := range devs {
+		if d.RBUpgradeFw != "" && d.RBUpgradeFw != d.RBCurrentFw {
+			outdated[d.ID] = true
+		}
+	}
+	var ids []int64
+	if r.FormValue("all_outdated") == "on" {
+		for id := range outdated {
+			ids = append(ids, id)
+		}
+	} else {
+		for _, v := range r.Form["device_ids"] {
+			if n, err := strconv.ParseInt(v, 10, 64); err == nil && outdated[n] {
+				ids = append(ids, n) // guard: never upgrade a board that is already current
+			}
+		}
+	}
+	if len(ids) == 0 {
+		http.Redirect(w, r, "/firmware?err=none", http.StatusSeeOther)
+		return
+	}
+	canary, _ := strconv.Atoi(r.FormValue("canary"))
+	conc, _ := strconv.Atoi(r.FormValue("concurrency"))
+	halt := r.FormValue("halt") == "on"
+	if _, err := s.a.StartRouterboardUpgrade(ids, canary, conc, halt, userFrom(r).Username); err != nil {
+		http.Redirect(w, r, "/firmware?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "rb_fw_upgrade", fmt.Sprintf("%d devices", len(ids)))
 	http.Redirect(w, r, "/firmware", http.StatusSeeOther)
 }
 
