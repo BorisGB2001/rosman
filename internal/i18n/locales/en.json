@@ -541,5 +541,10 @@
   "topo.find": "Find",
   "topo.is_device": "Managed device",
   "topo.connected_to": "Connected to",
-  "topo.not_found": "Not found in any device's clients/neighbours"
+  "topo.not_found": "Not found in any device's clients/neighbours",
+  "port.title": "Ports — what's connected",
+  "port.note": "from the bridge FDB, MNDP neighbours and the client table",
+  "port.neighbor": "Neighbour device",
+  "port.macs": "MACs behind",
+  "port.hosts": "Sample hosts"
 }

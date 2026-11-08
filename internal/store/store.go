@@ -779,6 +779,25 @@ func (s *Store) ReplaceBridgeHosts(deviceID int64, hosts []model.BridgeHost) err
 	return tx.Commit()
 }
 
+// BridgePortCounts returns, for one device, how many MACs are learned on each
+// interface (its FDB grouped by port).
+func (s *Store) BridgePortCounts(deviceID int64) (map[string]int, error) {
+	rows, err := s.db.Query(`SELECT iface,COUNT(*) FROM bridge_hosts WHERE device_id=? GROUP BY iface`, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := map[string]int{}
+	for rows.Next() {
+		var iface string
+		var n int
+		if rows.Scan(&iface, &n) == nil {
+			m[iface] = n
+		}
+	}
+	return m, rows.Err()
+}
+
 // BridgeHostsByMac returns every device+port that has learned the given MAC.
 func (s *Store) BridgeHostsByMac(mac string) ([]model.BridgeHost, error) {
 	rows, err := s.db.Query(`SELECT device_id,mac,iface,bridge FROM bridge_hosts WHERE mac=?`, strings.ToUpper(mac))

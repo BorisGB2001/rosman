@@ -85,6 +85,24 @@
   <h3>{{t "dev.faceplate"}}</h3>
   {{if .Faceplate}}<div style="display:flex;gap:22px;align-items:center;flex-wrap:wrap"><div style="flex:none">{{.Faceplate}}</div><p class="muted small" style="flex:1;min-width:200px;margin:0">{{t "dev.faceplate_legend"}}</p></div>{{else}}<p class="muted">{{t "dev.faceplate_none"}}</p>{{end}}
 </div>
+{{if .PortConns}}
+<div class="card">
+  <h3>{{t "port.title"}} <span class="muted small">{{t "port.note"}}</span></h3>
+  <div class="scroll"><table class="dtable">
+    <thead><tr><th data-col="port" data-label="{{t "neigh.iface"}}">{{t "neigh.iface"}}</th><th data-col="neighbor" data-label="{{t "port.neighbor"}}">{{t "port.neighbor"}}</th><th data-col="macs" data-label="{{t "port.macs"}}">{{t "port.macs"}}</th><th data-col="hosts" data-label="{{t "port.hosts"}}">{{t "port.hosts"}}</th></tr></thead>
+    <tbody>
+    {{range .PortConns}}
+      <tr>
+        <td class="mono">{{.Port}}</td>
+        <td>{{if .Neighbor}}{{.Neighbor}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td data-sort="{{.MACs}}">{{if gt .MACs 0}}<span class="badge">{{.MACs}}</span>{{else}}<span class="muted">0</span>{{end}}</td>
+        <td class="muted small">{{range $i, $h := .Hosts}}{{if $i}}, {{end}}{{$h}}{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
+{{end}}
 <div class="card">
   <h3>{{t "dev.graphs"}} <span class="muted small">{{t "dev.graphs_note"}}</span> <a href="/devices/{{.D.ID}}/history" class="btn sm secondary" style="margin-left:8px">{{t "hist.title"}}</a></h3>
   <div class="grid2">

@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.61.0"
+const Version = "0.62.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -1243,6 +1243,7 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 		"Sites": sites, "DevTags": devTags, "BackupMode": s.a.BackupMode(),
 		"Clients":  clients,
 		"Images":   images, "ModelImg": modelImgPath(s.a.Cfg.DataDir, d.Model),
+		"PortConns": s.portConnections(id),
 		"Faceplate": facePlateSVG(ports),
 		"CPUGraph":  graphSVG(cpu, 100, "var(--accent)"), "RAMGraph": graphSVG(ram, 100, "var(--warn)"),
 		"TempGraph": graphSVG(temp, 0, "var(--bad)"), "HasTemp": len(temp) > 0,
@@ -1342,6 +1343,93 @@ func (s *Server) deviceNotesSave(w http.ResponseWriter, r *http.Request) {
 	_ = s.a.Store.SetDeviceNotes(id, notes)
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "device_notes", fmt.Sprintf("device %d", id))
 	http.Redirect(w, r, fmt.Sprintf("/devices/%d?msg=%s", id, urlq("notes saved")), http.StatusSeeOther)
+}
+
+// PortConn summarises what is reachable through one physical port of a device.
+type PortConn struct {
+	Port     string
+	Neighbor string   // managed/discovered device identity seen on this port
+	MACs     int      // learned MACs behind it (FDB)
+	Hosts    []string // sample client IP/hostnames on this port
+}
+
+// portConnections builds a per-physical-port view from the FDB, MNDP neighbours
+// and the client table.
+func (s *Server) portConnections(deviceID int64) []PortConn {
+	counts, _ := s.a.Store.BridgePortCounts(deviceID)
+	neighbors, _ := s.a.Store.Neighbors(deviceID)
+	clients, _ := s.a.Store.Clients(deviceID)
+	ports := map[string]*PortConn{}
+	get := func(p string) *PortConn {
+		if ports[p] == nil {
+			ports[p] = &PortConn{Port: p}
+		}
+		return ports[p]
+	}
+	for iface, n := range counts {
+		if p := physicalPort(iface); p != "" {
+			get(p).MACs += n
+		}
+	}
+	for _, nb := range neighbors {
+		if p := physicalPort(nb.Iface); p != "" {
+			name := firstNonEmptyStr(nb.Identity, nb.IP, nb.MAC)
+			if pc := get(p); pc.Neighbor == "" {
+				pc.Neighbor = name
+			} else if name != "" && !strings.Contains(pc.Neighbor, name) {
+				pc.Neighbor += ", " + name
+			}
+		}
+	}
+	for _, c := range clients {
+		if p := physicalPort(c.Iface); p != "" {
+			pc := get(p)
+			if len(pc.Hosts) < 4 {
+				h := firstNonEmptyStr(c.Hostname, c.IP, c.MAC)
+				if h != "" {
+					pc.Hosts = append(pc.Hosts, h)
+				}
+			}
+		}
+	}
+	out := make([]PortConn, 0, len(ports))
+	for _, pc := range ports {
+		out = append(out, *pc)
+	}
+	sort.Slice(out, func(i, j int) bool { return ethLess(out[i].Port, out[j].Port) })
+	return out
+}
+
+// firstNonEmptyStr returns the first non-empty argument.
+func firstNonEmptyStr(ss ...string) string {
+	for _, s := range ss {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// ethLess orders interface names so ether2 sorts before ether10.
+func ethLess(a, b string) bool {
+	na, sa := splitTrailingNum(a)
+	nb, sb := splitTrailingNum(b)
+	if sa == sb {
+		return na < nb
+	}
+	return a < b
+}
+
+func splitTrailingNum(s string) (int, string) {
+	i := len(s)
+	for i > 0 && s[i-1] >= '0' && s[i-1] <= '9' {
+		i--
+	}
+	if i == len(s) {
+		return -1, s
+	}
+	n, _ := strconv.Atoi(s[i:])
+	return n, s[:i]
 }
 
 func (s *Server) devicePoll(w http.ResponseWriter, r *http.Request) {
