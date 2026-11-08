@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.65.0"
+const Version = "0.66.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -898,11 +898,30 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 		onlinePct = online * 100 / len(devs)
 	}
 
+	// Fleet port capacity (free physical ports) and distinct VLAN count.
+	freePorts := 0
+	for _, d := range devs {
+		ports, _ := s.a.Store.DevicePorts(d.ID)
+		for _, p := range ports {
+			if physicalPort(p.Name) != "" && !p.Disabled && !p.Running {
+				freePorts++
+			}
+		}
+	}
+	vlanSet := map[int]bool{}
+	if vr, _ := s.a.Store.AllVLANs(); vr != nil {
+		for _, v := range vr {
+			for _, id := range expandVlanIDs(v.VlanIDs) {
+				vlanSet[id] = true
+			}
+		}
+	}
+
 	s.render(w, r, "dashboard", map[string]any{"Active": "dashboard",
 		"Total": len(devs), "Online": online, "Offline": offline, "Unknown": unknown,
 		"Outdated": outdated, "SitesN": len(sites), "Alerts": alerts, "AlertCount": len(alerts),
 		"Versions": vers, "CVEAffected": cveAffected, "TopCPU": topCPU,
-		"Attention": attention, "OnlinePct": onlinePct})
+		"Attention": attention, "OnlinePct": onlinePct, "FreePorts": freePorts, "VlanN": len(vlanSet)})
 }
 
 func (s *Server) firmwarePage(w http.ResponseWriter, r *http.Request) {

@@ -10,6 +10,8 @@
   <a class="tile" href="/firmware"><span>{{t "dash.outdated"}}</span><b style="{{if .Outdated}}color:var(--warn){{end}}">{{.Outdated}}</b></a>
   <a class="tile" href="/security"><span>{{t "dash.cve"}}</span><b style="{{if .CVEAffected}}color:var(--bad){{end}}">{{.CVEAffected}}</b></a>
   <a class="tile" href="/sites"><span>{{t "nav.sites"}}</span><b>{{.SitesN}}</b></a>
+  <a class="tile" href="/ports"><span>{{t "cap.free"}}</span><b style="color:var(--accent)">{{.FreePorts}}</b></a>
+  <a class="tile" href="/vlans"><span>{{t "vlan.title"}}</span><b>{{.VlanN}}</b></a>
 </div>
 
 <div class="grid2">
