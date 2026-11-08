@@ -1165,6 +1165,34 @@ func (s *Store) DevicePorts(deviceID int64) ([]model.Port, error) {
 
 // ---- configs ----
 
+// LastConfigTimes returns, per device, the newest snapshot time of each kind
+// (export / binary / archive) — for the backup-coverage view.
+func (s *Store) LastConfigTimes() (map[int64]map[string]time.Time, error) {
+	// Scan the non-aggregated taken_at column (so the driver preserves its
+	// timestamp affinity) and keep the newest per device+kind in Go.
+	rows, err := s.db.Query(`SELECT device_id,kind,taken_at FROM configs`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := map[int64]map[string]time.Time{}
+	for rows.Next() {
+		var dev int64
+		var kind string
+		var t time.Time
+		if err := rows.Scan(&dev, &kind, &t); err != nil {
+			return nil, err
+		}
+		if m[dev] == nil {
+			m[dev] = map[string]time.Time{}
+		}
+		if cur, ok := m[dev][kind]; !ok || t.After(cur) {
+			m[dev][kind] = t
+		}
+	}
+	return m, rows.Err()
+}
+
 // LatestConfigHash returns the sha256 of the most recent snapshot (or "").
 func (s *Store) LatestConfigHash(deviceID int64, kind string) (string, error) {
 	var h string

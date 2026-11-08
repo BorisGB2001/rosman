@@ -572,5 +572,13 @@
   "find.note": "Searches every device's clients (ARP/DHCP/wireless) and bridge FDB. The port is the exact physical port the host sits behind.",
   "find.is_device": "managed",
   "find.none": "Not found in any device's clients or forwarding database.",
-  "find.locate": "Locate across the fleet"
+  "find.locate": "Locate across the fleet",
+  "bk.title": "Backup coverage",
+  "bk.subtitle": "Which devices have a recent config backup — and which don't",
+  "bk.ok": "Recent",
+  "bk.stale": "stale",
+  "bk.never": "never",
+  "bk.export": "Last export",
+  "bk.binary": "Last binary",
+  "bk.note": "\"Recent\" = a backup within 7 days. \"never\" usually means the fleet SSH key isn't authorised on that device, so /export can't run."
 }

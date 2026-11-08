@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.69.0"
+const Version = "0.70.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -190,6 +190,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/tag", s.authed(s.requireRole(model.RoleOperator, s.deviceTag)))
 	mux.Handle("GET /clients", s.authed(s.clientsPage))
 	mux.Handle("GET /find", s.authed(s.findPage))
+	mux.Handle("GET /backups", s.authed(s.backupsPage))
 	mux.Handle("GET /ports", s.authed(s.portsPage))
 	mux.Handle("GET /ports.csv", s.authed(s.portsCSV))
 	mux.Handle("GET /vlans", s.authed(s.vlansPage))
@@ -2283,6 +2284,61 @@ func looksLikeMAC(s string) bool {
 		}
 	}
 	return n == 12
+}
+
+// backupsPage shows per-device backup coverage: the age of the latest config
+// export and binary backup, flagging devices that are stale or never backed up.
+func (s *Server) backupsPage(w http.ResponseWriter, r *http.Request) {
+	devs, _ := s.a.Store.Devices()
+	times, _ := s.a.Store.LastConfigTimes()
+	const staleAfter = 7 * 24 * time.Hour
+	type row struct {
+		ID                 int64
+		Name, Model        string
+		Export, Binary     *time.Time
+		Status             string // ok | stale | never
+	}
+	rows := make([]row, 0, len(devs))
+	var okN, staleN, neverN int
+	for _, d := range devs {
+		rr := row{ID: d.ID, Name: d.Name, Model: d.Model}
+		if t, ok := times[d.ID]["export"]; ok {
+			rr.Export = &t
+		}
+		if t, ok := times[d.ID]["binary"]; ok {
+			rr.Binary = &t
+		} else if t, ok := times[d.ID]["archive"]; ok {
+			rr.Binary = &t
+		}
+		var newest *time.Time
+		for _, t := range []*time.Time{rr.Export, rr.Binary} {
+			if t != nil && (newest == nil || t.After(*newest)) {
+				newest = t
+			}
+		}
+		switch {
+		case newest == nil:
+			rr.Status = "never"
+			neverN++
+		case time.Since(*newest) > staleAfter:
+			rr.Status = "stale"
+			staleN++
+		default:
+			rr.Status = "ok"
+			okN++
+		}
+		rows = append(rows, rr)
+	}
+	// Worst first: never, then stale, then ok; within, oldest first.
+	rank := map[string]int{"never": 0, "stale": 1, "ok": 2}
+	sort.Slice(rows, func(i, j int) bool {
+		if rank[rows[i].Status] != rank[rows[j].Status] {
+			return rank[rows[i].Status] < rank[rows[j].Status]
+		}
+		return rows[i].Name < rows[j].Name
+	})
+	s.render(w, r, "backups", map[string]any{"Active": "backups", "Rows": rows,
+		"OkN": okN, "StaleN": staleN, "NeverN": neverN, "Total": len(devs)})
 }
 
 // portsCSV exports per-device port capacity.
