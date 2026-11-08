@@ -43,7 +43,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.26.0"
+const Version = "0.27.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -147,6 +147,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /devices/{id}/firewall", s.authed(s.firewallPage))
 	mux.Handle("GET /devices/{id}/tools", s.authed(s.toolsPage))
 	mux.Handle("GET /devices/{id}/lte", s.authed(s.ltePage))
+	mux.Handle("GET /devices/{id}/history", s.authed(s.historyPage))
 	mux.Handle("POST /devices/{id}/firewall", s.authed(s.requireRole(model.RoleOperator, s.firewallApply)))
 	mux.Handle("GET /devices/{id}/diff", s.authed(s.diffPage))
 	mux.Handle("POST /configs/{id}/restore", s.authed(s.requireRole(model.RoleOperator, s.configRestore)))
@@ -1779,6 +1780,95 @@ func facePlateSVG(ports []model.Port) template.HTML {
 }
 
 // graphSVG draws a line graph of series; maxFixed>0 pins the Y scale (e.g. 100 for %).
+// downsample averages a series into at most n buckets (keeps it as-is when
+// already short enough), so long windows render as small, legible graphs.
+func downsample(series []float64, n int) []float64 {
+	if n < 1 || len(series) <= n {
+		return series
+	}
+	out := make([]float64, n)
+	for i := 0; i < n; i++ {
+		lo := i * len(series) / n
+		hi := (i + 1) * len(series) / n
+		if hi <= lo {
+			hi = lo + 1
+		}
+		var sum float64
+		for _, v := range series[lo:hi] {
+			sum += v
+		}
+		out[i] = sum / float64(hi-lo)
+	}
+	return out
+}
+
+func seriesStat(series []float64) (min, avg, max float64) {
+	if len(series) == 0 {
+		return 0, 0, 0
+	}
+	min = series[0]
+	max = series[0]
+	var sum float64
+	for _, v := range series {
+		sum += v
+		if v < min {
+			min = v
+		}
+		if v > max {
+			max = v
+		}
+	}
+	return min, sum / float64(len(series)), max
+}
+
+var historyRanges = map[string]time.Duration{
+	"6h": 6 * time.Hour, "24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour,
+}
+
+func (s *Server) historyPage(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	rng := r.URL.Query().Get("range")
+	dur, ok := historyRanges[rng]
+	if !ok {
+		rng, dur = "24h", 24*time.Hour
+	}
+	metrics, _ := s.a.Store.MetricsSince(id, time.Now().Add(-dur))
+	var cpu, ram, temp []float64
+	for _, m := range metrics {
+		cpu = append(cpu, float64(m.CPU))
+		if m.TotalMem > 0 {
+			ram = append(ram, float64(m.TotalMem-m.FreeMem)/float64(m.TotalMem)*100)
+		}
+		if m.Temp > 0 {
+			temp = append(temp, m.Temp)
+		}
+	}
+	const buckets = 200
+	cpuMin, cpuAvg, cpuMax := seriesStat(cpu)
+	ramMin, ramAvg, ramMax := seriesStat(ram)
+	tMin, tAvg, tMax := seriesStat(temp)
+	data := map[string]any{"Active": "devices", "D": d, "Range": rng,
+		"Ranges":   []string{"6h", "24h", "7d", "30d"},
+		"Samples":  len(metrics),
+		"CPUGraph": graphSVG(downsample(cpu, buckets), 100, "var(--accent)"),
+		"RAMGraph": graphSVG(downsample(ram, buckets), 100, "var(--warn)"),
+		"TempGraph": graphSVG(downsample(temp, buckets), 0, "var(--bad)"), "HasTemp": len(temp) > 0,
+		"CPUMin": cpuMin, "CPUAvg": cpuAvg, "CPUMax": cpuMax,
+		"RAMMin": ramMin, "RAMAvg": ramAvg, "RAMMax": ramMax,
+		"TMin": tMin, "TAvg": tAvg, "TMax": tMax,
+	}
+	if len(metrics) > 0 {
+		data["From"] = metrics[0].TS
+		data["To"] = metrics[len(metrics)-1].TS
+	}
+	s.render(w, r, "history", data)
+}
+
 func graphSVG(series []float64, maxFixed float64, color string) template.HTML {
 	const w, h = 240, 46
 	if len(series) == 0 {

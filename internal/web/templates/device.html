@@ -39,7 +39,7 @@
   {{if .Faceplate}}{{.Faceplate}}<p class="muted small">{{t "dev.faceplate_legend"}}</p>{{else}}<p class="muted">{{t "dev.faceplate_none"}}</p>{{end}}
 </div>
 <div class="card">
-  <h3>{{t "dev.graphs"}} <span class="muted small">{{t "dev.graphs_note"}}</span></h3>
+  <h3>{{t "dev.graphs"}} <span class="muted small">{{t "dev.graphs_note"}}</span> <a href="/devices/{{.D.ID}}/history" class="btn sm secondary" style="margin-left:8px">{{t "hist.title"}}</a></h3>
   <div class="grid2">
     <div><div class="muted small">CPU — {{.H.CPU}}%</div>{{.CPUGraph}}</div>
     <div><div class="muted small">RAM — {{mb .H.FreeMem}} / {{mb .H.TotalMem}}</div>{{.RAMGraph}}</div>
