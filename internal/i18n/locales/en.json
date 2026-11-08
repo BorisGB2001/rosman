@@ -238,6 +238,8 @@
   "disc.managed": "managed",
   "disc.new": "new",
   "ip.setdefault": "Make primary IP",
+  "disc.show_all": "Show all",
+  "disc.hide_managed": "Hide managed",
   "map.title": "Map",
   "map.legend": "One marker per location: green — all devices online, orange — some offline, red — all offline, grey — no devices. Click a marker for the device list.",
   "map.none": "No locations have coordinates yet. Set latitude/longitude on the Locations page.",

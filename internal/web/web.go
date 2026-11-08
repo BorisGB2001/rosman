@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.47.0"
+const Version = "0.47.1"
 
 const (
 	cookieName  = "rosman_session"
@@ -722,13 +722,18 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 	// IPs or MACs — are hidden, since they are already added.
 	managedIP, _ := s.a.Store.AllManagedAddrs()
 	managedMAC, _ := s.a.Store.AllManagedMacs()
-	type disc struct{ Identity, IP, MAC, Platform, SeenBy string }
+	showAllNeigh := r.URL.Query().Get("allneigh") == "1"
+	type disc struct {
+		Identity, IP, MAC, Platform, SeenBy string
+		Managed                             bool
+	}
 	aggm := map[string]*disc{}
 	var dorder []string
 	if sight, e := s.a.Store.AllNeighborSightings(); e == nil {
 		for _, n := range sight {
-			if (n.IP != "" && managedIP[n.IP]) || (n.MAC != "" && managedMAC[strings.ToUpper(n.MAC)]) {
-				continue // already managed
+			isManaged := (n.IP != "" && managedIP[n.IP]) || (n.MAC != "" && managedMAC[strings.ToUpper(n.MAC)])
+			if isManaged && !showAllNeigh {
+				continue // already managed — hidden unless "show all"
 			}
 			key := n.MAC
 			if key == "" {
@@ -742,7 +747,7 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 			}
 			d := aggm[key]
 			if d == nil {
-				d = &disc{Identity: n.Identity, IP: n.IP, MAC: n.MAC, Platform: n.Platform}
+				d = &disc{Identity: n.Identity, IP: n.IP, MAC: n.MAC, Platform: n.Platform, Managed: isManaged}
 				aggm[key] = d
 				dorder = append(dorder, key)
 			}
@@ -766,8 +771,8 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 	}
 	s.render(w, r, "devices", map[string]any{"Active": "devices", "Devices": rows,
 		"Sites": sites, "AllTags": allTags, "FSite": fSite, "FTag": fTag, "FType": fType,
-		"Discovered": discovered,
-		"Msg":        r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
+		"Discovered": discovered, "ShowAllNeigh": showAllNeigh,
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
 }
 
 func fwFirst(s string) string {

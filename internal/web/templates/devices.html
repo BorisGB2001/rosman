@@ -75,20 +75,22 @@
 </form>
 
 {{if .Discovered}}
-<div class="cardhead" style="margin-top:6px"><h2 style="margin:0;font-size:16px">{{t "disc.title"}}</h2></div>
+<div class="cardhead" style="margin-top:6px"><h2 style="margin:0;font-size:16px">{{t "disc.title"}}</h2>
+  {{if .ShowAllNeigh}}<a class="btn sm secondary" href="/">{{t "disc.hide_managed"}}</a>{{else}}<a class="btn sm secondary" href="/?allneigh=1">{{t "disc.show_all"}}</a>{{end}}</div>
 <div class="card">
   <p class="muted small">{{t "disc.note"}}</p>
   <div class="scroll"><table class="dtable">
-    <thead><tr><th>Identity</th><th>IP</th><th>MAC</th><th>{{t "neigh.platform"}}</th><th>{{t "disc.seenby"}}</th><th></th></tr></thead>
+    <thead><tr><th>Identity</th><th>IP</th><th>MAC</th><th>{{t "neigh.platform"}}</th><th>{{t "disc.seenby"}}</th><th>{{t "al.state"}}</th><th></th></tr></thead>
     <tbody>
     {{range .Discovered}}
-      <tr>
+      <tr {{if .Managed}}style="opacity:.6"{{end}}>
         <td>{{if .Identity}}{{.Identity}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="mono">{{if .IP}}{{.IP}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="mono muted">{{.MAC}}</td>
         <td class="muted">{{.Platform}}</td>
         <td class="muted">{{.SeenBy}}</td>
-        <td>{{if and .IP (canWrite $.User)}}<a class="btn sm primary" href="/devices/new?ip={{.IP}}&name={{qesc .Identity}}">+ {{t "nav.add"}}</a>{{end}}</td>
+        <td>{{if .Managed}}<span class="badge good">{{t "disc.managed"}}</span>{{else}}<span class="badge">{{t "disc.new"}}</span>{{end}}</td>
+        <td>{{if and (not .Managed) .IP (canWrite $.User)}}<a class="btn sm primary" href="/devices/new?ip={{.IP}}&name={{qesc .Identity}}">+ {{t "nav.add"}}</a>{{end}}</td>
       </tr>
     {{end}}
     </tbody>
