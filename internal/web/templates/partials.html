@@ -27,7 +27,6 @@
     <a href="/topology" class="{{if eq .Active "topology"}}on{{end}}">{{template "ico" "topo"}}{{t "nav.topology"}}</a>
     <a href="/map" class="{{if eq .Active "map"}}on{{end}}">{{template "ico" "site"}}{{t "map.title"}}</a>
     <a href="/firmware" class="{{if eq .Active "firmware"}}on{{end}}">{{template "ico" "fw"}}{{t "nav.firmware"}}</a>
-    {{if canWrite .User}}<a href="/devices/new" class="{{if eq .Active "new"}}on{{end}}">{{template "ico" "add"}}{{t "nav.add"}}</a>{{end}}
 
     {{if canWrite .User}}<a href="/bulk" class="{{if eq .Active "bulk"}}on{{end}}">{{template "ico" "bulk"}}{{t "nav.bulk"}}</a>{{end}}
 
