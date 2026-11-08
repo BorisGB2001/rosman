@@ -1,5 +1,5 @@
 {{define "sites"}}{{template "head" .}}
-{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Msg}}<div class="note ok">{{dmsg .Msg}}</div>{{end}}
 {{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
 <div class="cardhead"><h1 style="margin:0">{{t "site.title"}}</h1>
   <a class="btn sm secondary" href="/map">{{t "map.title"}}</a></div>

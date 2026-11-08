@@ -1,7 +1,7 @@
 {{define "compliance"}}{{template "head" .}}
 <div class="cardhead"><h1 style="margin:0">{{t "comp.title"}}</h1>
   <span class="muted small">{{t "comp.passing"}}: {{.OkN}} · {{t "comp.failing"}}: {{.FailN}}</span></div>
-{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Msg}}<div class="note ok">{{dmsg .Msg}}</div>{{end}}
 {{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
 
 {{if canWrite .User}}
