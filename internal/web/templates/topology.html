@@ -102,9 +102,11 @@
       if(!drag||drag.g!==g) return; var id=drag.id, p=pos[id]; drag=null;
       try{ g.releasePointerCapture(evt.pointerId); }catch(e){}
       tip.style.display='none';
-      if(!moved){ if(id!=='0') window.location='/devices/'+id; return; }
+      if(!moved){ highlight(id); return; } // click a node → green path from ROSMan
       if(canWrite){ fetch('/topology/pos',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'id='+encodeURIComponent(id)+'&x='+p.x.toFixed(1)+'&y='+p.y.toFixed(1)}).catch(function(){}); }
     });
+    // double-click opens the device card (ROSMan node has no card)
+    g.addEventListener('dblclick', function(){ var id=g.dataset.id; if(id!=='-1' && parseInt(id,10)>0) window.location='/devices/'+id; });
   });
   // search / highlight
   // Adjacency over the rendered edges, for the green ROSMan→device path (BFS).
