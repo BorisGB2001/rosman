@@ -110,7 +110,12 @@ b.bad { color: var(--bad); }
 .navsep { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 14px 10px 4px; opacity: .6; }
 .me { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid rgba(255,255,255,.08); padding-top: 12px; }
 .me small { opacity: .7; }
-.me .ver { padding: 0 10px; opacity: .5; font-size: 11px; }
+.me .ver { padding: 0 10px; font-size: 11px; }
+/* boris.gb 2026-11-08 04:30 - индикатор версии: зелёная точка = актуально, красная = есть релиз */
+.verbadge { text-decoration: none; color: var(--muted); }
+.verbadge .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 5px; vertical-align: baseline; background: #22c55e; }
+.verbadge.old { color: #ef4444; font-weight: 600; }
+.verbadge.old .dot { background: #ef4444; }
 .merow { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .merow .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .merow form { flex: none; }

@@ -44,7 +44,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.35.0"
+const Version = "0.36.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -90,6 +90,7 @@ func New(a *app.App) (*Server, error) {
 			return n
 		},
 		"version": func() string { return Version },
+		"update":  func() app.UpdateStatus { return a.UpdateInfo(Version) },
 		"langs":   func() []string { return i18n.Langs() },
 		"qesc":    url.QueryEscape,
 		"upper":   strings.ToUpper,

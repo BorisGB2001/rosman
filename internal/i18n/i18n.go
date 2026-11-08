@@ -13,7 +13,7 @@ import (
 //go:embed locales/*.json
 var localesFS embed.FS
 
-const Default = "ru"
+const Default = "en"
 
 var dict = map[string]map[string]string{}
 var langs []string

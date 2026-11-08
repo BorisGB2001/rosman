@@ -62,7 +62,7 @@
         <a href="/theme/dark?next={{qesc .Path}}" class="{{if eq .Theme "dark"}}on{{end}}" title="{{t "theme.dark"}}">☾</a>
       </span>
     </div>
-    <div class="ver">ROSMan v{{version}}</div>
+    <div class="ver">{{$u := update}}{{if $u.Outdated}}<a href="https://github.com/BorisGB2001/rosman/releases/latest" target="_blank" rel="noopener" class="verbadge old" title="{{t "upd.available"}} {{$u.Latest}}">ROSMan v{{version}}<span class="dot"></span> {{t "upd.new"}} {{$u.Latest}}</a>{{else}}<span class="verbadge ok" title="{{if $u.Latest}}{{t "upd.current"}}{{else}}{{t "upd.unknown"}}{{end}}">ROSMan v{{version}}<span class="dot"></span></span>{{end}}</div>
   </div>
 </aside>
 <main>{{end}}
