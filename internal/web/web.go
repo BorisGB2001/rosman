@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.73.0"
+const Version = "0.74.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -2246,6 +2246,7 @@ func (s *Server) findPage(w http.ResponseWriter, r *http.Request) {
 	}
 	lq := strings.ToLower(q)
 	uq := strings.ToUpper(q)
+	frag := macFragment(q) // partial MAC: 4..11 hex digits from a sticker/label
 	devName := map[int64]string{}
 	devs, _ := s.a.Store.Devices()
 	for _, d := range devs {
@@ -2262,10 +2263,18 @@ func (s *Server) findPage(w http.ResponseWriter, r *http.Request) {
 		hits = append(hits, h)
 	}
 
-	// Is the query itself a managed device?
-	if macOwner, _ := s.a.Store.MacOwners(); macOwner[uq] != 0 {
-		id := macOwner[uq]
-		add(HostHit{DeviceID: id, Device: devName[id], MAC: uq, Vendor: oui.Vendor(uq), Managed: true})
+	// Is the query itself a managed device? Exact MAC, or a partial-MAC fragment.
+	if macOwner, _ := s.a.Store.MacOwners(); len(macOwner) > 0 {
+		if id := macOwner[uq]; id != 0 {
+			add(HostHit{DeviceID: id, Device: devName[id], MAC: uq, Vendor: oui.Vendor(uq), Managed: true})
+		}
+		if frag != "" {
+			for mac, id := range macOwner {
+				if strings.Contains(macFragment(mac), frag) {
+					add(HostHit{DeviceID: id, Device: devName[id], MAC: mac, Vendor: oui.Vendor(mac), Managed: true})
+				}
+			}
+		}
 	}
 	if addrOwner, _ := s.a.Store.AddrOwners(); addrOwner[q] != 0 {
 		id := addrOwner[q]
@@ -2282,7 +2291,8 @@ func (s *Server) findPage(w http.ResponseWriter, r *http.Request) {
 	for _, c := range clients {
 		match := strings.EqualFold(c.MAC, q) || c.IP == q ||
 			(len(lq) >= 2 && strings.Contains(strings.ToLower(c.Hostname), lq)) ||
-			(len(lq) >= 3 && strings.Contains(strings.ToLower(c.IP), lq))
+			(len(lq) >= 3 && strings.Contains(strings.ToLower(c.IP), lq)) ||
+			(frag != "" && strings.Contains(macFragment(c.MAC), frag))
 		if !match {
 			continue
 		}
@@ -2324,6 +2334,35 @@ func (s *Server) findPage(w http.ResponseWriter, r *http.Request) {
 	data["Hits"] = hits
 	data["Searched"] = true
 	s.render(w, r, "find", data)
+}
+
+// macFragment normalizes a query into a lowercase hex run (separators ':','-','.'
+// stripped) when it looks like a partial MAC an operator typed from a device
+// label — 4..11 hex digits. A full 12-digit MAC, an IP (contains '.'), or any
+// non-hex character yields "", so the caller falls back to exact matching and
+// IP/hostname handling. Returning "" disables the partial-MAC pass entirely.
+func macFragment(q string) string {
+	if strings.ContainsRune(q, '.') { // looks like an IP, not a MAC label
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range q {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'f':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'F':
+			b.WriteRune(r + ('a' - 'A'))
+		case r == ':' || r == '-':
+			// separator, skip
+		default:
+			return "" // any other char: not a MAC fragment
+		}
+	}
+	h := b.String()
+	if len(h) < 4 || len(h) >= 12 {
+		return ""
+	}
+	return h
 }
 
 // looksLikeMAC reports whether a string is shaped like a MAC address.

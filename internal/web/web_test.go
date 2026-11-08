@@ -86,6 +86,27 @@ func TestLooksLikeMAC(t *testing.T) {
 	}
 }
 
+func TestMacFragment(t *testing.T) {
+	cases := map[string]string{
+		"b0b3":          "b0b3",          // bare hex run
+		"00:11:32":      "001132",        // colon-separated partial
+		"00-11-32-b0":   "001132b0",      // dash-separated partial
+		"B0B3":          "b0b3",          // uppercase lowered
+		"001132b0b3ed":  "",              // full 12-digit MAC — exact match handles it
+		"10.77.9.1":     "",              // IP, not a MAC
+		"host":          "",              // non-hex
+		"ab":            "",              // too short (<4)
+		"0011.32b0":     "",              // dotted — treated as IP-like, excluded
+		"4c5e":          "4c5e",          // vendor-prefix fragment
+		"":              "",              // empty
+	}
+	for in, want := range cases {
+		if got := macFragment(in); got != want {
+			t.Errorf("macFragment(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestEthLess(t *testing.T) {
 	// ether2 must sort before ether10 (numeric-aware).
 	if !ethLess("ether2", "ether10") {
