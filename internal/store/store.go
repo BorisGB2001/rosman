@@ -90,6 +90,17 @@ func (s *Store) Vendors() ([]model.Vendor, error) {
 	return out, rows.Err()
 }
 
+// VendorByName finds a vendor by exact name (for idempotent imports).
+func (s *Store) VendorByName(name string) (model.Vendor, bool) {
+	var v model.Vendor
+	err := s.db.QueryRow(`SELECT id,name,website,notes,created_at FROM vendors WHERE name=? LIMIT 1`, name).
+		Scan(&v.ID, &v.Name, &v.Website, &v.Notes, &v.CreatedAt)
+	if err != nil {
+		return model.Vendor{}, false
+	}
+	return v, true
+}
+
 func (s *Store) Vendor(id int64) (model.Vendor, error) {
 	var v model.Vendor
 	err := s.db.QueryRow(`SELECT id,name,website,notes,created_at FROM vendors WHERE id=?`, id).

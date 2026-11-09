@@ -682,5 +682,9 @@
   "img.bad_type": "unsupported image type",
   "newdev.template": "Catalog template",
   "newdev.template_none": "— no template —",
-  "newdev.template_note": "Picking one fills the model's settings into notes (the model is detected on poll)."
+  "newdev.template_note": "Picking one fills the model's settings into notes (the model is detected on poll).",
+  "ven.import_mik": "Import MikroTik models",
+  "ven.import_note": "Builds the MikroTik catalog from your fleet's models and attaches images from the Visio/SVG set (data/models). Safe to re-run.",
+  "ven.mik_notes": "MikroTik (RouterOS). Model images from the official Visio/SVG set. Monitored over SNMP (mikrotik.mib). Fill in the main settings as needed.",
+  "ven.imported": "Models imported"
 }

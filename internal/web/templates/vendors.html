@@ -2,7 +2,8 @@
 {{if .Msg}}<div class="note ok">{{dmsg .Msg}}</div>{{end}}
 {{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
 <div class="cardhead"><h1 style="margin:0">{{t "ven.title"}}</h1>
-  <span class="muted small">{{t "ven.subtitle"}}</span></div>
+  <span class="muted small">{{t "ven.subtitle"}}</span>
+  {{if canWrite .User}}<form class="inline" method="post" action="/vendors/import-mikrotik" style="margin-left:auto"><button class="btn sm secondary" type="submit" title="{{t "ven.import_note"}}">↧ {{t "ven.import_mik"}}</button></form>{{end}}</div>
 
 <div class="card">
   <div class="scroll"><table class="dtable">

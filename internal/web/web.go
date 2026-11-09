@@ -48,7 +48,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.91.0"
+const Version = "0.92.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -197,6 +197,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /sites/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.siteDelete)))
 	mux.Handle("GET /vendors", s.authed(s.vendorsPage))
 	mux.Handle("POST /vendors/new", s.authed(s.requireRole(model.RoleOperator, s.vendorCreate)))
+	mux.Handle("POST /vendors/import-mikrotik", s.authed(s.requireRole(model.RoleOperator, s.vendorsImportMikrotik)))
 	mux.Handle("GET /vendors/{id}", s.authed(s.vendorPage))
 	mux.Handle("POST /vendors/{id}/edit", s.authed(s.requireRole(model.RoleOperator, s.vendorUpdate)))
 	mux.Handle("POST /vendors/{id}/delete", s.authed(s.requireRole(model.RoleAdmin, s.vendorDelete)))
@@ -3661,6 +3662,65 @@ func (s *Server) vendorCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/vendors/%d", id), http.StatusSeeOther)
+}
+
+// vendorsImportMikrotik builds (or refreshes) the MikroTik catalog from what the
+// instance already has: a catalog model per distinct device model in the fleet,
+// with the matching product image from data/models/<norm>.svg (the MikroTik
+// Visio/SVG set) attached. Idempotent — safe to re-run. The mikrotik.mib under
+// data/reference provides SNMP monitoring OIDs, not per-model specs, so it is
+// referenced in the vendor notes rather than merged as model data.
+func (s *Server) vendorsImportMikrotik(w http.ResponseWriter, r *http.Request) {
+	const vname = "MikroTik"
+	v, ok := s.a.Store.VendorByName(vname)
+	vid := v.ID
+	if !ok {
+		id, err := s.a.Store.CreateVendor(vname, "https://mikrotik.com", i18n.T(langOf(r), "ven.mik_notes"))
+		if err != nil {
+			http.Redirect(w, r, "/vendors?err="+urlq(err.Error()), http.StatusSeeOther)
+			return
+		}
+		vid = id
+	}
+	existing := map[string]model.VendorModel{}
+	ms, _ := s.a.Store.VendorModels(vid)
+	for _, m := range ms {
+		existing[m.Norm] = m
+	}
+	devs, _ := s.a.Store.Devices()
+	seen := map[string]bool{}
+	added, withImg := 0, 0
+	for _, d := range devs {
+		if d.Model == "" {
+			continue
+		}
+		norm := normModel(d.Model)
+		if norm == "" || strings.HasPrefix(norm, "x86") { // skip CHR / virtual
+			continue
+		}
+		if seen[norm] {
+			continue
+		}
+		seen[norm] = true
+		m, have := existing[norm]
+		if !have {
+			id, err := s.a.Store.CreateVendorModel(vid, d.Model, norm, "")
+			if err != nil {
+				continue
+			}
+			m = model.VendorModel{ID: id, Norm: norm}
+			added++
+		}
+		if !m.HasImage {
+			if data, err := os.ReadFile(filepath.Join(s.a.Cfg.DataDir, "models", norm+".svg")); err == nil && len(data) > 0 {
+				_ = s.a.Store.SetVendorModelImage(m.ID, "image/svg+xml", data)
+				withImg++
+			}
+		}
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "catalog_import", fmt.Sprintf("+%d models, %d images", added, withImg))
+	msg := fmt.Sprintf("%s: +%d, 🖼 %d", i18n.T(langOf(r), "ven.imported"), added, withImg)
+	http.Redirect(w, r, fmt.Sprintf("/vendors/%d?msg=%s", vid, urlq(msg)), http.StatusSeeOther)
 }
 
 func (s *Server) vendorPage(w http.ResponseWriter, r *http.Request) {
