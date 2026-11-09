@@ -133,6 +133,26 @@ func (s *Store) VendorModels(vendorID int64) ([]model.VendorModel, error) {
 	return out, rows.Err()
 }
 
+// AllVendorModels lists every catalog model with its vendor name, for the
+// add-device template picker.
+func (s *Store) AllVendorModels() ([]model.VendorModel, error) {
+	rows, err := s.db.Query(`SELECT m.id,m.vendor_id,m.name,m.norm,m.notes,m.image IS NOT NULL,v.name
+		FROM vendor_models m JOIN vendors v ON v.id=m.vendor_id ORDER BY v.name,m.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.VendorModel
+	for rows.Next() {
+		var m model.VendorModel
+		if err := rows.Scan(&m.ID, &m.VendorID, &m.Name, &m.Norm, &m.Notes, &m.HasImage, &m.VendorName); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) VendorModel(id int64) (model.VendorModel, error) {
 	var m model.VendorModel
 	err := s.db.QueryRow(`SELECT m.id,m.vendor_id,m.name,m.norm,m.notes,m.image_type,m.image IS NOT NULL,m.created_at,v.name,v.website

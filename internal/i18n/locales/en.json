@@ -679,5 +679,8 @@
   "ven.from_catalog": "From catalog",
   "ven.match_note": "The model is pulled onto devices whose model name matches (normalized).",
   "ven.name_req": "name required",
-  "img.bad_type": "unsupported image type"
+  "img.bad_type": "unsupported image type",
+  "newdev.template": "Catalog template",
+  "newdev.template_none": "— no template —",
+  "newdev.template_note": "Picking one fills the model's settings into notes (the model is detected on poll)."
 }

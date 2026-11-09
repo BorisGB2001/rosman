@@ -48,7 +48,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.90.0"
+const Version = "0.91.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -1283,8 +1283,9 @@ func (s *Server) deviceTag(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) newDeviceForm(w http.ResponseWriter, r *http.Request) {
+	catModels, _ := s.a.Store.AllVendorModels()
 	s.render(w, r, "new_device", map[string]any{"Active": "devices",
-		"IP": r.URL.Query().Get("ip"), "Name": r.URL.Query().Get("name")})
+		"IP": r.URL.Query().Get("ip"), "Name": r.URL.Query().Get("name"), "CatModels": catModels})
 }
 
 func (s *Server) deviceSetType(w http.ResponseWriter, r *http.Request) {
@@ -1411,9 +1412,14 @@ func (s *Server) newDeviceSubmit(w http.ResponseWriter, r *http.Request) {
 	id, err := s.a.AddDevice(r.FormValue("name"), r.FormValue("ip"), port,
 		r.FormValue("api_user"), r.FormValue("api_pass"), sshUser)
 	if err != nil {
+		catModels, _ := s.a.Store.AllVendorModels()
 		s.render(w, r, "new_device", map[string]any{"Active": "devices", "Err": err.Error(),
-			"Name": r.FormValue("name"), "IP": r.FormValue("ip"), "APIUser": r.FormValue("api_user")})
+			"Name": r.FormValue("name"), "IP": r.FormValue("ip"), "APIUser": r.FormValue("api_user"), "CatModels": catModels})
 		return
+	}
+	// Seed notes from a chosen catalog template, if the operator picked one.
+	if notes := strings.TrimSpace(r.FormValue("notes")); notes != "" {
+		_ = s.a.Store.SetDeviceNotes(id, notes)
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "add_device", r.FormValue("ip"))
 	http.Redirect(w, r, "/devices/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
