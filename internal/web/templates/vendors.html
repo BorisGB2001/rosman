@@ -1,0 +1,36 @@
+{{define "vendors"}}{{template "head" .}}
+{{if .Msg}}<div class="note ok">{{dmsg .Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+<div class="cardhead"><h1 style="margin:0">{{t "ven.title"}}</h1>
+  <span class="muted small">{{t "ven.subtitle"}}</span></div>
+
+<div class="card">
+  <div class="scroll"><table class="dtable">
+    <thead><tr>
+      <th>{{t "ven.vendor"}}</th><th>{{t "ven.website"}}</th><th>{{t "ven.models"}}</th><th></th>
+    </tr></thead>
+    <tbody>
+    {{range .Vendors}}
+      <tr>
+        <td><a href="/vendors/{{.ID}}">{{.Name}}</a></td>
+        <td class="muted">{{if .Website}}<a href="{{.Website}}" target="_blank" rel="noopener">{{.Website}}</a>{{else}}—{{end}}</td>
+        <td><span class="badge">{{.ModelCount}}</span></td>
+        <td>{{if isAdmin $.User}}<form class="inline" method="post" action="/vendors/{{.ID}}/delete" onsubmit="return confirm('{{t "ven.del_confirm"}}')"><button class="link" type="submit" title="{{t "site.delete"}}">🗑️</button></form>{{end}}</td>
+      </tr>
+    {{else}}<tr><td colspan="4" class="muted">{{t "ven.empty"}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+
+{{if canWrite .User}}
+<div class="card narrow">
+  <h3>{{t "ven.add"}}</h3>
+  <form method="post" action="/vendors/new">
+    <label>{{t "ven.vendor"}}<input name="name" required placeholder="MikroTik"></label>
+    <label style="margin-top:8px">{{t "ven.website"}}<input name="website" type="url" placeholder="https://mikrotik.com"></label>
+    <label style="margin-top:8px">{{t "ven.notes"}}<textarea name="notes" rows="2"></textarea></label>
+    <div style="margin-top:10px"><button class="btn primary" type="submit">{{t "nav.add"}}</button></div>
+  </form>
+</div>
+{{end}}
+{{template "tail" .}}{{end}}

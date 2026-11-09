@@ -145,6 +145,32 @@ type FwItem struct {
 	UpdatedAt  time.Time
 }
 
+// Vendor is a manufacturer in the device-model catalog.
+type Vendor struct {
+	ID         int64
+	Name       string
+	Website    string
+	Notes      string
+	CreatedAt  time.Time
+	ModelCount int // filled on listing
+}
+
+// VendorModel is one device model in a vendor's catalog: a reference template
+// with a photo, default-settings notes and the vendor link, matched to a
+// device's Model string via Norm.
+type VendorModel struct {
+	ID            int64
+	VendorID      int64
+	Name          string
+	Norm          string
+	Notes         string
+	ImageType     string
+	HasImage      bool
+	CreatedAt     time.Time
+	VendorName    string // joined for display
+	VendorWebsite string
+}
+
 // Site is a location grouping devices.
 type Site struct {
 	ID    int64

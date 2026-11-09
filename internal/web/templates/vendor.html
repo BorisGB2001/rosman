@@ -1,0 +1,66 @@
+{{define "vendor"}}{{template "head" .}}
+{{if .Msg}}<div class="note ok">{{dmsg .Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+<div class="cardhead"><h1 style="margin:0">{{.V.Name}}</h1>
+  {{if .V.Website}}<a href="{{.V.Website}}" target="_blank" rel="noopener" class="muted small">{{.V.Website}} ↗</a>{{end}}
+  <a href="/vendors" class="muted small" style="margin-left:auto">← {{t "ven.title"}}</a></div>
+
+{{if canWrite .User}}
+<details class="card">
+  <summary style="cursor:pointer;font-weight:600">{{t "ven.edit"}}</summary>
+  <form method="post" action="/vendors/{{.V.ID}}/edit" style="margin-top:10px">
+    <label>{{t "ven.vendor"}}<input name="name" value="{{.V.Name}}" required></label>
+    <label style="margin-top:8px">{{t "ven.website"}}<input name="website" type="url" value="{{.V.Website}}"></label>
+    <label style="margin-top:8px">{{t "ven.notes"}}<textarea name="notes" rows="2">{{.V.Notes}}</textarea></label>
+    <div style="margin-top:10px"><button class="btn primary" type="submit">{{t "set.save"}}</button></div>
+  </form>
+</details>
+{{end}}
+{{if .V.Notes}}<div class="card"><p class="muted" style="white-space:pre-wrap;margin:0">{{.V.Notes}}</p></div>{{end}}
+
+<div class="cardhead"><h2 style="margin:0;font-size:18px">{{t "ven.models"}}</h2></div>
+<div class="grid2">
+{{range .Models}}
+  <div class="card">
+    <div style="display:flex;gap:14px">
+      <div style="flex:0 0 120px">
+        {{if .HasImage}}<img src="/vmodel/{{.ID}}/image" alt="{{.Name}}" style="width:120px;height:auto;border-radius:8px;border:1px solid var(--line)">
+        {{else}}<div class="muted small" style="width:120px;height:80px;display:flex;align-items:center;justify-content:center;border:1px dashed var(--line);border-radius:8px">{{t "ven.no_photo"}}</div>{{end}}
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">{{.Name}}</div>
+        {{if .Notes}}<div class="muted small" style="white-space:pre-wrap;margin-top:4px">{{.Notes}}</div>{{end}}
+        {{if canWrite $.User}}
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+          <form method="post" action="/vmodel/{{.ID}}/image" enctype="multipart/form-data" style="display:flex;gap:6px;align-items:center">
+            <input type="file" name="image" accept="image/*" style="max-width:150px">
+            <button class="btn sm" type="submit">{{t "ven.set_photo"}}</button>
+          </form>
+          <form method="post" action="/vmodel/{{.ID}}/delete" onsubmit="return confirm('{{t "ven.del_model_confirm"}}')"><button class="link" type="submit" title="{{t "site.delete"}}">🗑️</button></form>
+        </div>
+        <details style="margin-top:6px"><summary class="muted small" style="cursor:pointer">{{t "ven.edit"}}</summary>
+          <form method="post" action="/vmodel/{{.ID}}/edit" style="margin-top:6px">
+            <label>{{t "ven.model_name"}}<input name="name" value="{{.Name}}"></label>
+            <label style="margin-top:6px">{{t "ven.settings"}}<textarea name="notes" rows="3">{{.Notes}}</textarea></label>
+            <div style="margin-top:8px"><button class="btn sm primary" type="submit">{{t "set.save"}}</button></div>
+          </form>
+        </details>
+        {{end}}
+      </div>
+    </div>
+  </div>
+{{else}}<div class="card"><p class="muted">{{t "ven.no_models"}}</p></div>{{end}}
+</div>
+
+{{if canWrite .User}}
+<div class="card narrow">
+  <h3>{{t "ven.add_model"}}</h3>
+  <form method="post" action="/vendors/{{.V.ID}}/model">
+    <label>{{t "ven.model_name"}}<input name="name" required placeholder="RB4011iGS+"></label>
+    <label style="margin-top:8px">{{t "ven.settings"}}<textarea name="notes" rows="3" placeholder="{{t "ven.settings_ph"}}"></textarea></label>
+    <div style="margin-top:10px"><button class="btn primary" type="submit">{{t "nav.add"}}</button></div>
+    <p class="muted small" style="margin-top:8px">{{t "ven.match_note"}}</p>
+  </form>
+</div>
+{{end}}
+{{template "tail" .}}{{end}}

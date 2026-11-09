@@ -48,7 +48,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.89.0"
+const Version = "0.90.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -195,6 +195,16 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /sites", s.authed(s.sitesPage))
 	mux.Handle("POST /sites/new", s.authed(s.requireRole(model.RoleOperator, s.siteCreate)))
 	mux.Handle("POST /sites/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.siteDelete)))
+	mux.Handle("GET /vendors", s.authed(s.vendorsPage))
+	mux.Handle("POST /vendors/new", s.authed(s.requireRole(model.RoleOperator, s.vendorCreate)))
+	mux.Handle("GET /vendors/{id}", s.authed(s.vendorPage))
+	mux.Handle("POST /vendors/{id}/edit", s.authed(s.requireRole(model.RoleOperator, s.vendorUpdate)))
+	mux.Handle("POST /vendors/{id}/delete", s.authed(s.requireRole(model.RoleAdmin, s.vendorDelete)))
+	mux.Handle("POST /vendors/{id}/model", s.authed(s.requireRole(model.RoleOperator, s.vendorModelCreate)))
+	mux.Handle("GET /vmodel/{mid}/image", s.authed(s.vendorModelImageServe))
+	mux.Handle("POST /vmodel/{mid}/edit", s.authed(s.requireRole(model.RoleOperator, s.vendorModelUpdate)))
+	mux.Handle("POST /vmodel/{mid}/delete", s.authed(s.requireRole(model.RoleOperator, s.vendorModelDelete)))
+	mux.Handle("POST /vmodel/{mid}/image", s.authed(s.requireRole(model.RoleOperator, s.vendorModelImageUpload)))
 	mux.Handle("POST /sites/{id}/geo", s.authed(s.requireRole(model.RoleOperator, s.siteGeo)))
 	mux.Handle("GET /map", s.authed(s.mapPage))
 	mux.Handle("POST /devices/{id}/site", s.authed(s.requireRole(model.RoleOperator, s.deviceSetSite)))
@@ -1466,11 +1476,15 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// Catalog model: pull the matching vendor-catalog entry (photo, settings,
+	// vendor link) for this device's model, if one exists.
+	catModel, hasCat := s.a.Store.VendorModelByNorm(normModel(d.Model))
 	s.render(w, r, "device", map[string]any{"Active": "devices",
 		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors, "Traffic": traffic,
 		"Sites": sites, "DevTags": devTags, "BackupMode": s.a.BackupMode(),
 		"Clients":  clients,
 		"Images":   images, "ModelImg": modelImgPath(s.a.Cfg.DataDir, d.Model),
+		"CatModel": catModel, "HasCatModel": hasCat,
 		"UplinkID": uplinkID, "UplinkName": uplinkName, "UplinkPort": uplinkPort,
 		"PortConns": s.portConnections(id),
 		"Faceplate": facePlateSVG(ports),
@@ -3619,6 +3633,143 @@ func (s *Server) pruneNow(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "metrics_prune", fmt.Sprintf("removed %d", n))
 	http.Redirect(w, r, "/settings?msg="+urlq(fmt.Sprintf("pruned %d samples", n)), http.StatusSeeOther)
+}
+
+// ---- vendor / device-model catalog ----
+
+func (s *Server) vendorsPage(w http.ResponseWriter, r *http.Request) {
+	vendors, _ := s.a.Store.Vendors()
+	s.render(w, r, "vendors", map[string]any{"Active": "vendors", "Vendors": vendors,
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
+}
+
+func (s *Server) vendorCreate(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		http.Redirect(w, r, "/vendors?err="+urlq(i18n.T(langOf(r), "ven.name_req")), http.StatusSeeOther)
+		return
+	}
+	id, err := s.a.Store.CreateVendor(name, strings.TrimSpace(r.FormValue("website")), strings.TrimSpace(r.FormValue("notes")))
+	if err != nil {
+		http.Redirect(w, r, "/vendors?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/vendors/%d", id), http.StatusSeeOther)
+}
+
+func (s *Server) vendorPage(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	v, err := s.a.Store.Vendor(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	models, _ := s.a.Store.VendorModels(id)
+	s.render(w, r, "vendor", map[string]any{"Active": "vendors", "V": v, "Models": models,
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
+}
+
+func (s *Server) vendorUpdate(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		http.Redirect(w, r, fmt.Sprintf("/vendors/%d?err=%s", id, urlq(i18n.T(langOf(r), "ven.name_req"))), http.StatusSeeOther)
+		return
+	}
+	if err := s.a.Store.UpdateVendor(id, name, strings.TrimSpace(r.FormValue("website")), strings.TrimSpace(r.FormValue("notes"))); err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/vendors/%d?err=%s", id, urlq(err.Error())), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/vendors/%d?msg=saved", id), http.StatusSeeOther)
+}
+
+func (s *Server) vendorDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	_ = s.a.Store.DeleteVendor(id)
+	http.Redirect(w, r, "/vendors?msg=saved", http.StatusSeeOther)
+}
+
+func (s *Server) vendorModelCreate(w http.ResponseWriter, r *http.Request) {
+	vid, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		http.Redirect(w, r, fmt.Sprintf("/vendors/%d?err=%s", vid, urlq(i18n.T(langOf(r), "ven.name_req"))), http.StatusSeeOther)
+		return
+	}
+	if _, err := s.a.Store.CreateVendorModel(vid, name, normModel(name), strings.TrimSpace(r.FormValue("notes"))); err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/vendors/%d?err=%s", vid, urlq(err.Error())), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/vendors/%d?msg=saved", vid), http.StatusSeeOther)
+}
+
+func (s *Server) vendorModelUpdate(w http.ResponseWriter, r *http.Request) {
+	mid, _ := strconv.ParseInt(r.PathValue("mid"), 10, 64)
+	m, err := s.a.Store.VendorModel(mid)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		name = m.Name
+	}
+	_ = s.a.Store.UpdateVendorModel(mid, name, normModel(name), strings.TrimSpace(r.FormValue("notes")))
+	http.Redirect(w, r, fmt.Sprintf("/vendors/%d?msg=saved", m.VendorID), http.StatusSeeOther)
+}
+
+func (s *Server) vendorModelDelete(w http.ResponseWriter, r *http.Request) {
+	mid, _ := strconv.ParseInt(r.PathValue("mid"), 10, 64)
+	m, err := s.a.Store.VendorModel(mid)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	_ = s.a.Store.DeleteVendorModel(mid)
+	http.Redirect(w, r, fmt.Sprintf("/vendors/%d?msg=saved", m.VendorID), http.StatusSeeOther)
+}
+
+func (s *Server) vendorModelImageUpload(w http.ResponseWriter, r *http.Request) {
+	mid, _ := strconv.ParseInt(r.PathValue("mid"), 10, 64)
+	m, err := s.a.Store.VendorModel(mid)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	if err := r.ParseMultipartForm(16 << 20); err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/vendors/%d?err=%s", m.VendorID, urlq(err.Error())), http.StatusSeeOther)
+		return
+	}
+	file, hdr, err := r.FormFile("image")
+	if err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/vendors/%d?err=%s", m.VendorID, urlq(i18n.T(langOf(r), "bk.no_file"))), http.StatusSeeOther)
+		return
+	}
+	defer file.Close()
+	ct := hdr.Header.Get("Content-Type")
+	if !imageTypeOK[ct] {
+		http.Redirect(w, r, fmt.Sprintf("/vendors/%d?err=%s", m.VendorID, urlq(i18n.T(langOf(r), "img.bad_type"))), http.StatusSeeOther)
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(file, 16<<20))
+	if err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/vendors/%d?err=%s", m.VendorID, urlq(err.Error())), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.SetVendorModelImage(mid, ct, data)
+	http.Redirect(w, r, fmt.Sprintf("/vendors/%d?msg=saved", m.VendorID), http.StatusSeeOther)
+}
+
+func (s *Server) vendorModelImageServe(w http.ResponseWriter, r *http.Request) {
+	mid, _ := strconv.ParseInt(r.PathValue("mid"), 10, 64)
+	ct, data, err := s.a.Store.VendorModelImageData(mid)
+	if err != nil || len(data) == 0 {
+		http.Error(w, "not found", 404)
+		return
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	_, _ = w.Write(data)
 }
 
 // backupExport streams a password-encrypted full backup of the whole instance.

@@ -33,11 +33,12 @@
     <div style="flex:0 0 320px;max-width:100%">
       <div id="gallery" class="gallery">
         {{if .ModelImg}}<div class="gslide"><img src="{{.ModelImg}}" alt="{{.D.Model}}"><div class="gcap muted small">{{t "img.model_default"}}: {{.D.Model}}</div></div>{{end}}
+        {{if and .HasCatModel .CatModel.HasImage}}<div class="gslide"><img src="/vmodel/{{.CatModel.ID}}/image" alt="{{.CatModel.Name}}"><div class="gcap muted small">{{t "ven.from_catalog"}}: {{.CatModel.VendorName}} {{.CatModel.Name}}</div></div>{{end}}
         {{range .Images}}<div class="gslide"><img src="/devices/{{.DeviceID}}/image/{{.ID}}" alt="{{.Caption}}">
           <div class="gcap muted small">{{if .Caption}}{{.Caption}}{{else}}{{dateT .CreatedAt}}{{end}}
             {{if canWrite $.User}}<form class="inline" method="post" action="/devices/{{.DeviceID}}/image/{{.ID}}/delete" style="display:inline;margin-left:6px"><button class="link" type="submit" onclick="return confirm('{{t "img.del_confirm"}}')" title="{{t "site.delete"}}">🗑️</button></form>{{end}}</div>
         </div>{{end}}
-        {{if not (or .ModelImg .Images)}}<p class="muted small" style="margin:0">{{t "img.none"}}</p>{{end}}
+        {{if not (or .ModelImg .Images (and .HasCatModel .CatModel.HasImage))}}<p class="muted small" style="margin:0">{{t "img.none"}}</p>{{end}}
       </div>
       <div id="gnav" class="gnav" style="display:none">
         <button class="btn sm secondary" type="button" onclick="gstep(-1)">‹</button>
@@ -59,6 +60,13 @@
         <div style="margin-top:6px"><button class="btn sm primary" type="submit">{{t "img.notes_save"}}</button></div>
       </form>
       {{else}}{{if .D.Notes}}<p style="white-space:pre-wrap">{{.D.Notes}}</p>{{else}}<p class="muted">{{t "img.notes_none"}}</p>{{end}}{{end}}
+      {{if .HasCatModel}}
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+        <div class="muted small">{{t "ven.from_catalog"}}</div>
+        <div style="font-weight:600;margin-top:2px"><a href="/vendors/{{.CatModel.VendorID}}">{{.CatModel.VendorName}}</a> · {{.CatModel.Name}}{{if .CatModel.VendorWebsite}} <a href="{{.CatModel.VendorWebsite}}" target="_blank" rel="noopener" class="muted small">↗</a>{{end}}</div>
+        {{if .CatModel.Notes}}<div class="muted small" style="white-space:pre-wrap;margin-top:6px">{{.CatModel.Notes}}</div>{{end}}
+      </div>
+      {{end}}
     </div>
   </div>
 </div>

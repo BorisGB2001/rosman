@@ -322,3 +322,26 @@ CREATE TABLE IF NOT EXISTS compliance_rules (
     enabled    INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Vendor / device-model catalog: a reference library of manufacturers and their
+-- device models (photo, default settings, vendor website) that device cards and
+-- the add-device flow pull from.
+CREATE TABLE IF NOT EXISTS vendors (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    website    TEXT NOT NULL DEFAULT '',
+    notes      TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS vendor_models (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    vendor_id  INTEGER NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    norm       TEXT NOT NULL DEFAULT '', -- normalized name, for matching device.Model
+    notes      TEXT NOT NULL DEFAULT '',
+    image      BLOB,
+    image_type TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_vendor_models ON vendor_models(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_vendor_models_norm ON vendor_models(norm);

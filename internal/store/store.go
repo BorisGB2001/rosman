@@ -69,6 +69,125 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// ---- vendor / device-model catalog ----
+
+func (s *Store) Vendors() ([]model.Vendor, error) {
+	rows, err := s.db.Query(`SELECT v.id,v.name,v.website,v.notes,v.created_at,
+		(SELECT count(*) FROM vendor_models m WHERE m.vendor_id=v.id)
+		FROM vendors v ORDER BY v.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Vendor
+	for rows.Next() {
+		var v model.Vendor
+		if err := rows.Scan(&v.ID, &v.Name, &v.Website, &v.Notes, &v.CreatedAt, &v.ModelCount); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) Vendor(id int64) (model.Vendor, error) {
+	var v model.Vendor
+	err := s.db.QueryRow(`SELECT id,name,website,notes,created_at FROM vendors WHERE id=?`, id).
+		Scan(&v.ID, &v.Name, &v.Website, &v.Notes, &v.CreatedAt)
+	return v, err
+}
+
+func (s *Store) CreateVendor(name, website, notes string) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO vendors(name,website,notes) VALUES(?,?,?)`, name, website, notes)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) UpdateVendor(id int64, name, website, notes string) error {
+	_, err := s.db.Exec(`UPDATE vendors SET name=?, website=?, notes=? WHERE id=?`, name, website, notes, id)
+	return err
+}
+
+func (s *Store) DeleteVendor(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM vendors WHERE id=?`, id)
+	return err
+}
+
+func (s *Store) VendorModels(vendorID int64) ([]model.VendorModel, error) {
+	rows, err := s.db.Query(`SELECT id,vendor_id,name,norm,notes,image_type,image IS NOT NULL,created_at
+		FROM vendor_models WHERE vendor_id=? ORDER BY name`, vendorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.VendorModel
+	for rows.Next() {
+		var m model.VendorModel
+		if err := rows.Scan(&m.ID, &m.VendorID, &m.Name, &m.Norm, &m.Notes, &m.ImageType, &m.HasImage, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) VendorModel(id int64) (model.VendorModel, error) {
+	var m model.VendorModel
+	err := s.db.QueryRow(`SELECT m.id,m.vendor_id,m.name,m.norm,m.notes,m.image_type,m.image IS NOT NULL,m.created_at,v.name,v.website
+		FROM vendor_models m JOIN vendors v ON v.id=m.vendor_id WHERE m.id=?`, id).
+		Scan(&m.ID, &m.VendorID, &m.Name, &m.Norm, &m.Notes, &m.ImageType, &m.HasImage, &m.CreatedAt, &m.VendorName, &m.VendorWebsite)
+	return m, err
+}
+
+// VendorModelByNorm finds the catalog model matching a normalized model string
+// (device.Model run through the same normalizer), for pulling template info onto
+// the device card. Returns ok=false when nothing matches.
+func (s *Store) VendorModelByNorm(norm string) (model.VendorModel, bool) {
+	if norm == "" {
+		return model.VendorModel{}, false
+	}
+	var m model.VendorModel
+	err := s.db.QueryRow(`SELECT m.id,m.vendor_id,m.name,m.norm,m.notes,m.image_type,m.image IS NOT NULL,m.created_at,v.name,v.website
+		FROM vendor_models m JOIN vendors v ON v.id=m.vendor_id WHERE m.norm=? LIMIT 1`, norm).
+		Scan(&m.ID, &m.VendorID, &m.Name, &m.Norm, &m.Notes, &m.ImageType, &m.HasImage, &m.CreatedAt, &m.VendorName, &m.VendorWebsite)
+	if err != nil {
+		return model.VendorModel{}, false
+	}
+	return m, true
+}
+
+func (s *Store) CreateVendorModel(vendorID int64, name, norm, notes string) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO vendor_models(vendor_id,name,norm,notes) VALUES(?,?,?,?)`, vendorID, name, norm, notes)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) UpdateVendorModel(id int64, name, norm, notes string) error {
+	_, err := s.db.Exec(`UPDATE vendor_models SET name=?, norm=?, notes=? WHERE id=?`, name, norm, notes, id)
+	return err
+}
+
+func (s *Store) DeleteVendorModel(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM vendor_models WHERE id=?`, id)
+	return err
+}
+
+func (s *Store) SetVendorModelImage(id int64, contentType string, data []byte) error {
+	_, err := s.db.Exec(`UPDATE vendor_models SET image=?, image_type=? WHERE id=?`, data, contentType, id)
+	return err
+}
+
+func (s *Store) VendorModelImageData(id int64) (string, []byte, error) {
+	var ct string
+	var data []byte
+	err := s.db.QueryRow(`SELECT image_type,image FROM vendor_models WHERE id=?`, id).Scan(&ct, &data)
+	return ct, data, err
+}
+
 // Backup writes a consistent snapshot of the database to path using SQLite's
 // VACUUM INTO, which is safe to run against the live DB (it takes a read lock
 // and produces a compacted, self-contained copy).
