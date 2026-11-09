@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"io/fs"
 	"math"
 	"net"
@@ -47,7 +48,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.88.0"
+const Version = "0.89.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -263,6 +264,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /settings", s.authed(s.requireRole(model.RoleAdmin, s.settingsSave)))
 	mux.Handle("POST /settings/gitexport", s.authed(s.requireRole(model.RoleAdmin, s.gitExportNow)))
 	mux.Handle("POST /settings/prune", s.authed(s.requireRole(model.RoleAdmin, s.pruneNow)))
+	mux.Handle("POST /settings/backup/export", s.authed(s.requireRole(model.RoleAdmin, s.backupExport)))
+	mux.Handle("POST /settings/backup/import", s.authed(s.requireRole(model.RoleAdmin, s.backupImport)))
 	mux.Handle("POST /settings/testnotify", s.authed(s.requireRole(model.RoleAdmin, s.settingsTestNotify)))
 	mux.Handle("GET /configs/{id}/download", s.authed(s.configDownload))
 	mux.Handle("GET /ca", s.authed(s.requireRole(model.RoleAdmin, s.caPage)))
@@ -3616,6 +3619,54 @@ func (s *Server) pruneNow(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "metrics_prune", fmt.Sprintf("removed %d", n))
 	http.Redirect(w, r, "/settings?msg="+urlq(fmt.Sprintf("pruned %d samples", n)), http.StatusSeeOther)
+}
+
+// backupExport streams a password-encrypted full backup of the whole instance.
+func (s *Server) backupExport(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	pass := r.FormValue("password")
+	if len(pass) < 8 {
+		http.Redirect(w, r, "/settings?err="+urlq(i18n.T(langOf(r), "bk.pass_short")), http.StatusSeeOther)
+		return
+	}
+	blob, err := s.a.ExportBackup(pass)
+	if err != nil {
+		http.Redirect(w, r, "/settings?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "backup_export", fmt.Sprintf("%d bytes", len(blob)))
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, s.a.BackupFilename()))
+	_, _ = w.Write(blob)
+}
+
+// backupImport decrypts and stages an uploaded full backup for restore on the
+// next restart. It overwrites the instance's data, so it is admin-only and
+// confirmed in the browser.
+func (s *Server) backupImport(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(256 << 20); err != nil {
+		http.Redirect(w, r, "/settings?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	pass := r.FormValue("password")
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		http.Redirect(w, r, "/settings?err="+urlq(i18n.T(langOf(r), "bk.no_file")), http.StatusSeeOther)
+		return
+	}
+	defer file.Close()
+	blob, err := io.ReadAll(io.LimitReader(file, 1<<30))
+	if err != nil {
+		http.Redirect(w, r, "/settings?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	n, err := s.a.StageRestore(blob, pass)
+	if err != nil {
+		http.Redirect(w, r, "/settings?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "backup_restore_staged", fmt.Sprintf("%d files", n))
+	http.Redirect(w, r, "/settings?msg="+urlq(i18n.T(langOf(r), "bk.staged")), http.StatusSeeOther)
 }
 
 func (s *Server) gitExportNow(w http.ResponseWriter, r *http.Request) {

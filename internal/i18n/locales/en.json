@@ -578,7 +578,7 @@
   "bk.ok": "Recent",
   "bk.stale": "stale",
   "bk.never": "never",
-  "bk.export": "Last export",
+  "bk.export": "Download encrypted backup",
   "bk.binary": "Last binary",
   "bk.note": "\"Recent\" = a backup within 7 days. \"never\" usually means the fleet SSH key isn't authorised on that device, so /export can't run.",
   "fw.auto_refresh": "auto-refreshing",
@@ -647,5 +647,15 @@
   "topo.hide_confirm": "Hide device from topology:",
   "topo.unhide_confirm": "Show device in topology:",
   "dev.uplink": "Uplink",
-  "load.today": "today"
+  "load.today": "today",
+  "bk.full_title": "Full application backup",
+  "bk.full_note": "Encrypted copy of the whole instance (DB, encryption key, certificates, model images, configs) — to move or restore ROSMan as a whole.",
+  "bk.password": "Encryption password",
+  "bk.file": "Backup file (.rbk)",
+  "bk.restore": "Restore from backup",
+  "bk.restore_note": "The file is decrypted and staged; the restore is applied on the next service restart and REPLACES the current data.",
+  "bk.restore_confirm": "Restore will REPLACE all current ROSMan data on the next restart. Continue?",
+  "bk.pass_short": "password must be at least 8 characters",
+  "bk.no_file": "no file selected",
+  "bk.staged": "Backup verified and staged. Restart the service to apply the restore."
 }

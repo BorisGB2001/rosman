@@ -67,4 +67,23 @@
   <form method="post" action="/settings/prune"><button class="btn" type="submit">{{t "ret.now"}}</button></form>
   <p class="muted small">{{t "ret.now_note"}}</p>
 </div>
+
+{{if isAdmin .User}}
+<div class="card narrow" style="border-color:var(--accent)">
+  <h3 style="margin-top:0">{{t "bk.full_title"}}</h3>
+  <p class="muted small">{{t "bk.full_note"}}</p>
+  <form method="post" action="/settings/backup/export" style="margin-bottom:14px">
+    <label>{{t "bk.password"}}<input type="password" name="password" minlength="8" required placeholder="≥ 8"></label>
+    <div style="margin-top:8px"><button class="btn primary" type="submit">↓ {{t "bk.export"}}</button></div>
+  </form>
+  <hr style="border:none;border-top:1px solid var(--line);margin:12px 0">
+  <form method="post" action="/settings/backup/import" enctype="multipart/form-data"
+        onsubmit="return confirm('{{t "bk.restore_confirm"}}')">
+    <label>{{t "bk.file"}}<input type="file" name="file" accept=".rbk" required></label>
+    <label style="margin-top:8px">{{t "bk.password"}}<input type="password" name="password" required></label>
+    <div style="margin-top:8px"><button class="btn danger" type="submit">↥ {{t "bk.restore"}}</button></div>
+    <p class="muted small" style="margin-top:8px">{{t "bk.restore_note"}}</p>
+  </form>
+</div>
+{{end}}
 {{template "tail" .}}{{end}}

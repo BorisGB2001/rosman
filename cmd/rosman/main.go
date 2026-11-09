@@ -29,6 +29,14 @@ func main() {
 		log.Fatalf("data dir: %v", err)
 	}
 
+	// Apply a staged full-backup restore (if any) before the DB and key open —
+	// it replaces rosman.db and secret.key, so it must happen first.
+	if applied, err := app.ApplyPendingRestore(cfg.DataDir); err != nil {
+		log.Fatalf("restore: %v", err)
+	} else if applied {
+		log.Printf("applied pending full-backup restore from staging")
+	}
+
 	box, err := secret.Open(cfg.SecretKeyPath)
 	if err != nil {
 		log.Fatalf("secret key: %v", err)

@@ -69,6 +69,14 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// Backup writes a consistent snapshot of the database to path using SQLite's
+// VACUUM INTO, which is safe to run against the live DB (it takes a read lock
+// and produces a compacted, self-contained copy).
+func (s *Store) Backup(path string) error {
+	_, err := s.db.Exec(`VACUUM INTO ?`, path)
+	return err
+}
+
 // ---- users ----
 
 func (s *Store) CountUsers() (int, error) {
