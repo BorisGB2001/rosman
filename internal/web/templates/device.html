@@ -106,9 +106,13 @@
   </table></div>
 </div>
 {{end}}
-<div class="card">
-  <h3>{{t "dev.graphs"}} <span class="muted small">{{t "dev.graphs_note"}}</span> <a href="/devices/{{.D.ID}}/history" class="btn sm secondary" style="margin-left:8px">{{t "hist.title"}}</a></h3>
-  <div class="grid2">
+<div class="card" id="load">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <h3 style="margin:0">{{t "dev.graphs"}}</h3>
+    <span class="pseg">{{range .LoadRanges}}<a href="/devices/{{$.D.ID}}?load={{.}}#load" class="{{if eq . $.LoadRange}}on{{end}}">{{if eq . "today"}}{{t "load.today"}}{{else}}{{.}}{{end}}</a>{{end}}</span>
+    <span class="muted small">{{t "hist.samples"}}: {{.LoadSamples}}</span>
+  </div>
+  <div class="grid2" style="margin-top:10px">
     <div><div class="muted small">CPU — {{.H.CPU}}%</div>{{.CPUGraph}}</div>
     <div><div class="muted small">RAM — {{mb .H.FreeMem}} / {{mb .H.TotalMem}}</div>{{.RAMGraph}}</div>
   </div>

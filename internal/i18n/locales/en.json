@@ -646,5 +646,6 @@
   "topo.hide_hint": "right-click a device to hide/show",
   "topo.hide_confirm": "Hide device from topology:",
   "topo.unhide_confirm": "Show device in topology:",
-  "dev.uplink": "Uplink"
+  "dev.uplink": "Uplink",
+  "load.today": "today"
 }

@@ -47,7 +47,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.87.0"
+const Version = "0.88.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -1422,7 +1422,22 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 	images, _ := s.a.Store.DeviceImages(id)
 	ports, _ := s.a.Store.DevicePorts(id)
 	clients, _ := s.a.Store.Clients(id)
-	metrics, _ := s.a.Store.MetricsSince(id, time.Now().Add(-2*time.Hour))
+	// Inline load graphs with a period toggle (1h/6h/12h/today), rendered on the
+	// device card itself instead of a separate history page.
+	loadRng := r.URL.Query().Get("load")
+	now := time.Now()
+	var since time.Time
+	switch loadRng {
+	case "6h":
+		since = now.Add(-6 * time.Hour)
+	case "12h":
+		since = now.Add(-12 * time.Hour)
+	case "today":
+		since = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	default:
+		loadRng, since = "1h", now.Add(-time.Hour)
+	}
+	metrics, _ := s.a.Store.MetricsSince(id, since)
 	var cpu, ram, temp []float64
 	for _, m := range metrics {
 		cpu = append(cpu, float64(m.CPU))
@@ -1456,8 +1471,9 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 		"UplinkID": uplinkID, "UplinkName": uplinkName, "UplinkPort": uplinkPort,
 		"PortConns": s.portConnections(id),
 		"Faceplate": facePlateSVG(ports),
-		"CPUGraph":  graphSVG(cpu, 100, "var(--accent)"), "RAMGraph": graphSVG(ram, 100, "var(--warn)"),
-		"TempGraph": graphSVG(temp, 0, "var(--bad)"), "HasTemp": len(temp) > 0,
+		"CPUGraph":  graphSVG(downsample(cpu, 200), 100, "var(--accent)"), "RAMGraph": graphSVG(downsample(ram, 200), 100, "var(--warn)"),
+		"TempGraph": graphSVG(downsample(temp, 200), 0, "var(--bad)"), "HasTemp": len(temp) > 0,
+		"LoadRange": loadRng, "LoadRanges": []string{"1h", "6h", "12h", "today"}, "LoadSamples": len(metrics),
 		"HasSSH": s.a.HasSSHKey(), "Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
 		"InMaint":       s.a.Store.InMaintenance(d.ID, time.Now()),
 		"GlobalPollSec": int(s.a.Cfg.PollInterval.Seconds()),
