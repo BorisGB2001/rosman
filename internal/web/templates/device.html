@@ -50,7 +50,11 @@
         <input type="file" name="image" accept="image/*" required style="max-width:160px;font-size:12px">
         <input name="caption" placeholder="{{t "img.caption_ph"}}" style="width:120px">
         <button class="btn sm" type="submit">{{t "img.upload"}}</button>
-      </form>{{end}}
+      </form>
+      {{if and .HasCatModel .CatModel.HasImage}}
+      <form method="post" action="/devices/{{.D.ID}}/image/from-template" style="margin-top:6px">
+        <button class="btn sm secondary" type="submit" title="{{t "img.from_template_hint"}}">🖼️ {{t "img.from_template"}}</button>
+      </form>{{end}}{{end}}
     </div>
     <div style="flex:1;min-width:240px">
       <h3 style="margin-top:0">{{t "img.notes"}}</h3>

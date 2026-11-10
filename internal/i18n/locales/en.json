@@ -532,6 +532,8 @@
   "img.none": "No image yet.",
   "img.upload": "Upload",
   "img.caption_ph": "caption (optional)",
+  "img.from_template": "Import from template",
+  "img.from_template_hint": "Copy the catalog photo for this model",
   "img.del_confirm": "Remove this image?",
   "img.notes": "Notes",
   "img.notes_ph": "Notes for colleagues — rack position, quirks, anything worth knowing…",

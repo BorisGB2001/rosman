@@ -48,7 +48,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "1.2.0"
+const Version = "1.2.1"
 
 const (
 	cookieName  = "rosman_session"
@@ -178,6 +178,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /devices/{id}/net", s.authed(s.netPage))
 	mux.Handle("GET /devices/{id}/image/{imgid}", s.authed(s.deviceImageServe))
 	mux.Handle("POST /devices/{id}/image", s.authed(s.requireRole(model.RoleOperator, s.deviceImageUpload)))
+	mux.Handle("POST /devices/{id}/image/from-template", s.authed(s.requireRole(model.RoleOperator, s.deviceImageFromTemplate)))
 	mux.Handle("POST /devices/{id}/image/{imgid}/delete", s.authed(s.requireRole(model.RoleOperator, s.deviceImageDelete)))
 	mux.Handle("POST /devices/{id}/notes", s.authed(s.requireRole(model.RoleOperator, s.deviceNotesSave)))
 	mux.Handle("GET /devices/{id}/history", s.authed(s.historyPage))
@@ -1564,6 +1565,35 @@ func (s *Server) deviceImageUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "device_image_add", fmt.Sprintf("device %d (%s)", id, ct))
 	http.Redirect(w, r, fmt.Sprintf("/devices/%d?msg=%s", id, urlq("image added")), http.StatusSeeOther)
+}
+
+// deviceImageFromTemplate copies the matching vendor-catalog model photo into
+// this device's own images, so a device without an uploaded photo can inherit
+// the catalog template picture in one click.
+func (s *Server) deviceImageFromTemplate(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	cm, ok := s.a.Store.VendorModelByNorm(normModel(d.Model))
+	if !ok || !cm.HasImage {
+		http.Redirect(w, r, fmt.Sprintf("/devices/%d?err=%s", id, urlq("no template image for this model")), http.StatusSeeOther)
+		return
+	}
+	ct, data, err := s.a.Store.VendorModelImageData(cm.ID)
+	if err != nil || len(data) == 0 {
+		http.Redirect(w, r, fmt.Sprintf("/devices/%d?err=%s", id, urlq("template image unavailable")), http.StatusSeeOther)
+		return
+	}
+	caption := strings.TrimSpace(cm.VendorName + " " + cm.Name)
+	if _, err := s.a.Store.AddDeviceImage(id, caption, ct, data); err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/devices/%d?err=%s", id, urlq(err.Error())), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "device_image_template", fmt.Sprintf("device %d from catalog %d", id, cm.ID))
+	http.Redirect(w, r, fmt.Sprintf("/devices/%d?msg=%s", id, urlq("image imported from template")), http.StatusSeeOther)
 }
 
 func (s *Server) deviceImageServe(w http.ResponseWriter, r *http.Request) {
