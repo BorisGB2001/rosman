@@ -82,6 +82,7 @@ func dialAPI(d model.Device, pass, expectPin string, timeout time.Duration) (*ro
 	var seen string
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true, // we pin ourselves instead of using a CA
+		MinVersion:         tls.VersionTLS10, // reach older RouterOS api-ssl; auth is via cert pinning
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			if len(rawCerts) == 0 {
 				return fmt.Errorf("device presented no certificate")
