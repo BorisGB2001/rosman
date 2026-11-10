@@ -48,7 +48,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "1.1.0"
+const Version = "1.2.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -3131,75 +3131,27 @@ const rosmanNodeID = -1
 
 func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 	devs, _ := s.a.Store.Devices()
-	neigh, _ := s.a.Store.AllNeighbors()
-	addrOwner, _ := s.a.Store.AddrOwners()
-	macOwner, _ := s.a.Store.MacOwners()
 	saved, _ := s.a.Store.TopoPositions()
 	hidden, _ := s.a.Store.HiddenTopoNodes()
 	showHidden := r.URL.Query().Get("hidden") == "1"
-	byIdent := map[string]int64{}
-	for _, d := range devs {
-		if d.Name != "" {
-			byIdent[d.Name] = d.ID
-		}
-	}
-	ipbase := func(a string) string {
-		if i := strings.IndexByte(a, '/'); i >= 0 {
-			return a[:i]
-		}
-		return a
-	}
-	// Resolve each neighbour sighting to a managed device by MAC, then IP, then
-	// identity, and record an undirected edge labelled with the physical port it
-	// was seen on. On a flat L2 network /ip/neighbor floods every device onto the
-	// management VLAN, so we keep only sightings seen on a real physical port
-	// (etherX / sfp* / qsfp* / combo* / wlan*) and drop bridge/vlan/vxlan-only
-	// ones — those are the hairball, not physical adjacency.
+	macByDev, _ := s.a.Store.DeviceMacMap()
+	// Physical topology from the bridge FDB: each device attaches to exactly ONE
+	// parent — the switch/router on whose fewest-MAC physical (access) port any of
+	// the device's MACs is learned. A device's MAC floods onto every switch's
+	// uplink/trunk ports, but the single access port facing it carries the fewest
+	// MACs, so that one wins. This gives the real tree instead of the old
+	// MNDP/flood hairball, where a device looked connected to every switch.
 	type ekey [2]int64
 	edgePort := map[ekey]string{}
-	for _, n := range neigh {
-		port := physicalPort(n.Iface)
-		if port == "" {
-			continue
-		}
-		to := macOwner[strings.ToUpper(n.MAC)]
-		if to == 0 {
-			to = addrOwner[ipbase(n.IP)]
-		}
-		if to == 0 {
-			to = byIdent[n.Identity]
-		}
-		if to == 0 || to == n.DeviceID {
-			continue
-		}
-		a, b := n.DeviceID, to
-		if a > b {
-			a, b = b, a
-		}
-		k := ekey{a, b}
-		if _, ok := edgePort[k]; !ok {
-			edgePort[k] = port
-		}
-	}
-	macByDev, _ := s.a.Store.DeviceMacMap()
-	// Augment MNDP adjacency with bridge-FDB attachments: for each managed device,
-	// the managed device (if any) on whose access port its own MAC is learned.
-	// This links switch groups that /ip/neighbor misses (e.g. across the mgmt
-	// VLAN), using one fewest-MAC access-port edge per device so the graph stays
-	// tree-like rather than a full-mesh hairball.
+	load, _ := s.a.Store.BridgePortLoad()
 	for _, d := range devs {
-		mac := macByDev[d.ID]
-		if mac == "" {
-			continue
-		}
-		if attachDev, port := s.bestFDBAttach(mac); attachDev != 0 && attachDev != d.ID {
-			a, b := d.ID, attachDev
+		if parent, port := s.deviceAttachment(d.ID, load); parent != 0 {
+			a, b := d.ID, parent
 			if a > b {
 				a, b = b, a
 			}
-			k := ekey{a, b}
-			if _, ok := edgePort[k]; !ok {
-				edgePort[k] = port
+			if _, ok := edgePort[ekey{a, b}]; !ok {
+				edgePort[ekey{a, b}] = port
 			}
 		}
 	}
@@ -3255,13 +3207,6 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 		if skipped[k[0]] || skipped[k[1]] {
 			continue
 		}
-		// Prefer the exact physical port from the bridge FDB: the port on A where
-		// B's MAC is learned (or vice-versa) beats the MNDP interface guess.
-		if p := s.a.Store.BridgePortOn(k[0], macByDev[k[1]]); physicalPort(p) != "" {
-			port = p
-		} else if p := s.a.Store.BridgePortOn(k[1], macByDev[k[0]]); physicalPort(p) != "" {
-			port = p
-		}
 		edges = append(edges, Edge{A: k[0], B: k[1], Port: port})
 	}
 	// ROSMan monitoring host node: find which managed device sees this server's
@@ -3283,6 +3228,30 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "topology", map[string]any{"Active": "topology", "CanWrite": roleRank(userFrom(r).Role) >= roleRank(model.RoleOperator),
 		"Nodes": nodes, "Edges": edges, "Count": len(devs), "EdgeCount": len(edges),
 		"ShowHidden": showHidden, "HiddenCount": hiddenCount})
+}
+
+// deviceAttachment finds the single parent a device is physically attached
+// behind: across all of the device's own MACs, the managed device and physical
+// port with the fewest learned MACs on which any of them appears in a bridge
+// FDB. That fewest-MAC port is the access port facing the device (its MAC floods
+// onto every switch's uplink/trunk ports, which carry many MACs), so it is the
+// correct single uplink. Returns parent 0 when nothing is learned.
+func (s *Server) deviceAttachment(deviceID int64, load map[int64]map[string]int) (parent int64, port string) {
+	macs, _ := s.a.Store.DeviceMacs(deviceID)
+	best := -1
+	for _, m := range macs {
+		hosts, _ := s.a.Store.BridgeHostsByMac(m.Mac)
+		for _, h := range hosts {
+			p := physicalPort(h.Iface)
+			if p == "" || h.DeviceID == deviceID {
+				continue
+			}
+			if n := load[h.DeviceID][h.Iface]; best == -1 || n < best {
+				best, parent, port = n, h.DeviceID, p
+			}
+		}
+	}
+	return
 }
 
 // bestFDBAttach picks the device and physical port where a MAC is most likely
