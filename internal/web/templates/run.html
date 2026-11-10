@@ -22,22 +22,60 @@
 
 <div class="card">
   <h3 style="margin-top:0">{{t "run.targets"}}
-    <label style="font-weight:normal;font-size:.8em;margin-left:10px"><input type="checkbox"
-      onclick="document.querySelectorAll('.rchk').forEach(c=>c.checked=this.checked)"> {{t "bulk.all"}}</label>
-    <input type="search" data-search-for="runtable" placeholder="{{t "col.search"}}" style="width:160px;margin-left:10px;font-size:13px"></h3>
+    <span id="selcount" class="muted small" style="margin-left:8px"></span></h3>
+  <div class="grpfilter" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+    <select id="f-site" class="grpf"><option value="">{{t "col.site"}}: {{t "grp.all"}}</option>{{range .Sites}}<option value="{{.}}">{{.}}</option>{{end}}</select>
+    <select id="f-type" class="grpf"><option value="">{{t "col.type"}}: {{t "grp.all"}}</option><option value="router">{{t "dtype.router"}}</option><option value="switch">{{t "dtype.switch"}}</option><option value="mix">{{t "dtype.mix"}}</option></select>
+    <select id="f-model" class="grpf"><option value="">{{t "col.model"}}: {{t "grp.all"}}</option>{{range .Models}}<option value="{{.}}">{{.}}</option>{{end}}</select>
+    <select id="f-ros" class="grpf"><option value="">RouterOS: {{t "grp.all"}}</option>{{range .Versions}}<option value="{{.}}">{{.}}</option>{{end}}</select>
+    <select id="f-tag" class="grpf"><option value="">{{t "col.tags"}}: {{t "grp.all"}}</option>{{range .Tags}}<option value="{{.}}">{{.}}</option>{{end}}</select>
+    <input id="f-text" type="search" placeholder="{{t "col.search"}}" style="width:150px;font-size:13px">
+    <button type="button" class="btn sm" onclick="rgSelectFiltered(true)">{{t "grp.select_filtered"}}</button>
+    <button type="button" class="btn sm secondary" onclick="rgSelectFiltered(false)">{{t "grp.clear"}}</button>
+  </div>
   <div class="scroll"><table id="runtable" class="dtable">
-    <thead><tr><th data-nosort style="width:28px"></th><th data-col="name" data-label="{{t "col.name"}}">{{t "col.name"}}</th><th data-col="ip" data-label="IP">IP</th><th data-col="site" data-label="{{t "col.site"}}">{{t "col.site"}}</th><th data-col="type" data-label="{{t "col.type"}}">{{t "col.type"}}</th><th data-col="ros" data-label="RouterOS">RouterOS</th></tr></thead>
+    <thead><tr><th data-nosort style="width:28px"><input type="checkbox" title="{{t "bulk.all"}}"
+      onclick="document.querySelectorAll('#runtable tbody tr:not([hidden]) .rchk').forEach(c=>c.checked=this.checked);rgCount()"></th><th data-col="name" data-label="{{t "col.name"}}">{{t "col.name"}}</th><th data-col="ip" data-label="IP">IP</th><th data-col="site" data-label="{{t "col.site"}}">{{t "col.site"}}</th><th data-col="type" data-label="{{t "col.type"}}">{{t "col.type"}}</th><th data-col="model" data-label="{{t "col.model"}}">{{t "col.model"}}</th><th data-col="ros" data-label="RouterOS">RouterOS</th></tr></thead>
     <tbody>
     {{range .Devices}}
-      <tr><td><input class="rchk" type="checkbox" name="ids" value="{{.ID}}" {{if index $.Preset (printf "%d" .ID)}}checked{{end}}></td>
+      <tr data-site="{{.SiteName}}" data-type="{{.DeviceType}}" data-model="{{.Model}}" data-ros="{{.ROSVersion}}" data-tags="{{range .Tags}}{{.}}|{{end}}" data-name="{{.Name}}" data-ip="{{.IP}}">
+        <td><input class="rchk" type="checkbox" name="ids" value="{{.ID}}" onclick="rgCount()" {{if index $.Preset (printf "%d" .ID)}}checked{{end}}></td>
         <td>{{.Name}}</td><td class="mono">{{.IP}}</td><td class="muted">{{.SiteName}}</td>
         <td>{{if .DeviceType}}<span class="badge">{{t (printf "dtype.%s" .DeviceType)}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+        <td class="muted small">{{.Model}}</td>
         <td>{{.ROSVersion}}</td></tr>
-    {{else}}<tr><td colspan="6" class="muted">{{t "devices.empty"}}</td></tr>{{end}}
+    {{else}}<tr><td colspan="7" class="muted">{{t "devices.empty"}}</td></tr>{{end}}
     </tbody>
   </table></div>
   <div style="margin-top:10px"><button class="btn primary" type="submit" onclick="return confirm('{{t "run.confirm"}}')">{{t "run.run"}}</button></div>
 </div>
+<script>
+(function(){
+  var rows=function(){return Array.prototype.slice.call(document.querySelectorAll('#runtable tbody tr[data-name]'));};
+  var val=function(id){var e=document.getElementById(id);return e?e.value.trim().toLowerCase():'';};
+  window.rgCount=function(){
+    var n=document.querySelectorAll('#runtable .rchk:checked').length;
+    var c=document.getElementById('selcount'); if(c) c.textContent=n?('✓ '+n):'';
+  };
+  window.rgFilter=function(){
+    var fs=val('f-site'),ft=val('f-type'),fm=val('f-model'),fr=val('f-ros'),fg=val('f-tag'),fx=val('f-text');
+    rows().forEach(function(tr){
+      var d=tr.dataset;
+      var ok=(!fs||d.site.toLowerCase()===fs)&&(!ft||d.type.toLowerCase()===ft)
+        &&(!fm||d.model.toLowerCase()===fm)&&(!fr||d.ros.toLowerCase()===fr)
+        &&(!fg||('|'+d.tags.toLowerCase()).indexOf('|'+fg+'|')>=0||d.tags.toLowerCase().indexOf(fg+'|')===0)
+        &&(!fx||(d.name+' '+d.ip+' '+d.model).toLowerCase().indexOf(fx)>=0);
+      tr.hidden=!ok;
+    });
+  };
+  window.rgSelectFiltered=function(on){
+    rows().forEach(function(tr){ if(!tr.hidden){ var c=tr.querySelector('.rchk'); if(c) c.checked=on; } });
+    rgCount();
+  };
+  document.querySelectorAll('.grpf,#f-text').forEach(function(e){e.addEventListener('input',rgFilter);});
+  rgCount();
+})();
+</script>
 </form>
 
 {{if .Results}}

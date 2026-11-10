@@ -1947,6 +1947,25 @@ func (s *Store) AllTags() ([]string, error) {
 	return out, rows.Err()
 }
 
+// AllDeviceTags returns every device's tags in one query, keyed by device id.
+func (s *Store) AllDeviceTags() (map[int64][]string, error) {
+	rows, err := s.db.Query(`SELECT device_id, tag FROM device_tags ORDER BY device_id, tag`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64][]string{}
+	for rows.Next() {
+		var id int64
+		var t string
+		if err := rows.Scan(&id, &t); err != nil {
+			return nil, err
+		}
+		out[id] = append(out[id], t)
+	}
+	return out, rows.Err()
+}
+
 // DeviceIDsByTag returns device ids carrying the tag.
 func (s *Store) DeviceIDsByTag(tag string) (map[int64]bool, error) {
 	rows, err := s.db.Query(`SELECT device_id FROM device_tags WHERE tag=?`, tag)

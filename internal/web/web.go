@@ -48,7 +48,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "1.2.1"
+const Version = "1.2.2"
 
 const (
 	cookieName  = "rosman_session"
@@ -2929,6 +2929,25 @@ func (s *Server) runPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) renderRun(w http.ResponseWriter, r *http.Request, results []app.CmdResult, command, errMsg string, sel string, guard int) {
 	devs, _ := s.a.Store.Devices()
+	// Attach tags and collect the distinct values that feed the group filters
+	// (site/model/version/type/tag), so commands can be aimed at a whole group.
+	tagMap, _ := s.a.Store.AllDeviceTags()
+	siteSet, modelSet, verSet, tagSet := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for i := range devs {
+		devs[i].Tags = tagMap[devs[i].ID]
+		if devs[i].SiteName != "" {
+			siteSet[devs[i].SiteName] = true
+		}
+		if devs[i].Model != "" {
+			modelSet[devs[i].Model] = true
+		}
+		if devs[i].ROSVersion != "" {
+			verSet[devs[i].ROSVersion] = true
+		}
+		for _, t := range devs[i].Tags {
+			tagSet[t] = true
+		}
+	}
 	preset := map[string]bool{}
 	for _, id := range r.URL.Query()["ids"] {
 		preset[id] = true
@@ -2938,7 +2957,9 @@ func (s *Server) renderRun(w http.ResponseWriter, r *http.Request, results []app
 	}
 	s.render(w, r, "run", map[string]any{"Active": "run", "Devices": devs,
 		"Results": results, "Command": command, "Err": errMsg,
-		"HasSSH": s.a.HasSSHKey(), "Preset": preset, "Guard": guard})
+		"HasSSH": s.a.HasSSHKey(), "Preset": preset, "Guard": guard,
+		"Sites": sortedKeys(siteSet), "Models": sortedKeys(modelSet),
+		"Versions": sortedKeys(verSet), "Tags": sortedKeys(tagSet)})
 }
 
 func (s *Server) runExec(w http.ResponseWriter, r *http.Request) {
@@ -2975,6 +2996,16 @@ func (s *Server) runExec(w http.ResponseWriter, r *http.Request) {
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "run_command",
 		fmt.Sprintf("%d devices, %s: %s", len(results), gnote, firstLine(command)))
 	s.renderRun(w, r, results, command, "", sel, guard)
+}
+
+// sortedKeys returns the map's keys sorted, for stable filter dropdowns.
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func firstLine(s string) string {
