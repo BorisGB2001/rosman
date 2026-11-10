@@ -341,6 +341,7 @@ CREATE TABLE IF NOT EXISTS vendor_models (
     notes      TEXT NOT NULL DEFAULT '',
     image      BLOB,
     image_type TEXT NOT NULL DEFAULT '',
+    port_layout TEXT NOT NULL DEFAULT '', -- JSON: admin-defined port arrangement + groups
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_vendor_models ON vendor_models(vendor_id);

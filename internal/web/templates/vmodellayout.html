@@ -1,0 +1,191 @@
+{{define "vmodellayout"}}{{template "head" .}}
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+<div class="cardhead"><h1 style="margin:0">{{t "lay.title"}}: {{.M.VendorName}} {{.M.Name}}</h1>
+  <a href="/vendors/{{.M.VendorID}}" class="muted small" style="margin-left:auto">← {{t "ven.title"}}</a></div>
+<p class="muted small" style="margin-top:-6px">{{t "lay.help"}}</p>
+
+<div class="card">
+  <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+    <!-- Generator -->
+    <fieldset style="border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:0">
+      <legend class="muted small" style="padding:0 6px">{{t "lay.generate"}}</legend>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <label style="width:92px">{{t "lay.ether"}}<input id="g-eth" type="number" min="0" max="96" value="24"></label>
+        <label style="width:92px">{{t "lay.sfp"}}<input id="g-sfp" type="number" min="0" max="48" value="4"></label>
+        <label style="width:92px">{{t "lay.perrow"}}<input id="g-per" type="number" min="1" max="48" value="16"></label>
+        <button type="button" class="btn sm" onclick="lgGenerate()">{{t "lay.build_grid"}}</button>
+      </div>
+    </fieldset>
+    <!-- Groups -->
+    <fieldset style="border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:0;min-width:240px">
+      <legend class="muted small" style="padding:0 6px">{{t "lay.groups"}}</legend>
+      <div id="grouplist" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+        <input id="ng-name" placeholder="{{t "lay.group_name"}}" style="width:120px;font-size:13px">
+        <input id="ng-color" type="color" value="#22c55e" style="width:38px;height:30px;padding:0;border:none;background:none">
+        <button type="button" class="btn sm" onclick="lgAddGroup()">{{t "nav.add"}}</button>
+      </div>
+      <p class="muted small" style="margin:6px 0 0">{{t "lay.brush_hint"}}</p>
+    </fieldset>
+    <!-- Tile tools -->
+    <fieldset style="border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:0">
+      <legend class="muted small" style="padding:0 6px">{{t "lay.tiles"}}</legend>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <input id="t-label" placeholder="{{t "lay.label"}}" style="width:70px;font-size:13px">
+        <button type="button" class="btn sm" onclick="lgAddTile()">{{t "lay.add_port"}}</button>
+        <button type="button" class="btn sm secondary" onclick="lgAddGap()">{{t "lay.add_gap"}}</button>
+        <button type="button" class="btn sm secondary" onclick="lgAddRow()">{{t "lay.add_row"}}</button>
+      </div>
+      <p class="muted small" style="margin:6px 0 0">{{t "lay.drag_hint"}}</p>
+    </fieldset>
+  </div>
+</div>
+
+<!-- Active brush indicator -->
+<div style="margin:4px 2px 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+  <span class="muted small">{{t "lay.brush"}}:</span>
+  <span id="brush-chip" class="badge">—</span>
+  <span class="muted small">{{t "lay.brush_switch"}}</span>
+</div>
+
+<!-- Editor grid -->
+<div class="card">
+  <div id="grid" class="lgrid"></div>
+  <div id="emptyhint" class="muted" style="padding:14px 4px">{{t "lay.empty"}}</div>
+</div>
+
+<form method="post" action="/vmodel/{{.M.ID}}/layout" onsubmit="document.getElementById('layout-json').value=JSON.stringify(STATE)">
+  <input type="hidden" name="layout" id="layout-json">
+  <div style="display:flex;gap:10px;align-items:center">
+    <button class="btn primary" type="submit">{{t "set.save"}}</button>
+    <button class="btn secondary" type="button" onclick="if(confirm('{{t "lay.clear_confirm"}}')){STATE={groups:[],rows:[]};lgRender();}">{{t "lay.clear"}}</button>
+    <span class="muted small">{{t "lay.save_note"}}</span>
+  </div>
+</form>
+
+<style>
+.lgrid{display:flex;flex-direction:column;gap:12px}
+.lrow{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;min-height:56px;padding:6px;border:1px dashed var(--line);border-radius:8px}
+.lrow.drop{border-color:var(--accent);background:#8882}
+.ltile{position:relative;width:46px;display:flex;flex-direction:column;align-items:center;cursor:grab;user-select:none}
+.ltile .pbody{width:42px;height:34px;border-radius:5px;border:1px solid #0005;background:var(--muted);display:flex;align-items:center;justify-content:center}
+.ltile .pbody .slot{width:16px;height:6px;border-radius:1px;background:var(--surface)}
+.ltile.gap .pbody{background:none;border:1px dashed var(--line)}
+.ltile .plabel{font-size:10px;color:var(--muted);margin-top:2px}
+.ltile .pdel{position:absolute;top:-6px;right:-4px;font-size:11px;line-height:1;cursor:pointer;opacity:0;background:var(--bad);color:#fff;border-radius:50%;width:15px;height:15px;display:flex;align-items:center;justify-content:center}
+.ltile:hover .pdel{opacity:1}
+.ltile.dragging{opacity:.4}
+.grpbtn{display:flex;align-items:center;gap:6px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;cursor:pointer}
+.grpbtn.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.grpsw{width:16px;height:16px;border-radius:3px;border:1px solid #0004}
+</style>
+<script>
+var STATE = Object.assign({groups:[],rows:[]}, {{.Layout}});
+if(!Array.isArray(STATE.groups)) STATE.groups=[];
+if(!Array.isArray(STATE.rows)) STATE.rows=[];
+var BRUSH=null; // null = clear-group brush; else a group id
+var DRAG=null;  // {r,c}
+
+function gcolor(id){var g=STATE.groups.find(function(x){return x.id===id});return g?g.color:'';}
+function uid(){return 'g'+Math.random().toString(36).slice(2,7);}
+
+function lgRender(){
+  // groups panel
+  var gl=document.getElementById('grouplist'); gl.innerHTML='';
+  var none=mkGroupBtn(null,'{{t "lay.no_group"}}','transparent');
+  gl.appendChild(none);
+  STATE.groups.forEach(function(g){ gl.appendChild(mkGroupBtn(g.id,g.name,g.color)); });
+  // brush chip
+  var chip=document.getElementById('brush-chip');
+  if(BRUSH===null){chip.textContent='{{t "lay.no_group"}}';chip.style.background='';chip.style.color='';}
+  else{var g=STATE.groups.find(function(x){return x.id===BRUSH});chip.textContent=g?g.name:'—';chip.style.background=g?g.color:'';chip.style.color='#07140a';}
+  // grid
+  var grid=document.getElementById('grid'); grid.innerHTML='';
+  STATE.rows.forEach(function(row,ri){
+    var rd=document.createElement('div'); rd.className='lrow'; rd.dataset.r=ri;
+    rd.addEventListener('dragover',function(e){e.preventDefault();rd.classList.add('drop');});
+    rd.addEventListener('dragleave',function(){rd.classList.remove('drop');});
+    rd.addEventListener('drop',function(e){e.preventDefault();rd.classList.remove('drop');lgDrop(ri,row.length);});
+    row.forEach(function(slot,ci){ rd.appendChild(mkTile(slot,ri,ci)); });
+    grid.appendChild(rd);
+  });
+  document.getElementById('emptyhint').style.display=STATE.rows.length?'none':'block';
+}
+
+function mkGroupBtn(id,name,color){
+  var b=document.createElement('div'); b.className='grpbtn'+((BRUSH===id)?' active':'');
+  var sw=document.createElement('span'); sw.className='grpsw'; sw.style.background=color||'transparent';
+  var t=document.createElement('span'); t.textContent=name; t.style.fontSize='13px'; t.style.flex='1';
+  b.appendChild(sw); b.appendChild(t);
+  if(id!==null){
+    var del=document.createElement('span'); del.textContent='🗑'; del.style.cursor='pointer'; del.title='{{t "site.delete"}}';
+    del.onclick=function(e){e.stopPropagation();STATE.groups=STATE.groups.filter(function(x){return x.id!==id});
+      STATE.rows.forEach(function(r){r.forEach(function(s){if(s.group===id)delete s.group;});});
+      if(BRUSH===id)BRUSH=null; lgRender();};
+    b.appendChild(del);
+  }
+  b.onclick=function(){BRUSH=id;lgRender();};
+  return b;
+}
+
+function mkTile(slot,ri,ci){
+  var d=document.createElement('div'); d.className='ltile'+(slot.gap?' gap':''); d.draggable=true;
+  d.dataset.r=ri; d.dataset.c=ci;
+  var body=document.createElement('div'); body.className='pbody';
+  if(!slot.gap){ var col=gcolor(slot.group); if(col) body.style.background=col; var s=document.createElement('span'); s.className='slot'; body.appendChild(s); }
+  var lab=document.createElement('div'); lab.className='plabel'; lab.textContent=slot.gap?'':(slot.label||'');
+  var del=document.createElement('div'); del.className='pdel'; del.textContent='×';
+  del.onclick=function(e){e.stopPropagation();STATE.rows[ri].splice(ci,1);if(STATE.rows[ri].length===0)STATE.rows.splice(ri,1);lgRender();};
+  d.appendChild(del); d.appendChild(body); d.appendChild(lab);
+  if(!slot.gap){
+    d.onclick=function(){ if(BRUSH===null)delete slot.group; else slot.group=BRUSH; lgRender(); };
+  }
+  d.addEventListener('dragstart',function(e){DRAG={r:ri,c:ci};d.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
+  d.addEventListener('dragend',function(){d.classList.remove('dragging');});
+  d.addEventListener('dragover',function(e){e.preventDefault();});
+  d.addEventListener('drop',function(e){e.preventDefault();e.stopPropagation();lgDrop(ri,ci);});
+  return d;
+}
+
+function lgDrop(tr,tc){
+  if(!DRAG) return;
+  var moved=STATE.rows[DRAG.r][DRAG.c];
+  // remove from source
+  STATE.rows[DRAG.r].splice(DRAG.c,1);
+  // adjust target col if same row and after source
+  if(DRAG.r===tr && DRAG.c<tc) tc--;
+  if(!STATE.rows[tr]) tr=STATE.rows.length-1>=0?STATE.rows.length-1:0;
+  if(!STATE.rows[tr]){STATE.rows.push([]);tr=STATE.rows.length-1;}
+  STATE.rows[tr].splice(tc,0,moved);
+  // drop empty source row
+  STATE.rows=STATE.rows.filter(function(r){return r.length>0;});
+  DRAG=null; lgRender();
+}
+
+function lgGenerate(){
+  var eth=parseInt(document.getElementById('g-eth').value)||0;
+  var sfp=parseInt(document.getElementById('g-sfp').value)||0;
+  var per=Math.max(1,parseInt(document.getElementById('g-per').value)||16);
+  var tiles=[];
+  for(var i=1;i<=eth;i++) tiles.push({label:String(i)});
+  for(var j=1;j<=sfp;j++) tiles.push({label:'S'+j});
+  var rows=[];
+  for(var k=0;k<tiles.length;k+=per) rows.push(tiles.slice(k,k+per));
+  STATE.rows=rows; lgRender();
+}
+function lgAddTile(){
+  var lab=(document.getElementById('t-label').value||'').trim(); if(!lab)return;
+  if(!STATE.rows.length)STATE.rows.push([]);
+  STATE.rows[STATE.rows.length-1].push({label:lab}); document.getElementById('t-label').value=''; lgRender();
+}
+function lgAddGap(){ if(!STATE.rows.length)STATE.rows.push([]); STATE.rows[STATE.rows.length-1].push({gap:true}); lgRender(); }
+function lgAddRow(){ STATE.rows.push([]); lgRender(); }
+function lgAddGroup(){
+  var n=(document.getElementById('ng-name').value||'').trim(); if(!n)return;
+  var c=document.getElementById('ng-color').value;
+  STATE.groups.push({id:uid(),name:n,color:c}); document.getElementById('ng-name').value=''; lgRender();
+}
+lgRender();
+</script>
+{{template "tail" .}}{{end}}

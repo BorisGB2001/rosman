@@ -57,6 +57,7 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE devices ADD COLUMN rb_current_fw TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN rb_upgrade_fw TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE fw_jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'ros'`,
+		`ALTER TABLE vendor_models ADD COLUMN port_layout TEXT NOT NULL DEFAULT ''`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -182,7 +183,7 @@ func (s *Store) DeleteVendor(id int64) error {
 }
 
 func (s *Store) VendorModels(vendorID int64) ([]model.VendorModel, error) {
-	rows, err := s.db.Query(`SELECT id,vendor_id,name,norm,notes,image_type,image IS NOT NULL,created_at
+	rows, err := s.db.Query(`SELECT id,vendor_id,name,norm,notes,image_type,image IS NOT NULL,port_layout,created_at
 		FROM vendor_models WHERE vendor_id=? ORDER BY name`, vendorID)
 	if err != nil {
 		return nil, err
@@ -191,7 +192,7 @@ func (s *Store) VendorModels(vendorID int64) ([]model.VendorModel, error) {
 	var out []model.VendorModel
 	for rows.Next() {
 		var m model.VendorModel
-		if err := rows.Scan(&m.ID, &m.VendorID, &m.Name, &m.Norm, &m.Notes, &m.ImageType, &m.HasImage, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.VendorID, &m.Name, &m.Norm, &m.Notes, &m.ImageType, &m.HasImage, &m.PortLayout, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -221,10 +222,16 @@ func (s *Store) AllVendorModels() ([]model.VendorModel, error) {
 
 func (s *Store) VendorModel(id int64) (model.VendorModel, error) {
 	var m model.VendorModel
-	err := s.db.QueryRow(`SELECT m.id,m.vendor_id,m.name,m.norm,m.notes,m.image_type,m.image IS NOT NULL,m.created_at,v.name,v.website
+	err := s.db.QueryRow(`SELECT m.id,m.vendor_id,m.name,m.norm,m.notes,m.image_type,m.image IS NOT NULL,m.port_layout,m.created_at,v.name,v.website
 		FROM vendor_models m JOIN vendors v ON v.id=m.vendor_id WHERE m.id=?`, id).
-		Scan(&m.ID, &m.VendorID, &m.Name, &m.Norm, &m.Notes, &m.ImageType, &m.HasImage, &m.CreatedAt, &m.VendorName, &m.VendorWebsite)
+		Scan(&m.ID, &m.VendorID, &m.Name, &m.Norm, &m.Notes, &m.ImageType, &m.HasImage, &m.PortLayout, &m.CreatedAt, &m.VendorName, &m.VendorWebsite)
 	return m, err
+}
+
+// SetVendorModelLayout stores the admin-defined port layout JSON for a model.
+func (s *Store) SetVendorModelLayout(id int64, layout string) error {
+	_, err := s.db.Exec(`UPDATE vendor_models SET port_layout=? WHERE id=?`, layout, id)
+	return err
 }
 
 // VendorModelByNorm finds the catalog model matching a normalized model string
@@ -235,9 +242,9 @@ func (s *Store) VendorModelByNorm(norm string) (model.VendorModel, bool) {
 		return model.VendorModel{}, false
 	}
 	var m model.VendorModel
-	err := s.db.QueryRow(`SELECT m.id,m.vendor_id,m.name,m.norm,m.notes,m.image_type,m.image IS NOT NULL,m.created_at,v.name,v.website
+	err := s.db.QueryRow(`SELECT m.id,m.vendor_id,m.name,m.norm,m.notes,m.image_type,m.image IS NOT NULL,m.port_layout,m.created_at,v.name,v.website
 		FROM vendor_models m JOIN vendors v ON v.id=m.vendor_id WHERE m.norm=? LIMIT 1`, norm).
-		Scan(&m.ID, &m.VendorID, &m.Name, &m.Norm, &m.Notes, &m.ImageType, &m.HasImage, &m.CreatedAt, &m.VendorName, &m.VendorWebsite)
+		Scan(&m.ID, &m.VendorID, &m.Name, &m.Norm, &m.Notes, &m.ImageType, &m.HasImage, &m.PortLayout, &m.CreatedAt, &m.VendorName, &m.VendorWebsite)
 	if err != nil {
 		return model.VendorModel{}, false
 	}

@@ -189,6 +189,7 @@ type VendorModel struct {
 	CreatedAt     time.Time
 	VendorName    string // joined for display
 	VendorWebsite string
+	PortLayout    string // JSON: admin-defined port arrangement + groups
 }
 
 // Site is a location grouping devices.

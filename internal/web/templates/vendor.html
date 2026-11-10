@@ -36,6 +36,7 @@
             <input type="file" name="image" accept="image/*" style="max-width:150px">
             <button class="btn sm" type="submit">{{t "ven.set_photo"}}</button>
           </form>
+          <a class="btn sm secondary" href="/vmodel/{{.ID}}/layout">🔌 {{t "lay.edit_panel"}}{{if .PortLayout}} ✓{{end}}</a>
           <form method="post" action="/vmodel/{{.ID}}/delete" onsubmit="return confirm('{{t "ven.del_model_confirm"}}')"><button class="link" type="submit" title="{{t "site.delete"}}">🗑️</button></form>
         </div>
         <details style="margin-top:6px"><summary class="muted small" style="cursor:pointer">{{t "ven.edit"}}</summary>

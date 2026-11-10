@@ -48,7 +48,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "1.2.2"
+const Version = "1.3.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -210,6 +210,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /vmodel/{mid}/edit", s.authed(s.requireRole(model.RoleOperator, s.vendorModelUpdate)))
 	mux.Handle("POST /vmodel/{mid}/delete", s.authed(s.requireRole(model.RoleOperator, s.vendorModelDelete)))
 	mux.Handle("POST /vmodel/{mid}/image", s.authed(s.requireRole(model.RoleOperator, s.vendorModelImageUpload)))
+	mux.Handle("GET /vmodel/{mid}/layout", s.authed(s.requireRole(model.RoleOperator, s.vendorModelLayoutPage)))
+	mux.Handle("POST /vmodel/{mid}/layout", s.authed(s.requireRole(model.RoleOperator, s.vendorModelLayoutSave)))
 	mux.Handle("POST /sites/{id}/geo", s.authed(s.requireRole(model.RoleOperator, s.siteGeo)))
 	mux.Handle("GET /map", s.authed(s.mapPage))
 	mux.Handle("POST /devices/{id}/site", s.authed(s.requireRole(model.RoleOperator, s.deviceSetSite)))
@@ -1492,6 +1494,14 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 	// Catalog model: pull the matching vendor-catalog entry (photo, settings,
 	// vendor link) for this device's model, if one exists.
 	catModel, hasCat := s.a.Store.VendorModelByNorm(normModel(d.Model))
+	// Prefer the admin-defined port layout from the catalog model; fall back to
+	// the automatic sequential faceplate when the model has no layout template.
+	faceplate := facePlateSVG(ports)
+	if hasCat {
+		if fp := facePlateFromLayout(catModel.PortLayout, ports); fp != "" {
+			faceplate = fp
+		}
+	}
 	s.render(w, r, "device", map[string]any{"Active": "devices",
 		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors, "Traffic": traffic,
 		"Sites": sites, "DevTags": devTags, "BackupMode": s.a.BackupMode(),
@@ -1500,7 +1510,7 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 		"CatModel": catModel, "HasCatModel": hasCat,
 		"UplinkID": uplinkID, "UplinkName": uplinkName, "UplinkPort": uplinkPort,
 		"PortConns": s.portConnections(id),
-		"Faceplate": facePlateSVG(ports),
+		"Faceplate": faceplate,
 		"CPUGraph":  graphSVG(downsample(cpu, 200), 100, "var(--accent)"), "RAMGraph": graphSVG(downsample(ram, 200), 100, "var(--warn)"),
 		"TempGraph": graphSVG(downsample(temp, 200), 0, "var(--bad)"), "HasTemp": len(temp) > 0,
 		"LoadRange": loadRng, "LoadRanges": []string{"1h", "6h", "12h", "today"}, "LoadSamples": len(metrics),
@@ -3914,6 +3924,51 @@ func (s *Server) vendorModelDelete(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/vendors/%d?msg=saved", m.VendorID), http.StatusSeeOther)
 }
 
+// vendorModelLayoutPage renders the drag-n-drop port layout editor for a model.
+func (s *Server) vendorModelLayoutPage(w http.ResponseWriter, r *http.Request) {
+	mid, _ := strconv.ParseInt(r.PathValue("mid"), 10, 64)
+	m, err := s.a.Store.VendorModel(mid)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	layout := strings.TrimSpace(m.PortLayout)
+	if layout == "" {
+		layout = "{}"
+	}
+	s.render(w, r, "vmodellayout", map[string]any{"Active": "vendors", "M": m,
+		"Layout": template.JS(layout), "HasImage": m.HasImage,
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
+}
+
+// vendorModelLayoutSave validates and stores the edited port layout JSON.
+func (s *Server) vendorModelLayoutSave(w http.ResponseWriter, r *http.Request) {
+	mid, _ := strconv.ParseInt(r.PathValue("mid"), 10, 64)
+	m, err := s.a.Store.VendorModel(mid)
+	if err != nil {
+		http.Error(w, "not found", 404)
+		return
+	}
+	raw := strings.TrimSpace(r.FormValue("layout"))
+	if raw == "" || raw == "{}" {
+		// Clearing the layout reverts the panel to the automatic faceplate.
+		_ = s.a.Store.SetVendorModelLayout(mid, "")
+		_ = s.a.Store.AddAudit(userFrom(r).Username, "model_layout_clear", fmt.Sprintf("model %d", mid))
+		http.Redirect(w, r, fmt.Sprintf("/vmodel/%d/layout?msg=%s", mid, urlq("layout cleared")), http.StatusSeeOther)
+		return
+	}
+	if _, ok := parsePortLayout(raw); !ok {
+		http.Redirect(w, r, fmt.Sprintf("/vmodel/%d/layout?err=%s", mid, urlq("invalid layout")), http.StatusSeeOther)
+		return
+	}
+	if err := s.a.Store.SetVendorModelLayout(mid, raw); err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/vmodel/%d/layout?err=%s", mid, urlq(err.Error())), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "model_layout_save", fmt.Sprintf("model %d (%s)", mid, m.Name))
+	http.Redirect(w, r, fmt.Sprintf("/vmodel/%d/layout?msg=%s", mid, urlq("layout saved")), http.StatusSeeOther)
+}
+
 func (s *Server) vendorModelImageUpload(w http.ResponseWriter, r *http.Request) {
 	mid, _ := strconv.ParseInt(r.PathValue("mid"), 10, 64)
 	m, err := s.a.Store.VendorModel(mid)
@@ -4281,6 +4336,136 @@ func facePlateSVG(ports []model.Port) template.HTML {
 		b.WriteString(`</g>`)
 		fmt.Fprintf(&b, `<text x="%d" y="%d" text-anchor="middle" font-size="10" fill="var(--muted)">%s</text>`,
 			x+cw/2, y+ch+13, template.HTMLEscapeString(portLabel(p.Name)))
+	}
+	b.WriteString("</svg>")
+	return template.HTML(b.String())
+}
+
+// ---- port layout templates ----
+
+// portGroup is a named, colored grouping of ports (e.g. "Access", "Uplinks").
+type portGroup struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+// portSlot is one cell in the layout grid: a port by its panel label, a gap, or
+// a blank spacer. Group references a portGroup.ID for coloring.
+type portSlot struct {
+	Label string `json:"label,omitempty"`
+	Group string `json:"group,omitempty"`
+	Gap   bool   `json:"gap,omitempty"`
+}
+
+// portLayout is the admin-defined arrangement stored per catalog model.
+type portLayout struct {
+	Groups []portGroup  `json:"groups"`
+	Rows   [][]portSlot `json:"rows"`
+}
+
+// parsePortLayout decodes a stored layout; ok=false when empty or invalid.
+func parsePortLayout(s string) (portLayout, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "{}" {
+		return portLayout{}, false
+	}
+	var pl portLayout
+	if err := json.Unmarshal([]byte(s), &pl); err != nil {
+		return portLayout{}, false
+	}
+	n := 0
+	for _, row := range pl.Rows {
+		n += len(row)
+	}
+	if n == 0 {
+		return portLayout{}, false
+	}
+	return pl, true
+}
+
+// facePlateFromLayout renders the panel using an admin-defined layout, mapping
+// each slot's label onto the device's real port (for link status) when present.
+// Returns "" when the layout is empty/invalid so the caller falls back to the
+// automatic sequential faceplate.
+func facePlateFromLayout(layoutJSON string, ports []model.Port) template.HTML {
+	pl, ok := parsePortLayout(layoutJSON)
+	if !ok {
+		return ""
+	}
+	// Index real ports by panel label for status overlay.
+	byLabel := map[string]model.Port{}
+	for _, p := range ports {
+		byLabel[strings.ToLower(portLabel(p.Name))] = p
+	}
+	groupColor := map[string]string{}
+	for _, g := range pl.Groups {
+		if g.Color != "" {
+			groupColor[g.ID] = g.Color
+		}
+	}
+	const cw, ch, gap, lbl, pad = 44, 38, 10, 16, 12
+	maxCols := 0
+	for _, row := range pl.Rows {
+		if len(row) > maxCols {
+			maxCols = len(row)
+		}
+	}
+	if maxCols == 0 {
+		return ""
+	}
+	rows := len(pl.Rows)
+	W := maxCols*(cw+gap) - gap + 2*pad
+	H := rows*(ch+gap+lbl) - gap + 2*pad
+	var b strings.Builder
+	fmt.Fprintf(&b, `<svg viewBox="0 0 %d %d" width="100%%" preserveAspectRatio="xMinYMid meet" style="width:100%%;max-width:%dpx;height:auto;max-height:%dpx">`,
+		W, H, int(float64(W)*1.2)+40, H)
+	fmt.Fprintf(&b, `<rect x="0.5" y="0.5" width="%d" height="%d" rx="9" fill="var(--bg)" stroke="var(--line)"/>`, W-1, H-1)
+	for r, row := range pl.Rows {
+		for c, slot := range row {
+			if slot.Gap || slot.Label == "" {
+				continue
+			}
+			x := pad + c*(cw+gap)
+			y := pad + r*(ch+gap+lbl)
+			p, present := byLabel[strings.ToLower(slot.Label)]
+			// Base color: the group color if set, else neutral. Link status
+			// (running/disabled) overrides toward green/dim when the port exists.
+			color := "var(--muted)"
+			if gc := groupColor[slot.Group]; gc != "" {
+				color = gc
+			}
+			led := ""
+			if present {
+				if p.Disabled {
+					color = "var(--line)"
+				} else if p.Running {
+					if groupColor[slot.Group] == "" {
+						color = "var(--good)"
+					}
+					led = fmt.Sprintf(`<circle cx="%d" cy="%d" r="3" fill="#22c55e"/>`, x+cw-8, y+8)
+				}
+			} else {
+				color = "var(--line)"
+			}
+			title := template.HTMLEscapeString(slot.Label)
+			if present {
+				title = template.HTMLEscapeString(p.Name + " (" + p.Type + ")")
+			}
+			isFiber := strings.HasPrefix(strings.ToLower(slot.Label), "s") || strings.Contains(strings.ToLower(p.Type), "sfp")
+			b.WriteString(`<g><title>` + title + `</title>`)
+			fmt.Fprintf(&b, `<rect x="%d" y="%d" width="%d" height="%d" rx="5" fill="%s" opacity="0.92" stroke="#0004"/>`, x, y, cw, ch, color)
+			fmt.Fprintf(&b, `<rect x="%d" y="%d" width="%d" height="%d" rx="3" fill="#0003"/>`, x+7, y+7, cw-14, ch-16)
+			if isFiber {
+				fmt.Fprintf(&b, `<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="var(--surface)" stroke-width="2"/>`, x+9, y+ch-10, x+cw-9, y+10)
+			} else {
+				fmt.Fprintf(&b, `<rect x="%d" y="%d" width="10" height="5" rx="1" fill="var(--surface)"/>`, x+cw/2-5, y+ch-8)
+			}
+			b.WriteString(led)
+			b.WriteString(`</g>`)
+			fmt.Fprintf(&b, `<text x="%d" y="%d" text-anchor="middle" font-size="10" fill="var(--muted)">%s</text>`,
+				x+cw/2, y+ch+13, template.HTMLEscapeString(slot.Label))
+		}
 	}
 	b.WriteString("</svg>")
 	return template.HTML(b.String())
