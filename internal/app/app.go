@@ -86,7 +86,7 @@ func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser 
 			if su == "" {
 				su = apiUser
 			}
-			if _, serr := ros.SetupAPISSL(d, su, apiPass, 20*time.Second); serr != nil {
+			if _, serr := ros.SetupAPISSL(d, su, apiPass, a.signer, 20*time.Second); serr != nil {
 				return 0, fmt.Errorf("probe failed (%v); api-ssl setup over SSH failed: %w", err, serr)
 			}
 			h, pin, err = ros.Poll(d, apiPass, a.Cfg.APITimeout)

@@ -982,10 +982,20 @@ func RunCommand(d model.Device, signer ssh.Signer, command string, timeout time.
 // creates a self-signed certificate, waits for RouterOS to finish signing it
 // (key generation is asynchronous), and points the api-ssl service at it. After
 // this the device can be reached over the binary API and added normally.
-func SetupAPISSL(d model.Device, sshUser, password string, dialTimeout time.Duration) (string, error) {
+func SetupAPISSL(d model.Device, sshUser, password string, signer ssh.Signer, dialTimeout time.Duration) (string, error) {
+	// Many RouterOS boxes allow only public-key SSH, so try ROSMan's own key
+	// first (works once it has been imported onto the device for backups), then
+	// fall back to the password.
+	var auth []ssh.AuthMethod
+	if signer != nil {
+		auth = append(auth, ssh.PublicKeys(signer))
+	}
+	if password != "" {
+		auth = append(auth, ssh.Password(password))
+	}
 	conf := &ssh.ClientConfig{
 		User:              sshUser,
-		Auth:              []ssh.AuthMethod{ssh.Password(password)},
+		Auth:              auth,
 		HostKeyCallback:   ssh.InsecureIgnoreHostKey(), // first contact; the API cert is pinned separately afterwards
 		HostKeyAlgorithms: []string{ssh.KeyAlgoED25519, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSA},
 		Timeout:           dialTimeout,
