@@ -66,7 +66,7 @@ func (a *App) SSHPublicKey() string {
 
 // AddDevice probes the device once (API) to capture its cert pin and identity,
 // then stores it. The API password is encrypted at rest.
-func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser string, setupTLS bool) (int64, error) {
+func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser string, setupTLS bool, bootUser, bootPass string) (int64, error) {
 	enc, err := a.Box.Encrypt(apiPass)
 	if err != nil {
 		return 0, err
@@ -74,6 +74,14 @@ func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser 
 	d := model.Device{
 		Name: name, IP: ip, APIPort: apiPort, APITLS: true,
 		APIUser: apiUser, APIPassEnc: enc, SSHUser: sshUser,
+	}
+	// Bootstrap: if an existing admin account was given, SSH in with it to create
+	// the API user, install ROSMan's key and set up api-ssl before probing. The
+	// bootstrap password is used only here and is never stored.
+	if bootUser != "" {
+		if err := ros.ProvisionDevice(d, bootUser, bootPass, apiUser, apiPass, a.SSHPublicKey(), a.signer, a.Cfg.SSHTimeout+90*time.Second); err != nil {
+			return 0, fmt.Errorf("provision over SSH failed: %w", err)
+		}
 	}
 	// First contact: pin whatever certificate the device presents (TOFU).
 	h, pin, err := ros.Poll(d, apiPass, a.Cfg.APITimeout)

@@ -48,7 +48,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "0.99.0"
+const Version = "1.0.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -1390,7 +1390,8 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 		if sshUser == "" {
 			sshUser = user
 		}
-		if _, err := s.a.AddDevice(name, ip, port, user, pass, sshUser, r.FormValue("setup_tls") == "on"); err != nil {
+		if _, err := s.a.AddDevice(name, ip, port, user, pass, sshUser, r.FormValue("setup_tls") == "on",
+			r.FormValue("boot_user"), r.FormValue("boot_pass")); err != nil {
 			results = append(results, app.ApplyResult{Device: label, OK: false, Detail: err.Error()})
 			continue
 		}
@@ -1411,7 +1412,8 @@ func (s *Server) newDeviceSubmit(w http.ResponseWriter, r *http.Request) {
 		sshUser = r.FormValue("api_user")
 	}
 	id, err := s.a.AddDevice(r.FormValue("name"), r.FormValue("ip"), port,
-		r.FormValue("api_user"), r.FormValue("api_pass"), sshUser, r.FormValue("setup_tls") == "on")
+		r.FormValue("api_user"), r.FormValue("api_pass"), sshUser, r.FormValue("setup_tls") == "on",
+		r.FormValue("boot_user"), r.FormValue("boot_pass"))
 	if err != nil {
 		catModels, _ := s.a.Store.AllVendorModels()
 		s.render(w, r, "new_device", map[string]any{"Active": "devices", "Err": err.Error(),

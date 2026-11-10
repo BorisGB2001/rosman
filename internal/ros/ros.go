@@ -1021,6 +1021,60 @@ func SetupAPISSL(d model.Device, sshUser, password string, signer ssh.Signer, di
 	return out, nil
 }
 
+// ProvisionDevice bootstraps a brand-new device for ROSMan over SSH using an
+// existing admin account: it creates (or updates) the API user with the given
+// password and full group, imports ROSMan's SSH public key onto that user for
+// config backups, and sets up an api-ssl certificate. The bootstrap password is
+// used only for this connection and is not stored; neither password is logged.
+func ProvisionDevice(d model.Device, bootUser, bootPass, apiUser, apiPass, rosmanPubKey string, signer ssh.Signer, dialTimeout time.Duration) error {
+	var auth []ssh.AuthMethod
+	if signer != nil {
+		auth = append(auth, ssh.PublicKeys(signer))
+	}
+	if bootPass != "" {
+		auth = append(auth, ssh.Password(bootPass))
+	}
+	conf := &ssh.ClientConfig{
+		User:              bootUser,
+		Auth:              auth,
+		HostKeyCallback:   ssh.InsecureIgnoreHostKey(), // first contact; the API cert is pinned separately afterwards
+		HostKeyAlgorithms: []string{ssh.KeyAlgoED25519, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSA},
+		Timeout:           dialTimeout,
+	}
+	client, err := ssh.Dial("tcp", d.IP+":22", conf)
+	if err != nil {
+		return fmt.Errorf("ssh: %w", err)
+	}
+	defer client.Close()
+
+	// 1) create or update the API user (secrets are not echoed in error output)
+	userScript := fmt.Sprintf(`:do { /user add name="%s" password="%s" group=full } on-error={ /user set [find name="%s"] password="%s" group=full }; :put user-ok`, apiUser, apiPass, apiUser, apiPass)
+	if _, err := run(client, userScript); err != nil {
+		return fmt.Errorf("create api user: %v", err)
+	}
+	// 2) import ROSMan's SSH public key onto the API user (so config backups work)
+	if rosmanPubKey != "" {
+		if sc, e := sftp.NewClient(client); e == nil {
+			if f, e := sc.Create("rosman.pub"); e == nil {
+				_, _ = f.Write([]byte(rosmanPubKey + "\n"))
+				f.Close()
+				_, _ = run(client, fmt.Sprintf(`:do { /user/ssh-keys/import user="%s" public-key-file=rosman.pub } on-error={}; /file remove [find where name="rosman.pub"]`, apiUser))
+			}
+			sc.Close()
+		}
+	}
+	// 3) set up the api-ssl certificate (create, self-sign, wait for signing, bind)
+	certScript := `:do { /certificate add name=rosman-api common-name=rosman-api key-size=2048 days-valid=3650 } on-error={}; /certificate sign rosman-api; :local n 0; :while ([:len [/certificate find where name="rosman-api"]]>0 and [/certificate get [find where name="rosman-api"] fingerprint]="" and $n<80) do={ :delay 1s; :set n ($n+1) }; /ip service set api-ssl certificate=rosman-api disabled=no; :put "rosman-api-ssl-ok"`
+	out, err := run(client, certScript)
+	if err != nil {
+		return fmt.Errorf("api-ssl setup: %v", err)
+	}
+	if !strings.Contains(out, "rosman-api-ssl-ok") {
+		return fmt.Errorf("api-ssl setup did not confirm")
+	}
+	return nil
+}
+
 // ArmGuard saves a binary backup and arms a scheduler that reloads it after
 // guardSeconds (a reboot that fully reverts). It returns the unique base name
 // used for both; disarm with DisarmGuard once the change is verified safe.
