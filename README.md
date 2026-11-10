@@ -89,6 +89,31 @@ Endpoints: `/api/v1/devices`, `/api/v1/devices/{id}`, `/api/v1/alerts`,
 ## Deployment
 
 A ready-made systemd unit is in [`deploy/rosman.service`](deploy/rosman.service).
+Deploy the release binary under a dedicated `rosman` user:
+
+```bash
+# 1. service user + directories
+sudo useradd -r -m -d /home/rosman -s /bin/bash rosman   # skip if the user exists
+sudo install -d -m755 -o rosman -g rosman /opt/rosman
+sudo install -d -m700 -o rosman -g rosman /opt/rosman/data
+
+# 2. latest release binary (pick your OS/arch asset)
+sudo curl -fsSL -o /opt/rosman/rosman \
+  https://github.com/BorisGB2001/rosman/releases/latest/download/rosman_linux_amd64
+sudo chmod +x /opt/rosman/rosman && sudo chown rosman:rosman /opt/rosman/rosman
+
+# 3. SSH key ROSMan uses to pull RouterOS /export backups (kept in the data dir
+#    so the full-backup archive includes it); import the .pub onto each device
+sudo -u rosman ssh-keygen -t ed25519 -N '' -f /opt/rosman/data/routeros_id_ed25519
+
+# 4. service
+sudo cp deploy/rosman.service /etc/systemd/system/rosman.service
+sudo systemctl daemon-reload && sudo systemctl enable --now rosman
+sudo journalctl -u rosman | grep 'initial admin'   # the one-time admin password
+```
+
+Then open `https://<host>:18443` and sign in as `admin` with that password.
+Build from source instead of a release binary with `go build -o rosman ./cmd/rosman`.
 
 ---
 

@@ -1,4 +1,4 @@
-# boris.gb 2026-11-08 00:04 - systemd-юнит для автозапуска ROSMan на astra (раньше запускался вручную в ssh-сессии и не переживал перезагрузку/закрытие сессии)
+# boris.gb 2026-11-10 12:01 - обобщил юнит под обычный хост: сервис-пользователь rosman (не root), ключ бэкапов в data-дире (входит в полный бэкап). Для root-развёртывания убери User/Group и укажи свой ROSMAN_SSH_KEY.
 [Unit]
 Description=ROSMan - MikroTik fleet manager
 After=network-online.target
@@ -6,10 +6,18 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# Run as a dedicated non-root user that owns /opt/rosman and its data dir.
+# For a root install, drop User/Group and point ROSMAN_SSH_KEY at root's key.
+User=rosman
+Group=rosman
 WorkingDirectory=/opt/rosman
 Environment=ROSMAN_LISTEN=:18443
 Environment=ROSMAN_DATA_DIR=/opt/rosman/data
-Environment=ROSMAN_SSH_KEY=/root/.ssh/routeros_crcp
+# SSH key ROSMan uses to pull /export backups from RouterOS. Kept inside the
+# data dir so the full-backup archive includes it. Generate with:
+#   ssh-keygen -t ed25519 -N '' -f /opt/rosman/data/routeros_id_ed25519
+# then import the .pub onto each device: /user/ssh-keys/import user=... public-key-file=...
+Environment=ROSMAN_SSH_KEY=/opt/rosman/data/routeros_id_ed25519
 ExecStart=/opt/rosman/rosman
 Restart=on-failure
 RestartSec=3
