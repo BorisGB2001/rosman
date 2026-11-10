@@ -121,6 +121,65 @@ func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser 
 }
 
 // PollDevice refreshes health/inventory over the API and evaluates alerts.
+// ProvTarget is one device to bulk-onboard (identity/IP only — no secrets).
+type ProvTarget struct{ IP, Name string }
+
+// StartProvision launches a background bulk-onboarding job: for each target it
+// SSHes in with the bootstrap admin account, creates the API user, installs the
+// key and api-ssl cert, and adds the device. The four credentials are captured
+// in the job goroutine's memory only — they are never written to the database or
+// the log; the progress tables hold status only.
+func (a *App) StartProvision(targets []ProvTarget, bootUser, bootPass, apiUser, apiPass string, apiPort, concurrency int, actor string) (int64, error) {
+	if len(targets) == 0 {
+		return 0, fmt.Errorf("no devices to onboard")
+	}
+	if bootUser == "" || bootPass == "" || apiUser == "" || apiPass == "" {
+		return 0, fmt.Errorf("bootstrap and API credentials are required")
+	}
+	if apiPort == 0 {
+		apiPort = 8729
+	}
+	if concurrency < 1 {
+		concurrency = 1
+	} else if concurrency > 20 {
+		concurrency = 20
+	}
+	job, err := a.Store.CreateProvisionJob(actor)
+	if err != nil {
+		return 0, err
+	}
+	for _, t := range targets {
+		_, _ = a.Store.AddProvisionItem(job, t.IP, t.Name)
+	}
+	go a.runProvisionJob(job, bootUser, bootPass, apiUser, apiPass, apiPort, concurrency)
+	return job, nil
+}
+
+func (a *App) runProvisionJob(jobID int64, bootUser, bootPass, apiUser, apiPass string, apiPort, concurrency int) {
+	items, _ := a.Store.ProvisionItems(jobID)
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	for _, it := range items {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(it model.ProvisionItem) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			_ = a.Store.SetProvisionItem(it.ID, "working", "")
+			name := it.Name
+			id, err := a.AddDevice(name, it.IP, apiPort, apiUser, apiPass, apiUser, false, bootUser, bootPass)
+			if err != nil {
+				_ = a.Store.SetProvisionItem(it.ID, "failed", err.Error())
+				return
+			}
+			_ = id
+			_ = a.Store.SetProvisionItem(it.ID, "done", "")
+		}(it)
+	}
+	wg.Wait()
+	_ = a.Store.FinishProvisionJob(jobID, "done")
+}
+
 // isTLSHandshakeErr reports whether a probe error is a TLS negotiation failure
 // (api-ssl present but unusable), as opposed to e.g. a refused connection.
 func isTLSHandshakeErr(err error) bool {

@@ -69,6 +69,61 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// ---- bulk provisioning jobs ----
+
+func (s *Store) CreateProvisionJob(actor string) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO provision_jobs(actor) VALUES(?)`, actor)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) AddProvisionItem(jobID int64, ip, name string) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO provision_items(job_id,ip,name) VALUES(?,?,?)`, jobID, ip, name)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) SetProvisionItem(id int64, status, detail string) error {
+	_, err := s.db.Exec(`UPDATE provision_items SET status=?, detail=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, status, detail, id)
+	return err
+}
+
+func (s *Store) FinishProvisionJob(id int64, status string) error {
+	_, err := s.db.Exec(`UPDATE provision_jobs SET status=? WHERE id=?`, status, id)
+	return err
+}
+
+func (s *Store) ProvisionItems(jobID int64) ([]model.ProvisionItem, error) {
+	rows, err := s.db.Query(`SELECT id,job_id,ip,name,status,detail,updated_at FROM provision_items WHERE job_id=? ORDER BY id`, jobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.ProvisionItem
+	for rows.Next() {
+		var it model.ProvisionItem
+		if err := rows.Scan(&it.ID, &it.JobID, &it.IP, &it.Name, &it.Status, &it.Detail, &it.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) LatestProvisionJob() (model.ProvisionJob, bool) {
+	var j model.ProvisionJob
+	err := s.db.QueryRow(`SELECT id,created_at,actor,status FROM provision_jobs ORDER BY id DESC LIMIT 1`).
+		Scan(&j.ID, &j.CreatedAt, &j.Actor, &j.Status)
+	if err != nil {
+		return model.ProvisionJob{}, false
+	}
+	return j, true
+}
+
 // ---- vendor / device-model catalog ----
 
 func (s *Store) Vendors() ([]model.Vendor, error) {

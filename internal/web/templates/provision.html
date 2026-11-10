@@ -1,0 +1,76 @@
+{{define "provision"}}{{template "head" .}}
+{{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
+<div class="cardhead"><h1 style="margin:0">{{t "prov.title"}}</h1>
+  <span class="muted small">{{t "prov.subtitle"}}</span></div>
+
+{{if .Job}}
+<div class="card"{{if .PActive}} data-prov-active="1"{{end}}>
+  <h3 style="margin-top:0">{{t "prov.job"}} #{{.Job.ID}}
+    <span class="badge {{if eq .Job.Status "done"}}good{{else}}info{{end}}">{{.Job.Status}}</span>
+    {{if .PActive}}<span class="muted small" id="prov-auto"> · {{t "fw.auto_refresh"}} <span class="fwspin">⟳</span></span>{{end}}</h3>
+  <div style="margin:6px 0 12px">
+    <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line)">
+      <div id="prov-bar" style="background:{{if .PActive}}var(--accent){{else}}var(--good){{end}};width:{{pct .PDone .PTotal}}%;transition:width .4s"></div>
+    </div>
+    <div class="muted small" style="margin-top:4px" id="prov-count">{{.PDone}} / {{.PTotal}}{{if .PFailed}} · <span style="color:var(--bad)">{{t "prov.failed"}}: {{.PFailed}}</span>{{end}}</div>
+  </div>
+  <div class="scroll"><table class="dtable">
+    <thead><tr><th>IP</th><th>{{t "col.name"}}</th><th>{{t "al.state"}}</th><th>{{t "al.detail"}}</th></tr></thead>
+    <tbody id="prov-items">
+    {{range .Items}}<tr><td class="mono">{{.IP}}</td><td>{{.Name}}</td><td>{{template "provstatus" .Status}}</td><td class="muted">{{.Detail}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+{{end}}
+
+{{if isAdmin .User}}
+<form method="post" action="/provision/start" onsubmit="return confirm('{{t "prov.confirm"}}')">
+<div class="card narrow" style="border-color:var(--accent)">
+  <h3 style="margin-top:0">{{t "prov.start_title"}}</h3>
+  <p class="muted small">{{t "prov.found"}}: <b>{{.CandidateN}}</b> ({{t "prov.scope"}})</p>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <fieldset style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:0">
+      <legend class="muted small" style="padding:0 6px">{{t "prov.bootstrap"}}</legend>
+      <label>{{t "newdev.boot_user"}}<input name="boot_user" autocomplete="off" required placeholder="admin"></label>
+      <label style="margin-top:8px">{{t "newdev.boot_pass"}}<input name="boot_pass" type="password" autocomplete="new-password" required></label>
+    </fieldset>
+    <fieldset style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:0">
+      <legend class="muted small" style="padding:0 6px">{{t "prov.apiuser"}}</legend>
+      <label>{{t "newdev.apiuser"}}<input name="api_user" autocomplete="off" required value="audit"></label>
+      <label style="margin-top:8px">{{t "newdev.apipass"}}<input name="api_pass" type="password" autocomplete="new-password" required></label>
+    </fieldset>
+    <div style="display:flex;gap:16px;flex-wrap:wrap">
+      <label>{{t "newdev.port"}}<input name="api_port" value="8729" style="width:90px"></label>
+      <label>{{t "fw.concurrency"}}<input name="concurrency" value="8" style="width:70px"></label>
+    </div>
+  </div>
+  <div style="margin-top:12px"><button class="btn danger" type="submit">{{t "prov.start_btn"}} ({{.CandidateN}})</button></div>
+  <p class="muted small" style="margin-top:8px">{{t "prov.note"}}</p>
+</div>
+</form>
+{{end}}
+<script>
+(function(){
+  if(!document.querySelector('[data-prov-active="1"]')) return;
+  var esc=function(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;};
+  var badge=function(st){var c=st==='done'?'good':st==='failed'?'bad':st==='working'?'info':'';return '<span class="badge '+c+'">'+esc(st)+'</span>';};
+  var tick=function(){
+    fetch('/provision/progress',{headers:{'Accept':'application/json'}}).then(function(r){return r.json();}).then(function(d){
+      if(!d.job) return;
+      var pct=d.total>0?Math.round(d.done*100/d.total):0;
+      var bar=document.getElementById('prov-bar'); if(bar){bar.style.width=pct+'%'; if(!d.active) bar.style.background='var(--good)';}
+      var cnt=document.getElementById('prov-count'); if(cnt){cnt.innerHTML=d.done+' / '+d.total+(d.failed?' · <span style="color:var(--bad)">'+d.failed+' fail</span>':'');}
+      var tb=document.getElementById('prov-items');
+      if(tb&&d.items){ tb.innerHTML=d.items.map(function(i){ return '<tr><td class="mono">'+esc(i.IP)+'</td><td>'+esc(i.Name)+'</td><td>'+badge(i.Status)+'</td><td class="muted">'+esc(i.Detail)+'</td></tr>'; }).join(''); }
+      if(!d.active){ var a=document.getElementById('prov-auto'); if(a) a.remove(); return; }
+      setTimeout(tick,4000);
+    }).catch(function(){ setTimeout(tick,8000); });
+  };
+  setTimeout(tick,4000);
+})();
+</script>
+<style>.fwspin{display:inline-block;animation:fwsp 1.1s linear infinite}@keyframes fwsp{to{transform:rotate(360deg)}}</style>
+{{template "tail" .}}{{end}}
+
+{{define "provstatus"}}<span class="badge {{if eq . "done"}}good{{else if eq . "failed"}}bad{{else if eq . "working"}}info{{end}}">{{.}}</span>{{end}}

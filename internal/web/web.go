@@ -48,7 +48,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "1.0.0"
+const Version = "1.1.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -160,6 +160,9 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/setip", s.authed(s.requireRole(model.RoleOperator, s.deviceSetIP)))
 	mux.Handle("GET /devices/import", s.authed(s.requireRole(model.RoleOperator, s.importForm)))
 	mux.Handle("POST /devices/import", s.authed(s.requireRole(model.RoleOperator, s.importRun)))
+	mux.Handle("GET /provision", s.authed(s.requireRole(model.RoleOperator, s.provisionPage)))
+	mux.Handle("POST /provision/start", s.authed(s.requireRole(model.RoleAdmin, s.provisionStart)))
+	mux.Handle("GET /provision/progress", s.authed(s.requireRole(model.RoleOperator, s.provisionProgress)))
 	mux.Handle("GET /devices/{id}", s.authed(s.deviceDetail))
 	mux.Handle("POST /devices/{id}/poll", s.authed(s.requireRole(model.RoleOperator, s.devicePoll)))
 	mux.Handle("POST /devices/{id}/backup", s.authed(s.requireRole(model.RoleOperator, s.deviceBackup)))
@@ -3664,6 +3667,90 @@ func (s *Server) vendorCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/vendors/%d", id), http.StatusSeeOther)
+}
+
+// provisionTargets lists discovered-but-unmanaged devices in 10.0.0.0/8 — the
+// candidates for bulk SSH onboarding.
+func (s *Server) provisionTargets() []app.ProvTarget {
+	managed, _ := s.a.Store.AllManagedAddrs()
+	neigh, _ := s.a.Store.AllNeighbors()
+	seen := map[string]bool{}
+	var out []app.ProvTarget
+	for _, n := range neigh {
+		ip := n.IP
+		if ip == "" || !strings.HasPrefix(ip, "10.") { // 10.0.0.0/8 only
+			continue
+		}
+		if managed[ip] || seen[ip] {
+			continue
+		}
+		seen[ip] = true
+		out = append(out, app.ProvTarget{IP: ip, Name: n.Identity})
+	}
+	return out
+}
+
+func (s *Server) provisionPage(w http.ResponseWriter, r *http.Request) {
+	data := map[string]any{"Active": "devices", "CandidateN": len(s.provisionTargets()),
+		"Err": r.URL.Query().Get("err"), "Msg": r.URL.Query().Get("msg")}
+	if job, ok := s.a.Store.LatestProvisionJob(); ok {
+		items, _ := s.a.Store.ProvisionItems(job.ID)
+		done, failed := 0, 0
+		for _, it := range items {
+			switch it.Status {
+			case "done":
+				done++
+			case "failed":
+				done++
+				failed++
+			}
+		}
+		data["Job"] = job
+		data["Items"] = items
+		data["PDone"] = done
+		data["PFailed"] = failed
+		data["PTotal"] = len(items)
+		data["PActive"] = job.Status != "done" && done < len(items) && time.Since(job.CreatedAt) < 2*time.Hour
+	}
+	s.render(w, r, "provision", data)
+}
+
+func (s *Server) provisionStart(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	targets := s.provisionTargets()
+	port, _ := strconv.Atoi(r.FormValue("api_port"))
+	conc, _ := strconv.Atoi(r.FormValue("concurrency"))
+	if _, err := s.a.StartProvision(targets, r.FormValue("boot_user"), r.FormValue("boot_pass"),
+		r.FormValue("api_user"), r.FormValue("api_pass"), port, conc, userFrom(r).Username); err != nil {
+		http.Redirect(w, r, "/provision?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "bulk_provision", fmt.Sprintf("%d devices", len(targets)))
+	http.Redirect(w, r, "/provision", http.StatusSeeOther)
+}
+
+func (s *Server) provisionProgress(w http.ResponseWriter, r *http.Request) {
+	job, ok := s.a.Store.LatestProvisionJob()
+	if !ok {
+		writeJSON(w, 200, map[string]any{"job": false})
+		return
+	}
+	items, _ := s.a.Store.ProvisionItems(job.ID)
+	done, failed := 0, 0
+	type it struct{ IP, Name, Status, Detail string }
+	out := make([]it, 0, len(items))
+	for _, i := range items {
+		if i.Status == "done" || i.Status == "failed" {
+			done++
+		}
+		if i.Status == "failed" {
+			failed++
+		}
+		out = append(out, it{i.IP, i.Name, i.Status, i.Detail})
+	}
+	active := job.Status != "done" && done < len(items) && time.Since(job.CreatedAt) < 2*time.Hour
+	writeJSON(w, 200, map[string]any{"job": true, "status": job.Status, "total": len(items),
+		"done": done, "failed": failed, "active": active, "items": out})
 }
 
 // vendorsImportMikrotik builds (or refreshes) the MikroTik catalog from what the

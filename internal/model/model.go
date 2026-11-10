@@ -145,6 +145,26 @@ type FwItem struct {
 	UpdatedAt  time.Time
 }
 
+// ProvisionJob is a bulk SSH-onboarding run. Credentials live only in the
+// running job's memory; these records carry progress only, never secrets.
+type ProvisionJob struct {
+	ID        int64
+	CreatedAt time.Time
+	Actor     string
+	Status    string
+}
+
+// ProvisionItem is one device's progress within a provisioning job.
+type ProvisionItem struct {
+	ID        int64
+	JobID     int64
+	IP        string
+	Name      string
+	Status    string // pending | working | done | failed
+	Detail    string
+	UpdatedAt time.Time
+}
+
 // Vendor is a manufacturer in the device-model catalog.
 type Vendor struct {
 	ID         int64

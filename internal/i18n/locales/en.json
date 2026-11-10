@@ -693,5 +693,17 @@
   "newdev.bootstrap_note": "Give an existing admin account and ROSMan logs in over SSH, creates the API user (from the fields above) in the full group, imports its backup key and sets up api-ssl, then adds the device. This account's password is used only now and is never stored.",
   "newdev.boot_user": "Admin user (bootstrap)",
   "newdev.boot_pass": "Admin password (bootstrap)",
-  "imp.bootstrap_note": "Applied to every row: ROSMan logs in over SSH with this admin account, creates the CSV's API user, sets up the key and api-ssl. The password is not stored. Start with 1–2 devices to verify."
+  "imp.bootstrap_note": "Applied to every row: ROSMan logs in over SSH with this admin account, creates the CSV's API user, sets up the key and api-ssl. The password is not stored. Start with 1–2 devices to verify.",
+  "prov.title": "Bulk onboarding",
+  "prov.subtitle": "Onboard discovered devices over SSH — create the API user, set up the certificate and add them — as a background job",
+  "prov.start_title": "Start bulk onboarding",
+  "prov.found": "Found to onboard",
+  "prov.scope": "discovered in 10.0.0.0/8, not yet in the database",
+  "prov.bootstrap": "Admin account to log in (bootstrap, not stored)",
+  "prov.apiuser": "API user to create",
+  "prov.start_btn": "Start onboarding",
+  "prov.confirm": "ROSMan will SSH into every found device, create the API user and set up api-ssl. This changes production devices. Continue?",
+  "prov.note": "Runs in the background with several workers. Passwords are used only during the job and are never stored or logged. Failures (unreachable / wrong password / SSH closed) show in the table.",
+  "prov.job": "Onboarding job",
+  "prov.failed": "failed"
 }

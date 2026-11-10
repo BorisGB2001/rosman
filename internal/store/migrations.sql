@@ -345,3 +345,22 @@ CREATE TABLE IF NOT EXISTS vendor_models (
 );
 CREATE INDEX IF NOT EXISTS idx_vendor_models ON vendor_models(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_vendor_models_norm ON vendor_models(norm);
+
+-- Bulk SSH onboarding (provisioning) job: credentials are held only in memory
+-- by the running job; these tables store progress only, never secrets.
+CREATE TABLE IF NOT EXISTS provision_jobs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    actor      TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'running'
+);
+CREATE TABLE IF NOT EXISTS provision_items (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id     INTEGER NOT NULL REFERENCES provision_jobs(id) ON DELETE CASCADE,
+    ip         TEXT NOT NULL,
+    name       TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'pending',
+    detail     TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_provision_items ON provision_items(job_id);

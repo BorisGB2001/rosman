@@ -23,6 +23,7 @@
     </form>
     <button type="button" class="btn sm secondary gearbtn" data-cols-for="devtable" title="{{t "col.columns"}}">⚙</button>
     <a class="btn sm secondary" href="/devices.csv" title="{{t "dev.export_csv"}}">↓ CSV</a>
+    {{if isAdmin .User}}<a class="btn secondary sm" href="/provision">{{t "prov.title"}}</a>{{end}}
     {{if canWrite .User}}<a class="btn secondary sm" href="/devices/import">{{t "imp.title"}}</a>
     <a class="btn primary sm" href="/devices/new">+ {{t "nav.add"}}</a>{{end}}
   </div>
