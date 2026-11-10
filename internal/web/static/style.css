@@ -99,6 +99,11 @@ b.bad { color: var(--bad); }
   position: sticky;
   top: 0;
   height: 100vh;
+  /* scroll the menu itself when it is taller than the viewport, instead of
+     clipping the top/bottom items with no way to reach them */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 .brand { color: var(--side-on); font-weight: 700; font-size: 16px; padding: 0 8px; }
 .brand.big { color: var(--fg); font-size: 22px; padding: 0; }
