@@ -157,6 +157,10 @@ td.nowrap, .nowrap { white-space: nowrap; }
 /* cards */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; }
 .card.narrow { max-width: 460px; }
+/* responsive card grid: 2–3 cards per row, each filling its cell, adapts down
+   to one column on narrow screens */
+.cardgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; align-items: start; margin-bottom: 18px; }
+.cardgrid > .card { margin-bottom: 0; max-width: none; }
 .cardhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
 .badges { display: flex; gap: 6px; flex-wrap: wrap; }
 
