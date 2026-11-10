@@ -252,6 +252,15 @@ input, select, textarea {
   border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; min-width: 0;
 }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* checkboxes/radios must not inherit the surface bg/border/padding above, which
+   makes them a dim box that's hard to see on the dark theme — render them native
+   with an accent colour and a clear size */
+input[type=checkbox], input[type=radio] {
+  appearance: auto; -webkit-appearance: auto;
+  width: 16px; height: 16px; min-width: 16px; padding: 0; margin: 0;
+  background: none; border: none; border-radius: 0;
+  accent-color: var(--accent); cursor: pointer; vertical-align: middle;
+}
 textarea.code { width: 100%; font-family: var(--mono); font-size: 12.5px; line-height: 1.45; resize: vertical; }
 .btn {
   display: inline-block; font: inherit; cursor: pointer; border-radius: 7px; padding: 7px 14px;
