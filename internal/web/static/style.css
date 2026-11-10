@@ -157,10 +157,12 @@ td.nowrap, .nowrap { white-space: nowrap; }
 /* cards */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; }
 .card.narrow { max-width: 460px; }
-/* responsive card grid: 2–3 cards per row, each filling its cell, adapts down
-   to one column on narrow screens */
-.cardgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; align-items: start; margin-bottom: 18px; }
+/* responsive card grid: up to 3 cards per row, equal height within a row so the
+   edges don't jump; collapses to 2 then 1 column on narrower screens */
+.cardgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: stretch; margin-bottom: 18px; }
 .cardgrid > .card { margin-bottom: 0; max-width: none; }
+@media (max-width: 1200px) { .cardgrid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 720px)  { .cardgrid { grid-template-columns: 1fr; } }
 .cardhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
 .badges { display: flex; gap: 6px; flex-wrap: wrap; }
 
