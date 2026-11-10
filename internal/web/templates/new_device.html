@@ -21,6 +21,7 @@
     <span class="muted small">{{t "newdev.template_note"}}</span>
     {{end}}
     <label>{{t "img.notes"}}<textarea id="devnotes" name="notes" rows="3" placeholder="{{t "img.notes_ph"}}"></textarea></label>
+    <label style="flex-direction:row;gap:8px;align-items:flex-start"><input type="checkbox" name="setup_tls" style="margin-top:3px"> <span>{{t "newdev.setup_tls"}}<br><span class="muted small">{{t "newdev.setup_tls_note"}}</span></span></label>
     <div class="badges" style="margin-top:6px">
       <button class="btn primary" type="submit">{{t "common.add"}}</button>
       <a class="btn" href="/">{{t "common.cancel"}}</a>

@@ -66,7 +66,7 @@ func (a *App) SSHPublicKey() string {
 
 // AddDevice probes the device once (API) to capture its cert pin and identity,
 // then stores it. The API password is encrypted at rest.
-func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser string) (int64, error) {
+func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser string, setupTLS bool) (int64, error) {
 	enc, err := a.Box.Encrypt(apiPass)
 	if err != nil {
 		return 0, err
@@ -78,7 +78,22 @@ func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser 
 	// First contact: pin whatever certificate the device presents (TOFU).
 	h, pin, err := ros.Poll(d, apiPass, a.Cfg.APITimeout)
 	if err != nil {
-		return 0, fmt.Errorf("probe failed: %w", err)
+		// If api-ssl rejects the TLS handshake (usually no certificate on the
+		// service) and the operator asked to, bootstrap a cert over SSH with the
+		// password and retry the probe.
+		if setupTLS && isTLSHandshakeErr(err) {
+			su := sshUser
+			if su == "" {
+				su = apiUser
+			}
+			if _, serr := ros.SetupAPISSL(d, su, apiPass, 20*time.Second); serr != nil {
+				return 0, fmt.Errorf("probe failed (%v); api-ssl setup over SSH failed: %w", err, serr)
+			}
+			h, pin, err = ros.Poll(d, apiPass, a.Cfg.APITimeout)
+		}
+		if err != nil {
+			return 0, fmt.Errorf("probe failed: %w", err)
+		}
 	}
 	d.APICertPin = pin
 	if h.Identity != "" && name == "" {
@@ -98,6 +113,13 @@ func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser 
 }
 
 // PollDevice refreshes health/inventory over the API and evaluates alerts.
+// isTLSHandshakeErr reports whether a probe error is a TLS negotiation failure
+// (api-ssl present but unusable), as opposed to e.g. a refused connection.
+func isTLSHandshakeErr(err error) bool {
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "handshake") || strings.Contains(s, "tls:")
+}
+
 // guessType makes a rough router/switch guess from the board model. It is only
 // a default; the type can be changed by hand on the device page.
 func guessType(model string) string {

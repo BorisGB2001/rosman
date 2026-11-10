@@ -976,6 +976,40 @@ func RunCommand(d model.Device, signer ssh.Signer, command string, timeout time.
 	return o, seen, rerr
 }
 
+// SetupAPISSL bootstraps a device whose api-ssl rejects the TLS handshake
+// (typically because no certificate is assigned to the service). It connects
+// over SSH with a password — the device does not trust ROSMan's key yet — then
+// creates a self-signed certificate, waits for RouterOS to finish signing it
+// (key generation is asynchronous), and points the api-ssl service at it. After
+// this the device can be reached over the binary API and added normally.
+func SetupAPISSL(d model.Device, sshUser, password string, dialTimeout time.Duration) (string, error) {
+	conf := &ssh.ClientConfig{
+		User:              sshUser,
+		Auth:              []ssh.AuthMethod{ssh.Password(password)},
+		HostKeyCallback:   ssh.InsecureIgnoreHostKey(), // first contact; the API cert is pinned separately afterwards
+		HostKeyAlgorithms: []string{ssh.KeyAlgoED25519, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSA},
+		Timeout:           dialTimeout,
+	}
+	client, err := ssh.Dial("tcp", d.IP+":22", conf)
+	if err != nil {
+		return "", fmt.Errorf("ssh: %w", err)
+	}
+	defer client.Close()
+	// Create the cert if missing, self-sign it, wait until it has a fingerprint
+	// (i.e. signing finished), then bind it to api-ssl and enable the service.
+	// One line / one scope: RouterOS does not carry :local vars across separate
+	// CLI statements, so the counter and the wait loop must share a statement.
+	script := `:do { /certificate add name=rosman-api common-name=rosman-api key-size=2048 days-valid=3650 } on-error={}; :do { /certificate sign rosman-api } on-error={}; :local n 0; :while ([:len [/certificate find where name="rosman-api"]]>0 and [/certificate get [find where name="rosman-api"] fingerprint]="" and $n<80) do={ :delay 1s; :set n ($n+1) }; /ip service set api-ssl certificate=rosman-api disabled=no; :put "rosman-api-ssl-ok"`
+	out, rerr := run(client, script)
+	if rerr != nil {
+		return out, fmt.Errorf("setup api-ssl: %v (%s)", rerr, strings.TrimSpace(out))
+	}
+	if !strings.Contains(out, "rosman-api-ssl-ok") {
+		return out, fmt.Errorf("api-ssl setup did not confirm: %s", strings.TrimSpace(out))
+	}
+	return out, nil
+}
+
 // ArmGuard saves a binary backup and arms a scheduler that reloads it after
 // guardSeconds (a reboot that fully reverts). It returns the unique base name
 // used for both; disarm with DisarmGuard once the change is verified safe.

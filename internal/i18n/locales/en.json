@@ -686,5 +686,7 @@
   "ven.import_mik": "Import MikroTik models",
   "ven.import_note": "Builds the MikroTik catalog from your fleet's models and attaches images from the Visio/SVG set (data/models). Safe to re-run.",
   "ven.mik_notes": "MikroTik (RouterOS). Model images from the official Visio/SVG set. Monitored over SNMP (mikrotik.mib). Fill in the main settings as needed.",
-  "ven.imported": "Models imported"
+  "ven.imported": "Models imported",
+  "newdev.setup_tls": "Set up api-ssl over SSH if TLS isn't ready",
+  "newdev.setup_tls_note": "If the device rejects TLS (no certificate on api-ssl), ROSMan logs in over SSH with this password, creates a certificate and enables api-ssl, then retries. May take up to a minute."
 }

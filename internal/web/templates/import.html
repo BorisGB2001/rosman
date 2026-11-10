@@ -9,6 +9,7 @@
 10.0.0.2,admin,secret</pre>
   <form method="post" action="/devices/import">
     <textarea name="csv" rows="10" style="width:100%;font-family:monospace" placeholder="ip,api_user,api_pass,name,api_port,ssh_user" required>{{.CSV}}</textarea>
+    <label style="flex-direction:row;gap:8px;align-items:flex-start;margin-top:10px"><input type="checkbox" name="setup_tls" style="margin-top:3px"> <span>{{t "newdev.setup_tls"}} <span class="muted small">({{t "newdev.setup_tls_note"}})</span></span></label>
     <div style="margin-top:10px"><button class="btn primary" type="submit">{{t "imp.run"}}</button>
       <a href="/devices/new" class="btn sm secondary" style="margin-left:8px">{{t "nav.add"}}</a></div>
   </form>
