@@ -27,6 +27,7 @@
       <div id="gallery" class="gallery">
         {{if .ModelImg}}<div class="gslide"><img src="{{.ModelImg}}" alt="{{.D.Model}}"><div class="gcap muted small">{{t "img.model_default"}}: {{.D.Model}}</div></div>{{end}}
         {{if and .HasCatModel .CatModel.HasImage}}<div class="gslide"><img src="/vmodel/{{.CatModel.ID}}/image" alt="{{.CatModel.Name}}"><div class="gcap muted small">{{t "ven.from_catalog"}}: {{.CatModel.VendorName}} {{.CatModel.Name}}</div></div>{{end}}
+        {{range .CatExtra}}<div class="gslide"><img src="/vmodel/{{$.CatModel.ID}}/image/{{.}}" alt="{{$.CatModel.Name}}" loading="lazy"><div class="gcap muted small">{{t "ven.from_catalog"}}: {{$.CatModel.VendorName}} {{$.CatModel.Name}}</div></div>{{end}}
         {{range .Images}}<div class="gslide"><img src="/devices/{{.DeviceID}}/image/{{.ID}}" alt="{{.Caption}}">
           <div class="gcap muted small">{{if .Caption}}{{.Caption}}{{else}}{{dateT .CreatedAt}}{{end}}
             {{if canWrite $.User}}<form class="inline" method="post" action="/devices/{{.DeviceID}}/image/{{.ID}}/delete" style="display:inline;margin-left:6px"><button class="link" type="submit" onclick="return confirm('{{t "img.del_confirm"}}')" title="{{t "site.delete"}}">🗑️</button></form>{{end}}</div>
@@ -101,11 +102,19 @@
   <tr><th>{{t "col.seen"}}</th><td class="muted">{{if .D.LastFail}}<span class="badge bad" title="{{t "col.failing_since"}}">{{t "dev.no_link"}} · {{ago .D.LastFail}}</span> {{end}}{{ago .D.LastSeen}}</td><th>{{t "dev.sshuser"}}</th><td>{{.D.SSHUser}}</td></tr>
   <tr><th>{{t "col.lastbackup"}}</th><td>{{if .D.LastBackup}}<span class="badge {{if .BkStale}}bad{{else}}good{{end}}">{{ago .D.LastBackup}}</span> <span class="muted small">{{tsp .D.LastBackup}}</span>{{else}}<span class="badge bad">{{t "bk.never"}}</span>{{end}}</td><th>{{t "bkp.period"}}</th><td class="muted">{{if .D.BackupIntervalSec}}{{.BkOwn}}{{else}}{{.BkGlobal}} <span class="small">({{t "bkp.global"}})</span>{{end}} · <span class="small">{{t "bkp.red_after"}} {{.BkStaleAfter}}</span></td></tr>
   <tr><th>API cert pin</th><td class="mono" colspan="3">{{if .D.APICertPin}}{{.D.APICertPin}}{{else}}—{{end}}</td></tr>
-  <tr><th>SSH host pin</th><td class="mono" colspan="3">{{if .D.SSHHostPin}}{{.D.SSHHostPin}}{{else}}—{{end}}</td></tr>
+  <tr><th>SSH host pin</th><td class="mono" colspan="3">{{if .D.SSHHostPin}}{{.D.SSHHostPin}}{{else}}—{{end}}
+    {{if canWrite .User}}<span style="display:inline-flex;gap:6px;margin-left:10px;vertical-align:middle;font-family:var(--sans,inherit)">
+      {{if .HasSSH}}<form class="inline" method="post" action="/devices/{{.D.ID}}/sshkey" onsubmit="return confirm('{{t "ssh.key_confirm"}}')"><button class="btn sm" type="submit" title="{{t "ssh.key_hint"}}">🔑 {{t "ssh.key_install"}}</button></form>{{end}}
+      {{if .D.SSHHostPin}}<form class="inline" method="post" action="/devices/{{.D.ID}}/hostpin-reset" onsubmit="return confirm('{{t "ssh.pin_confirm"}}')"><button class="btn sm" type="submit" title="{{t "ssh.pin_hint"}}">{{t "ssh.pin_reset"}}</button></form>{{end}}
+    </span>{{end}}</td></tr>
 </table></div>
 <div class="card">
-  <h3>{{t "dev.faceplate"}}</h3>
-  {{if .Faceplate}}<div style="display:flex;gap:22px;align-items:center;flex-wrap:wrap"><div style="flex:none">{{.Faceplate}}</div><p class="muted small" style="flex:1;min-width:200px;margin:0">{{t "dev.faceplate_legend"}}</p></div>{{else}}<p class="muted">{{t "dev.faceplate_none"}}</p>{{end}}
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+    <h3 style="margin:0">{{t "dev.faceplate"}}</h3>
+    <span class="badge">{{if eq .FpSource "device"}}{{t "fp.src_device"}}{{else if eq .FpSource "model"}}{{t "fp.src_model"}}{{else}}{{t "fp.src_auto"}}{{end}}</span>
+    {{if canWrite .User}}<a class="btn sm secondary" href="/devices/{{.D.ID}}/layout" style="margin-left:auto">✎ {{t "fp.edit_device"}}</a>{{end}}
+  </div>
+  {{if .Faceplate}}{{.Faceplate}}<p class="muted small" style="margin:10px 0 0">{{t "dev.faceplate_legend"}}</p>{{else}}<p class="muted">{{t "dev.faceplate_none"}}</p>{{end}}
 </div>
 {{if .PortConns}}
 <div class="card">

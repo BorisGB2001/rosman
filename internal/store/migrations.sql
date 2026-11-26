@@ -365,3 +365,13 @@ CREATE TABLE IF NOT EXISTS provision_items (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_provision_items ON provision_items(job_id);
+
+-- Extra photos of a catalog model (the first/cover one lives in vendor_models.image).
+CREATE TABLE IF NOT EXISTS vendor_model_images (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id     INTEGER NOT NULL REFERENCES vendor_models(id) ON DELETE CASCADE,
+    content_type TEXT NOT NULL DEFAULT '',
+    data         BLOB NOT NULL,
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_vendor_model_images ON vendor_model_images(model_id);

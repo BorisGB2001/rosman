@@ -1329,3 +1329,18 @@ func CheckSSH(d model.Device, signer ssh.Signer, timeout time.Duration) error {
 	_, err = run(client, ":put ok")
 	return err
 }
+
+// InstallSSHKeyAPI authorises an SSH public key for a user over the API (no
+// SSH needed), so a device that only has API access can be made backup-ready.
+// It is a no-op when the user already has a key with the same body.
+func InstallSSHKeyAPI(d model.Device, pass, user, pubKey string, timeout time.Duration) error {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	if _, err := c.Run("/user/ssh-keys/add", "=user="+user, "=key="+pubKey); err != nil {
+		return fmt.Errorf("add ssh key for %s: %w", user, err)
+	}
+	return nil
+}

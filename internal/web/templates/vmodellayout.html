@@ -1,9 +1,23 @@
 {{define "vmodellayout"}}{{template "head" .}}
 {{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
 {{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
-<div class="cardhead"><h1 style="margin:0">{{t "lay.title"}}: {{.M.VendorName}} {{.M.Name}}</h1>
-  <a href="/vendors/{{.M.VendorID}}" class="muted small" style="margin-left:auto">← {{t "ven.title"}}</a></div>
-<p class="muted small" style="margin-top:-6px">{{t "lay.help"}}</p>
+<div class="cardhead"><h1 style="margin:0">{{t "lay.title"}}: {{.Title}}{{if .Sub}} <small class="muted">{{.Sub}}</small>{{end}}</h1>
+  <a href="{{.Back}}" class="muted small" style="margin-left:auto">← {{if .IsDevice}}{{t "dev.back_card"}}{{else}}{{t "ven.title"}}{{end}}</a></div>
+<p class="muted small" style="margin-top:-6px">{{if .IsDevice}}{{t "lay.help_device"}}{{else}}{{t "lay.help"}}{{end}}</p>
+{{if .IsDevice}}
+<div class="card">
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <span class="muted small">{{t "lay.start_from"}}</span>
+    <button type="button" class="btn sm" onclick="lgFromTemplate()" {{if not .HasTpl}}disabled title="{{t "lay.no_tpl"}}"{{end}}>{{t "lay.from_template"}}</button>
+    <button type="button" class="btn sm" onclick="lgFromReal()">{{t "lay.from_real"}}</button>
+    <span class="muted">·</span>
+    <span class="muted small">{{t "lay.add_real"}}</span>
+    <select id="realsel" style="max-width:200px"></select>
+    <button type="button" class="btn sm" onclick="lgAddReal()">{{t "nav.add"}}</button>
+    <button type="button" class="btn sm secondary" onclick="lgAddAllMissing()">{{t "lay.add_missing"}}</button>
+  </div>
+</div>
+{{end}}
 
 <div class="card">
   <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
@@ -55,24 +69,33 @@
   <div id="emptyhint" class="muted" style="padding:14px 4px">{{t "lay.empty"}}</div>
 </div>
 
-<form method="post" action="/vmodel/{{.M.ID}}/layout" onsubmit="document.getElementById('layout-json').value=JSON.stringify(STATE)">
+<form method="post" action="{{.Action}}" onsubmit="document.getElementById('layout-json').value=JSON.stringify(STATE)">
   <input type="hidden" name="layout" id="layout-json">
   <div style="display:flex;gap:10px;align-items:center">
     <button class="btn primary" type="submit">{{t "set.save"}}</button>
     <button class="btn secondary" type="button" onclick="if(confirm('{{t "lay.clear_confirm"}}')){STATE={groups:[],rows:[]};lgRender();}">{{t "lay.clear"}}</button>
-    <span class="muted small">{{t "lay.save_note"}}</span>
+    <span class="muted small">{{if .IsDevice}}{{t "lay.save_note_device"}}{{else}}{{t "lay.save_note"}}{{end}}</span>
   </div>
 </form>
+{{if and .IsDevice .HasOwn}}
+<form method="post" action="{{.Action}}" style="margin-top:10px" onsubmit="return confirm('{{t "lay.reset_confirm"}}')">
+  <input type="hidden" name="reset" value="1"><button class="btn sm danger" type="submit">{{t "lay.reset_device"}}</button>
+</form>
+{{end}}
 
 <style>
 .lgrid{display:flex;flex-direction:column;gap:12px}
 .lrow{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;min-height:56px;padding:6px;border:1px dashed var(--line);border-radius:8px}
 .lrow.drop{border-color:var(--accent);background:#8882}
-.ltile{position:relative;width:46px;display:flex;flex-direction:column;align-items:center;cursor:grab;user-select:none}
+.ltile{position:relative;width:58px;display:flex;flex-direction:column;align-items:center;cursor:grab;user-select:none}
 .ltile .pbody{width:42px;height:34px;border-radius:5px;border:1px solid #0005;background:var(--muted);display:flex;align-items:center;justify-content:center}
 .ltile .pbody .slot{width:16px;height:6px;border-radius:1px;background:var(--surface)}
 .ltile.gap .pbody{background:none;border:1px dashed var(--line)}
-.ltile .plabel{font-size:10px;color:var(--muted);margin-top:2px}
+.ltile .plabel{font-size:10px;color:var(--muted);margin-top:2px;max-width:58px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ltile .pname{font-size:10px;color:var(--accent);max-width:58px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ltile .pedit{position:absolute;top:-6px;left:-4px;font-size:10px;line-height:1;cursor:pointer;opacity:0;background:var(--accent);color:#fff;border-radius:50%;width:15px;height:15px;display:flex;align-items:center;justify-content:center}
+.ltile:hover .pedit{opacity:1}
+.ltile.missing .pbody{outline:2px dashed var(--bad);outline-offset:1px}
 .ltile .pdel{position:absolute;top:-6px;right:-4px;font-size:11px;line-height:1;cursor:pointer;opacity:0;background:var(--bad);color:#fff;border-radius:50%;width:15px;height:15px;display:flex;align-items:center;justify-content:center}
 .ltile:hover .pdel{opacity:1}
 .ltile.dragging{opacity:.4}
@@ -82,6 +105,55 @@
 </style>
 <script>
 var STATE = Object.assign({groups:[],rows:[]}, {{.Layout}});
+var TPL = {{.TplLayout}}, REAL = {{.RealPorts}}, IS_DEVICE = {{if .IsDevice}}true{{else}}false{{end}};
+var KIND_NAMES = {ether:'Ethernet', sfp:'SFP', sfpp:'SFP+', qsfp:'QSFP', wlan:'{{t "fp.wlan"}}', lte:'LTE', tun:'{{t "fp.tun"}}'};
+var KIND_COLORS = {ether:'', sfp:'#3b82f6', sfpp:'#6366f1', qsfp:'#a855f7', wlan:'#f59e0b', lte:'#ec4899', tun:'#14b8a6'};
+// does a slot label point at a real interface of this device (full name or short label)?
+function realFor(label){
+  var l=(label||'').toLowerCase();
+  return REAL.find(function(p){return p.name.toLowerCase()===l;}) || REAL.find(function(p){return p.short.toLowerCase()===l;});
+}
+function placed(){ var m={}; STATE.rows.forEach(function(r){r.forEach(function(s){ if(s.label){ var p=realFor(s.label); if(p) m[p.name]=1; } });}); return m; }
+function lgFillRealSel(){
+  var sel=document.getElementById('realsel'); if(!sel) return;
+  var have=placed(); sel.innerHTML='';
+  REAL.forEach(function(p){ if(have[p.name]) return; var o=document.createElement('option'); o.value=p.name; o.textContent=p.name+' ('+(KIND_NAMES[p.kind]||p.kind)+')'; sel.appendChild(o); });
+  if(!sel.options.length){ var o=document.createElement('option'); o.value=''; o.textContent='{{t "lay.all_placed"}}'; sel.appendChild(o); }
+}
+function lgFromTemplate(){
+  if(STATE.rows.length && !confirm('{{t "lay.replace_confirm"}}')) return;
+  STATE=JSON.parse(JSON.stringify(Object.assign({groups:[],rows:[]},TPL))); lgRender();
+}
+// one row per interface type, each type in its own colour group
+function lgFromReal(){
+  if(STATE.rows.length && !confirm('{{t "lay.replace_confirm"}}')) return;
+  var groups=[], rows=[], byKind={};
+  REAL.forEach(function(p){ (byKind[p.kind]=byKind[p.kind]||[]).push(p); });
+  Object.keys(KIND_NAMES).forEach(function(k){
+    var ps=byKind[k]; if(!ps) return;
+    var gid='';
+    if(KIND_COLORS[k]){ gid='k_'+k; groups.push({id:gid,name:KIND_NAMES[k],color:KIND_COLORS[k]}); }
+    var per=ps.length>16?Math.ceil(ps.length/2):ps.length;
+    for(var i=0;i<ps.length;i+=per){ rows.push(ps.slice(i,i+per).map(function(p){ var s={label:p.name}; if(gid) s.group=gid; return s; })); }
+  });
+  STATE={groups:groups,rows:rows}; lgRender();
+}
+function lgAddReal(){
+  var v=document.getElementById('realsel').value; if(!v) return;
+  if(!STATE.rows.length) STATE.rows.push([]);
+  STATE.rows[STATE.rows.length-1].push({label:v}); lgRender();
+}
+function lgAddAllMissing(){
+  var have=placed(), add=REAL.filter(function(p){return !have[p.name];}); if(!add.length) return;
+  STATE.rows.push(add.map(function(p){return {label:p.name};})); lgRender();
+}
+function lgEditTile(slot){
+  var lab=prompt('{{t "lay.prompt_port"}}', slot.label||''); if(lab===null) return;
+  lab=lab.trim(); if(lab) slot.label=lab;
+  var nm=prompt('{{t "lay.prompt_name"}}', slot.name||''); if(nm===null){ lgRender(); return; }
+  nm=nm.trim(); if(nm) slot.name=nm; else delete slot.name;
+  lgRender();
+}
 if(!Array.isArray(STATE.groups)) STATE.groups=[];
 if(!Array.isArray(STATE.rows)) STATE.rows=[];
 var BRUSH=null; // null = clear-group brush; else a group id
@@ -111,6 +183,7 @@ function lgRender(){
     grid.appendChild(rd);
   });
   document.getElementById('emptyhint').style.display=STATE.rows.length?'none':'block';
+  lgFillRealSel();
 }
 
 function mkGroupBtn(id,name,color){
@@ -134,10 +207,18 @@ function mkTile(slot,ri,ci){
   d.dataset.r=ri; d.dataset.c=ci;
   var body=document.createElement('div'); body.className='pbody';
   if(!slot.gap){ var col=gcolor(slot.group); if(col) body.style.background=col; var s=document.createElement('span'); s.className='slot'; body.appendChild(s); }
-  var lab=document.createElement('div'); lab.className='plabel'; lab.textContent=slot.gap?'':(slot.label||'');
+  var lab=document.createElement('div'); lab.className='plabel'; lab.textContent=slot.gap?'':(slot.label||''); lab.title=slot.label||'';
+  if(IS_DEVICE && !slot.gap && !realFor(slot.label)){ d.classList.add('missing'); d.title='{{t "lay.not_on_device"}}'; }
   var del=document.createElement('div'); del.className='pdel'; del.textContent='×';
   del.onclick=function(e){e.stopPropagation();STATE.rows[ri].splice(ci,1);if(STATE.rows[ri].length===0)STATE.rows.splice(ri,1);lgRender();};
   d.appendChild(del); d.appendChild(body); d.appendChild(lab);
+  if(!slot.gap){
+    if(slot.name){ var nm=document.createElement('div'); nm.className='pname'; nm.textContent=slot.name; nm.title=slot.name; d.appendChild(nm); }
+    var ed=document.createElement('div'); ed.className='pedit'; ed.textContent='✎'; ed.title='{{t "lay.rename"}}';
+    ed.onclick=function(e){e.stopPropagation();lgEditTile(slot);};
+    d.appendChild(ed);
+    d.ondblclick=function(e){e.stopPropagation();lgEditTile(slot);};
+  }
   if(!slot.gap){
     d.onclick=function(){ if(BRUSH===null)delete slot.group; else slot.group=BRUSH; lgRender(); };
   }

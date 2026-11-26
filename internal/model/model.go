@@ -123,6 +123,7 @@ type Device struct {
 	PollIntervalSec int        // per-device poll interval in seconds (0 = global default)
 	LastBackup        *time.Time // last successful backup run (changed or not)
 	BackupIntervalSec int        // per-device backup period in seconds (0 = global default)
+	PortLayout        string     // per-device front-panel layout JSON ("" = model template / automatic)
 }
 
 // FwJob is a firmware upgrade run.
@@ -192,6 +193,7 @@ type VendorModel struct {
 	VendorName    string // joined for display
 	VendorWebsite string
 	PortLayout    string // JSON: admin-defined port arrangement + groups
+	Extra         []int64 // ids of extra photos (filled on demand)
 }
 
 // Site is a location grouping devices.

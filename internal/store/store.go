@@ -60,6 +60,7 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE vendor_models ADD COLUMN port_layout TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE devices ADD COLUMN last_backup_at TIMESTAMP`,
 		`ALTER TABLE devices ADD COLUMN backup_interval_sec INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE devices ADD COLUMN port_layout TEXT NOT NULL DEFAULT ''`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -676,7 +677,7 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 		&d.SSHUser, &d.APICertPin, &d.SSHHostPin, &d.Model, &d.Serial, &d.ROSVersion, &last, &d.CreatedAt,
 		&d.APISSLCert, &exp, &d.FwLatest, &d.FwChannel, &d.FwStatus, &site,
 		&snmpEn, &d.SNMPCommEnc, &d.SNMPPort, &d.DeviceType, &fail, &d.PollIntervalSec, &d.Notes,
-		&d.RBCurrentFw, &d.RBUpgradeFw, &lastBk, &d.BackupIntervalSec)
+		&d.RBCurrentFw, &d.RBUpgradeFw, &lastBk, &d.BackupIntervalSec, &d.PortLayout)
 	d.APITLS = tls != 0
 	if lastBk.Valid {
 		d.LastBackup = &lastBk.Time
@@ -697,7 +698,7 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	return d, err
 }
 
-const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id,snmp_enabled,snmp_community_enc,snmp_port,device_type,last_fail_at,poll_interval_sec,notes,rb_current_fw,rb_upgrade_fw,last_backup_at,backup_interval_sec`
+const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id,snmp_enabled,snmp_community_enc,snmp_port,device_type,last_fail_at,poll_interval_sec,notes,rb_current_fw,rb_upgrade_fw,last_backup_at,backup_interval_sec,port_layout`
 
 // SetDeviceType sets a device's role (router/switch/mix, or "" for unknown).
 func (s *Store) SetDeviceType(id int64, t string) error {
@@ -712,6 +713,91 @@ func (s *Store) SetDevicePollInterval(id int64, sec int) error {
 	}
 	_, err := s.db.Exec(`UPDATE devices SET poll_interval_sec=? WHERE id=?`, sec, id)
 	return err
+}
+
+// SetDevicePortLayout stores a per-device front-panel layout (JSON); "" returns
+// the device to its catalog model's layout / the automatic panel.
+func (s *Store) SetDevicePortLayout(id int64, layout string) error {
+	_, err := s.db.Exec(`UPDATE devices SET port_layout=? WHERE id=?`, layout, id)
+	return err
+}
+
+// ClearSSHHostPin forgets the pinned SSH host key, so the next SSH connection
+// trusts and pins whatever key the device presents (used after a device
+// regenerated its host key).
+func (s *Store) ClearSSHHostPin(id int64) error {
+	_, err := s.db.Exec(`UPDATE devices SET ssh_host_pin='' WHERE id=?`, id)
+	return err
+}
+
+// ---- extra catalog model photos ----
+
+// AddVendorModelImage adds one more photo to a catalog model.
+func (s *Store) AddVendorModelImage(modelID int64, contentType string, data []byte) error {
+	_, err := s.db.Exec(`INSERT INTO vendor_model_images(model_id,content_type,data) VALUES(?,?,?)`, modelID, contentType, data)
+	return err
+}
+
+// VendorModelExtraImages lists the ids of a model's extra photos, oldest first.
+func (s *Store) VendorModelExtraImages(modelID int64) ([]int64, error) {
+	rows, err := s.db.Query(`SELECT id FROM vendor_model_images WHERE model_id=? ORDER BY id`, modelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// VendorModelExtraImage returns one extra photo of the given model.
+func (s *Store) VendorModelExtraImage(modelID, imgID int64) (string, []byte, error) {
+	var ct string
+	var data []byte
+	err := s.db.QueryRow(`SELECT content_type,data FROM vendor_model_images WHERE id=? AND model_id=?`, imgID, modelID).Scan(&ct, &data)
+	return ct, data, err
+}
+
+// DeleteVendorModelExtraImage removes one extra photo.
+func (s *Store) DeleteVendorModelExtraImage(modelID, imgID int64) error {
+	_, err := s.db.Exec(`DELETE FROM vendor_model_images WHERE id=? AND model_id=?`, imgID, modelID)
+	return err
+}
+
+// DeleteVendorModelCover removes the cover photo; the oldest extra photo, if
+// any, becomes the new cover.
+func (s *Store) DeleteVendorModelCover(modelID int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var id int64
+	var ct string
+	var data []byte
+	err = tx.QueryRow(`SELECT id,content_type,data FROM vendor_model_images WHERE model_id=? ORDER BY id LIMIT 1`, modelID).Scan(&id, &ct, &data)
+	if errors.Is(err, sql.ErrNoRows) {
+		if _, err := tx.Exec(`UPDATE vendor_models SET image=NULL, image_type='' WHERE id=?`, modelID); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE vendor_models SET image=?, image_type=? WHERE id=?`, data, ct, modelID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM vendor_model_images WHERE id=?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SetDeviceBackupInterval sets a per-device backup period in seconds (0 = global).

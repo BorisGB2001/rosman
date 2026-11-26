@@ -1452,3 +1452,30 @@ func (a *App) ConfigureSNMP(d model.Device, community string) error {
 	}
 	return ros.ConfigureSNMP(d, pass, community, pool, a.Cfg.APITimeout)
 }
+
+// InstallSSHKey authorises ROSMan's fleet SSH key for the device's SSH user
+// through the API, then verifies that SSH works.
+func (a *App) InstallSSHKey(d model.Device) error {
+	pub := a.SSHPublicKey()
+	if pub == "" {
+		return fmt.Errorf("no SSH key configured (ROSMAN_SSH_KEY)")
+	}
+	if a.CheckSSH(d) == nil {
+		return nil // already works
+	}
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return err
+	}
+	user := d.SSHUser
+	if user == "" {
+		user = d.APIUser
+	}
+	if err := ros.InstallSSHKeyAPI(d, pass, user, pub, a.Cfg.APITimeout); err != nil {
+		return err
+	}
+	if err := a.CheckSSH(d); err != nil {
+		return fmt.Errorf("key added, but SSH still fails: %w", err)
+	}
+	return nil
+}
