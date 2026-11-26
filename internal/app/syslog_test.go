@@ -16,6 +16,7 @@ func TestParseSyslog(t *testing.T) {
 		{"<27>Nov  6 02:03:04 gw1 interface,warning ether1 link down", "gw1", "interface,warning", "ether1 link down", 3},
 		{"<14>1 2026-11-26T12:00:00+03:00 r1 dhcp,info dhcp1 assigned 10.0.0.5", "r1", "dhcp,info", "dhcp1 assigned 10.0.0.5", 6},
 		{"<30>Nov 26 12:00:01 Adler could not save configuration changes, not enough storage space available", "Adler", "", "could not save configuration changes, not enough storage space available", 6},
+		{"<30>Nov 26 13:28:29 SW33-CRCP user audit logged in from 10.6.0.19 via ssh", "SW33-CRCP", "", "user audit logged in from 10.6.0.19 via ssh", 6},
 		{"plain text without anything", "", "", "plain text without anything", 6},
 	}
 	for _, c := range cases {

@@ -1384,7 +1384,13 @@ func ConfigureSyslog(d model.Device, pass, host string, port int, topics []strin
 	// RFC 3164 framing gives us the device name; the parameter was renamed in
 	// newer RouterOS, and the default bare format is understood as well, so
 	// fall through the variants until the device accepts one.
-	variants := [][]string{{"=bsd-syslog=yes", "=syslog-facility=daemon"}, {"=remote-log-format=syslog"}, {}}
+	// add-topics-string puts the RouterOS topics into the message text.
+	variants := [][]string{
+		{"=remote-log-format=syslog", "=add-topics-string=yes"}, // RouterOS 7.18+
+		{"=remote-log-format=syslog"},
+		{"=bsd-syslog=yes", "=syslog-facility=daemon"}, // older RouterOS
+		{},
+	}
 	r, err := c.Run("/system/logging/action/print", "?name="+SyslogAction)
 	if err != nil {
 		return fmt.Errorf("read logging actions: %w", err)

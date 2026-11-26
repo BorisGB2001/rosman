@@ -391,8 +391,18 @@ func ParseSyslog(raw string, now time.Time) (m model.SyslogMsg, host string) {
 		if tok == "" || !topTok.MatchString(tok) {
 			return false
 		}
-		for _, t := range strings.Split(tok, ",") {
+		parts := strings.Split(tok, ",")
+		for _, t := range parts {
 			if !rosTopics[strings.TrimPrefix(t, "!")] {
+				return false
+			}
+		}
+		// A lone word is a topic list only when it is a level: messages
+		// themselves often start with "user", "interface", "script"…
+		if len(parts) == 1 {
+			switch parts[0] {
+			case "info", "warning", "error", "critical", "debug":
+			default:
 				return false
 			}
 		}
