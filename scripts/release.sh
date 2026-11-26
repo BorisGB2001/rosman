@@ -27,13 +27,5 @@ done
 echo "== тег и релиз =="
 git tag -a "$VER" -m "ROSMan $VER"
 git push origin "$VER"
-# boris.gb 2026-11-26 12:04 - зеркало в GitLab: если настроен remote "gitlab", туда уходят ветка main и тег релиза
-if git remote get-url gitlab >/dev/null 2>&1; then
-  echo "== GitLab =="
-  git push gitlab main
-  git push gitlab "$VER"
-else
-  echo "ВНИМАНИЕ: remote \"gitlab\" не настроен — релиз в GitLab не отправлен (git remote add gitlab <url>)." >&2
-fi
 gh release create "$VER" --title "ROSMan $VER" --generate-notes dist/*
 echo "готово: релиз $VER"
