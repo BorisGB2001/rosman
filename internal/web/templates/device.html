@@ -209,6 +209,7 @@
   <div class="cardhead" style="margin-bottom:8px"><h3 style="margin:0">{{t "slg.dev_title"}} {{if .SyslogTarget}}<span class="badge good">→ {{.SyslogTarget}}</span>{{else}}<span class="badge">off</span>{{end}}</h3>
     <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
     <a class="btn sm" href="/syslog?dev={{.D.ID}}&range=7d">{{t "slg.dev_all"}}</a>
+    {{if and (canWrite .User) .SyslogRecent}}<form class="inline" method="post" action="/ai/analyze"><input type="hidden" name="dev" value="{{.D.ID}}"><input type="hidden" name="range" value="24h"><input type="hidden" name="back" value="/devices/{{.D.ID}}"><button class="btn sm" type="submit" {{if not (aiOn)}}disabled title="{{t "ai.err_nokey"}}"{{else}}title="{{t "ai.btn_tip"}}"{{end}}>✦ {{t "ai.btn"}}</button></form>{{end}}
     {{if canWrite .User}}<form class="inline" method="post" action="/devices/{{.D.ID}}/syslog">
       {{if .SyslogTarget}}<input type="hidden" name="on" value="0"><button class="btn sm" type="submit" onclick="return confirm('{{t "slg.dev_off_confirm"}}')">{{t "slg.dev_off"}}</button>
       {{else}}<input type="hidden" name="on" value="1"><button class="btn sm primary" type="submit" {{if not .SyslogInfo.Listen}}disabled title="{{t "slg.not_listening"}}"{{end}}>{{t "slg.dev_on"}}</button>{{end}}

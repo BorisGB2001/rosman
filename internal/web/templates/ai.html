@@ -1,0 +1,31 @@
+{{define "ai"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "ai.title"}}</h1>
+  <span class="muted small">{{t "ai.subtitle"}}</span>
+  <span style="margin-left:auto">{{if .Configured}}<span class="badge good">{{.Model}}</span>{{else}}<span class="badge">{{t "ai.off"}}</span>{{end}}</span></div>
+{{if not .Configured}}<div class="card" style="border-color:var(--warn)"><p style="margin:0">{{t "ai.howto"}} {{if isAdmin .User}}<a href="/settings#ai">{{t "nav.settings"}} → {{t "ai.set_title"}}</a>{{end}} · <a href="/account#mcp">{{t "mcp.title"}}</a></p></div>{{end}}
+{{if canWrite .User}}
+<div class="card">
+  <h3>{{t "ai.new"}}</h3>
+  <form method="post" action="/ai/analyze" style="display:flex;flex-direction:row;gap:10px;align-items:center;flex-wrap:wrap">
+    <input type="hidden" name="back" value="/ai">
+    <select name="dev"><option value="">{{t "slg.f_alldev"}}</option>{{range .Devices}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+    <select name="range"><option value="1h">1h</option><option value="24h" selected>24h</option><option value="7d">7d</option></select>
+    <select name="sev"><option value="">{{t "slg.f_all"}}</option><option value="warn">{{t "slg.f_warn"}}</option><option value="err">{{t "slg.f_err"}}</option></select>
+    <input name="q" placeholder="{{t "slg.f_search"}}" style="width:220px">
+    <button class="btn primary sm" type="submit" {{if not .Configured}}disabled{{end}}>✦ {{t "ai.btn"}}</button>
+  </form>
+  <p class="muted small" style="margin:8px 0 0">{{t "ai.new_note"}} {{.MaxLines}}.</p>
+</div>
+{{end}}
+<div class="card">
+  <div class="scroll"><table class="dtable">
+    <thead><tr><th>{{t "au.time"}}</th><th>{{t "ai.c_what"}}</th><th>{{t "al.state"}}</th><th>{{t "ai.c_lines"}}</th><th>{{t "au.user"}}</th></tr></thead>
+    <tbody>
+    {{range .Reports}}<tr><td class="muted mono nowrap">{{ts .CreatedAt}}</td><td><a href="/ai/{{.ID}}">{{.Title}}</a></td>
+      <td>{{if eq .Status "done"}}<span class="badge good">{{t "ai.st_done"}}</span>{{else if eq .Status "error"}}<span class="badge bad">{{t "ai.st_error"}}</span>{{else}}<span class="badge warn">{{t "ai.st_running"}}</span>{{end}}</td>
+      <td>{{.Lines}}{{if gt .Matched .Lines}} / {{.Matched}}{{end}}</td><td>{{.Actor}}</td></tr>
+    {{else}}<tr><td colspan="5" class="muted">{{t "ai.none"}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+{{template "tail" .}}{{end}}

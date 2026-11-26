@@ -394,3 +394,20 @@ CREATE TABLE IF NOT EXISTS device_syslog (
     target        TEXT NOT NULL DEFAULT '',
     configured_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- AI analyses of device logs (requested from the UI).
+CREATE TABLE IF NOT EXISTS ai_reports (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    actor      TEXT NOT NULL DEFAULT '',
+    device_id  INTEGER NOT NULL DEFAULT 0,
+    title      TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'running',
+    model      TEXT NOT NULL DEFAULT '',
+    lines      INTEGER NOT NULL DEFAULT 0,
+    matched    INTEGER NOT NULL DEFAULT 0,
+    tokens_in  INTEGER NOT NULL DEFAULT 0,
+    tokens_out INTEGER NOT NULL DEFAULT 0,
+    result     TEXT NOT NULL DEFAULT '',
+    error      TEXT NOT NULL DEFAULT ''
+);

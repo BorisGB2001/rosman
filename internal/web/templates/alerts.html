@@ -2,12 +2,13 @@
 <div class="cardhead"><h1 style="margin:0">{{t "al.active"}}</h1></div>
 <div class="card">
   <div class="scroll"><table class="dtable">
-    <thead><tr><th>{{t "al.sev"}}</th><th>{{t "al.device"}}</th><th>{{t "al.rule"}}</th><th>{{t "al.detail"}}</th><th>{{t "al.since"}}</th></tr></thead>
+    <thead><tr><th>{{t "al.sev"}}</th><th>{{t "al.device"}}</th><th>{{t "al.rule"}}</th><th>{{t "al.detail"}}</th><th>{{t "al.since"}}</th><th></th></tr></thead>
     <tbody>
     {{range .ActiveAlerts}}
-      <tr><td>{{template "sev" .Severity}}</td><td><a href="/devices/{{.DeviceID}}">{{.Device}}</a></td><td class="mono">{{.Rule}}</td><td>{{.Detail}}</td><td class="muted">{{ts .Since}}</td></tr>
+      <tr><td>{{template "sev" .Severity}}</td><td><a href="/devices/{{.DeviceID}}">{{.Device}}</a></td><td class="mono">{{.Rule}}</td><td>{{.Detail}}</td><td class="muted">{{ts .Since}}</td>
+        <td class="nowrap">{{if and (eq .Rule "log_critical") (canWrite $.User)}}<form class="inline" method="post" action="/ai/analyze"><input type="hidden" name="dev" value="{{.DeviceID}}"><input type="hidden" name="range" value="24h"><input type="hidden" name="back" value="/alerts"><button class="btn sm" type="submit" {{if not (aiOn)}}disabled title="{{t "ai.err_nokey"}}"{{else}}title="{{t "ai.btn_tip"}}"{{end}}>✦ {{t "ai.btn"}}</button></form> <form class="inline" method="post" action="/alerts/resolve"><input type="hidden" name="device_id" value="{{.DeviceID}}"><input type="hidden" name="rule" value="{{.Rule}}"><button class="btn sm" type="submit" title="{{t "ai.dismiss_tip"}}">{{t "ai.dismiss"}}</button></form>{{end}}</td></tr>
     {{else}}
-      <tr><td colspan="5" class="muted">{{t "al.none"}}</td></tr>
+      <tr><td colspan="6" class="muted">{{t "al.none"}}</td></tr>
     {{end}}
     </tbody>
   </table></div>

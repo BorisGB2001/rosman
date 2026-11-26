@@ -22,6 +22,10 @@ import (
 )
 
 func main() {
+	// `rosman mcp <url>`: stdio MCP bridge to a running ROSMan (see mcpproxy.go).
+	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+		os.Exit(runMCPProxy(os.Args[2:]))
+	}
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
 	log.SetPrefix("rosman ")
 
@@ -47,6 +51,7 @@ func main() {
 		log.Fatalf("open db: %v", err)
 	}
 	defer st.Close()
+	_ = st.FailStaleAIReports()
 
 	if pw, err := web.SeedAdmin(st); err != nil {
 		log.Fatalf("seed admin: %v", err)

@@ -1,0 +1,15 @@
+{{define "aireport"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">✦ {{.R.Title}}</h1>
+  <span style="margin-left:auto;display:flex;gap:8px"><a class="btn sm" href="/ai">{{t "ai.title"}}</a>{{if .R.DeviceID}}<a class="btn sm" href="/devices/{{.R.DeviceID}}#syslog">{{.R.DeviceName}}</a><a class="btn sm" href="/syslog?dev={{.R.DeviceID}}">{{t "slg.title"}}</a>{{end}}</span></div>
+<p class="muted small" style="margin:0 0 12px">{{ts .R.CreatedAt}} · {{.R.Actor}} · {{.R.Model}} · {{t "ai.c_lines"}}: {{.R.Lines}}{{if gt .R.Matched .R.Lines}} {{t "ai.of"}} {{.R.Matched}}{{end}}{{if .R.TokensIn}} · {{t "ai.tokens"}}: {{.R.TokensIn}} → {{.R.TokensOut}}{{end}}</p>
+{{if eq .R.Status "running"}}
+<div class="card"><p style="margin:0"><span class="spin"></span> {{t "ai.running"}}</p></div>
+<script>setTimeout(function(){ location.reload(); }, 3000);</script>
+{{else if eq .R.Status "error"}}
+<div class="card" style="border-color:var(--bad)"><b>{{t "ai.st_error"}}:</b> {{.R.Error}}</div>
+{{else}}
+{{if gt .R.Matched .R.Lines}}<div class="card" style="border-color:var(--warn)">{{t "ai.partial"}} {{.R.Lines}} {{t "ai.of"}} {{.R.Matched}}.</div>{{end}}
+<div class="card aireport">{{.HTML}}</div>
+<p class="muted small">{{t "ai.disclaimer"}}</p>
+{{end}}
+{{template "tail" .}}{{end}}

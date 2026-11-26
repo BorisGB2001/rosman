@@ -11,6 +11,7 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"html/template"
 	"io"
@@ -50,7 +51,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-var Version = "1.7.1"
+var Version = "1.8.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -78,6 +79,11 @@ func New(a *app.App) (*Server, error) {
 		},
 		"humanDur": humanDur,
 		"sevName":  sevName,
+		"aiOn":     func() bool { return a.AIConfigured() },
+		"critCount": func() int {
+			n, _, _, _ := a.Store.SyslogCounts(model.SyslogFilter{MaxSev: 2, Since: time.Now().Add(-24 * time.Hour)})
+			return n
+		},
 		"split":    strings.Fields,
 		"sevClass": sevClass,
 		"ts":       func(t time.Time) string { return t.Format("2006-01-02 15:04:05") },
@@ -450,6 +456,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/alerts", s.apiAuth(s.apiAlerts))
 	mux.HandleFunc("GET /api/v1/security", s.apiAuth(s.apiSecurity))
 	mux.HandleFunc("GET /metrics", s.apiAuth(s.metricsEndpoint))
+	mux.HandleFunc("/mcp", s.apiAuth(s.mcpHandler))
+	mux.Handle("GET /ai", s.authed(s.aiListPage))
+	mux.Handle("GET /ai/{id}", s.authed(s.aiReportPage))
+	mux.Handle("POST /ai/analyze", s.authed(s.requireRole(model.RoleOperator, s.aiAnalyze)))
+	mux.Handle("POST /alerts/resolve", s.authed(s.requireRole(model.RoleOperator, s.alertResolve)))
 	mux.Handle("GET /topology", s.authed(s.topologyPage))
 	mux.Handle("POST /topology/pos", s.authed(s.requireRole(model.RoleOperator, s.topoSavePos)))
 	mux.Handle("POST /topology/hide", s.authed(s.requireRole(model.RoleOperator, s.topoHide)))
@@ -670,7 +681,8 @@ func (s *Server) accountData(r *http.Request, extra map[string]any) map[string]a
 	toks, _ := s.a.Store.TokensByUser(u.ID)
 	data := map[string]any{"Active": "account", "U": u, "Tokens": toks,
 		"TOTPEnabled": u.TOTPEnabled, "TOTPPending": !u.TOTPEnabled && u.TOTPSecretEnc != "",
-		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")}
+		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
+		"MCPHost": r.Host, "MCPPin": certPin(s.a.Cfg.TLSCertPath), "ExePath": app.ExePath}
 	if data["TOTPPending"] == true {
 		if sec, err := s.a.Box.Decrypt(u.TOTPSecretEnc); err == nil {
 			uri := totp.URI("ROSMan", u.Username, sec)
@@ -1169,7 +1181,11 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 		"Total": len(devs), "Online": online, "Offline": offline, "Unknown": unknown,
 		"Outdated": outdated, "SitesN": len(sites), "Alerts": alerts, "AlertCount": len(alerts),
 		"Versions": vers, "CVEAffected": cveAffected, "TopCPU": topCPU,
-		"Attention": attention, "OnlinePct": onlinePct, "FreePorts": freePorts, "VlanN": len(vlanSet)})
+		"Attention": attention, "OnlinePct": onlinePct, "FreePorts": freePorts, "VlanN": len(vlanSet),
+		"LogCrit": func() []model.SyslogMsg {
+			rows, _ := s.a.Store.Syslog(model.SyslogFilter{MaxSev: 2, Since: time.Now().Add(-24 * time.Hour), Limit: 8})
+			return rows
+		}()})
 }
 
 func (s *Server) firmwarePage(w http.ResponseWriter, r *http.Request) {
@@ -4212,6 +4228,8 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 			"syslog_host": get("syslog_host"), "syslog_topics": get("syslog_topics"),
 		},
 		"Syslog":     s.a.SyslogStatus(),
+		"AIKeySet":   get("ai_api_key_enc") != "", "AIModel": s.a.AIModel(), "AIModels": app.AIModels,
+		"AIEnvKey":   os.Getenv("ANTHROPIC_API_KEY") != "",
 		"BkEnvHours": int(s.a.Cfg.BackupInterval.Hours()),
 		"Upd":        s.a.UpdateInfo(Version), "ExePath": app.ExePath,
 		"BpwSet": get("backup_password_enc") != "", "SmtpPwSet": get("smtp_pass_enc") != "",
@@ -4645,6 +4663,16 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
 		poolErr = "syslog: bad address " + h
 	}
 	set("syslog_topics", strings.Join(app.NormalizeTopics(r.FormValue("syslog_topics")), " "))
+	// AI analysis: model and API key (stored encrypted; empty field keeps it).
+	set("ai_model", r.FormValue("ai_model"))
+	if v := strings.TrimSpace(r.FormValue("ai_api_key")); v != "" {
+		if enc, err := s.a.Box.Encrypt(v); err == nil {
+			set("ai_api_key_enc", enc)
+		}
+	}
+	if r.FormValue("ai_api_key_clear") == "on" {
+		set("ai_api_key_enc", "")
+	}
 	s.a.SyslogReload()
 	if r.FormValue("git_enabled") == "on" {
 		set("git_enabled", "on")
@@ -5092,4 +5120,19 @@ func SeedAdmin(st *store.Store) (string, error) {
 	}
 	_, err = st.CreateUser(model.User{Username: "admin", PasswordHash: hash, Role: model.RoleAdmin})
 	return pw, err
+}
+
+// certPin is the sha256 (hex) of the server's TLS certificate, used by
+// `rosman mcp` to trust the self-signed certificate.
+func certPin(path string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	blk, _ := pem.Decode(raw)
+	if blk == nil {
+		return ""
+	}
+	sum := sha256.Sum256(blk.Bytes)
+	return hex.EncodeToString(sum[:])
 }

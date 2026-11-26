@@ -63,6 +63,14 @@
   <label>{{t "slg.set_days"}}<input name="syslog_days" value="{{.Syslog.Days}}" style="width:90px"></label>
   <p class="muted small">{{t "slg.stored"}}: {{.Syslog.Stored}} · <a href="/syslog">{{t "slg.title"}}</a></p>
 </div>
+<div class="card narrow" id="ai">
+  <h3>{{t "ai.set_title"}} {{if or .AIKeySet .AIEnvKey}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</h3>
+  <p class="muted small">{{t "ai.set_note"}}</p>
+  <label>{{t "ai.set_key"}}<input type="password" name="ai_api_key" autocomplete="off" placeholder="{{if .AIKeySet}}{{t "set.secret_keep"}}{{else if .AIEnvKey}}ANTHROPIC_API_KEY{{else}}sk-ant-…{{end}}"></label>
+  {{if .AIKeySet}}<label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="ai_api_key_clear"> {{t "ai.set_key_clear"}}</label>{{end}}
+  <label>{{t "ai.set_model"}}<select name="ai_model">{{range .AIModels}}<option value="{{.}}" {{if eq . $.AIModel}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+  <p class="muted small">{{t "ai.set_mcp"}} <a href="/account#mcp">{{t "ai.set_mcp_link"}}</a></p>
+</div>
 <div class="card narrow">
   <h3>{{t "ret.title"}}</h3>
   <p class="muted small">{{t "ret.note"}}</p>

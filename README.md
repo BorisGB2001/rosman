@@ -56,6 +56,17 @@ Localization lives in plain JSON files under
   severity, period and text, summarises messages per device, lists the most
   repeated ones and exports CSV. Only known device addresses are accepted;
   messages are kept 14 days by default.
+- **Critical log alerts** — a critical message in a device's log raises a
+  `log_critical` alert (dashboard card, alert list, notifications); it clears
+  after 6 quiet hours or by hand.
+- **AI analysis** — with an Anthropic API key (Settings → AI) the "Analyse with
+  AI" button sends a device's log and facts to Claude and stores a report:
+  causes, evidence and proposed RouterOS commands. Nothing is applied.
+- **MCP server** — `/mcp` (Bearer API token) exposes read-only tools to AI
+  clients: `list_devices`, `get_device`, `get_logs`, `log_summary`,
+  `get_alerts`, `get_config`. `rosman mcp https://host:port` is a stdio bridge
+  for Claude Code / Claude Desktop that pins the self-signed certificate
+  (`ROSMAN_TOKEN`, `ROSMAN_CERT_PIN`; ready-made commands on the Account page).
 
 Credentials are encrypted at rest (AES-256-GCM); passwords are bcrypt-hashed.
 

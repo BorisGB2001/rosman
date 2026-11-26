@@ -302,8 +302,10 @@ func (a *App) syslogDevice(ip string) int64 {
 func (a *App) syslogWriter(ctx context.Context) {
 	flush := time.NewTicker(time.Second)
 	prune := time.NewTicker(30 * time.Minute)
+	quiet := time.NewTicker(5 * time.Minute)
 	defer flush.Stop()
 	defer prune.Stop()
+	defer quiet.Stop()
 	var batch []model.SyslogMsg
 	write := func() {
 		if len(batch) == 0 {
@@ -312,6 +314,7 @@ func (a *App) syslogWriter(ctx context.Context) {
 		if err := a.Store.AddSyslog(batch); err != nil {
 			log.Printf("syslog: store %d messages: %v", len(batch), err)
 		}
+		a.syslogCritical(batch)
 		batch = batch[:0]
 	}
 	doPrune := func() {
@@ -336,6 +339,8 @@ func (a *App) syslogWriter(ctx context.Context) {
 			write()
 		case <-prune.C:
 			doPrune()
+		case <-quiet.C:
+			a.syslogResolveQuiet()
 		}
 	}
 }
@@ -485,4 +490,54 @@ func (a *App) ConfigureSyslog(d model.Device, on bool) (string, error) {
 	}
 	target := fmt.Sprintf("%s:%d", host, a.SyslogPort())
 	return target, a.Store.SetDeviceSyslog(d.ID, target)
+}
+
+// LogCriticalRule is the alert raised when a device logs a critical message.
+const LogCriticalRule = "log_critical"
+
+// logCriticalQuiet is how long a device must log nothing critical before its
+// log_critical alert clears by itself.
+const logCriticalQuiet = 6 * time.Hour
+
+// syslogCritical raises (or refreshes) the log_critical alert for every device
+// that has a critical message in the batch, so it shows up on the dashboard,
+// in the alert list and — once, when it first appears — in notifications.
+func (a *App) syslogCritical(batch []model.SyslogMsg) {
+	last := map[int64]model.SyslogMsg{}
+	for _, m := range batch {
+		if m.Sev <= 2 {
+			last[m.DeviceID] = m
+		}
+	}
+	for id, m := range last {
+		detail := m.Msg
+		if len(detail) > 300 {
+			detail = detail[:300] + "…"
+		}
+		prev, _ := a.Store.AlertState(id, LogCriticalRule)
+		_ = a.Store.RaiseAlert(id, LogCriticalRule, "crit", detail)
+		if prev != "active" {
+			if d, err := a.Store.Device(id); err == nil {
+				a.alertNotifyDev(d, "⛔ "+d.Name+": критическое сообщение в журнале", detail)
+			}
+		}
+	}
+}
+
+// syslogResolveQuiet clears log_critical alerts of devices that have logged
+// nothing critical for logCriticalQuiet.
+func (a *App) syslogResolveQuiet() {
+	alerts, err := a.Store.ActiveAlerts()
+	if err != nil {
+		return
+	}
+	for _, al := range alerts {
+		if al.Rule != LogCriticalRule {
+			continue
+		}
+		rows, err := a.Store.Syslog(model.SyslogFilter{DeviceID: al.DeviceID, MaxSev: 2, Since: time.Now().Add(-logCriticalQuiet), Limit: 1})
+		if err == nil && len(rows) == 0 {
+			_, _ = a.Store.ResolveAlert(al.DeviceID, LogCriticalRule)
+		}
+	}
 }

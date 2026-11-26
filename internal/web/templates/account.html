@@ -63,4 +63,16 @@
 #       static_configs: [{ targets: ["HOST:18443"] }]</pre>
   </details>
 </div>
+<div class="card" id="mcp">
+  <h3>{{t "mcp.title"}}</h3>
+  <p class="muted small">{{t "mcp.note"}}</p>
+  <p class="small" style="margin:8px 0 4px"><b>Claude Code</b> — {{t "mcp.cc"}}</p>
+  <pre class="mono" style="white-space:pre-wrap;word-break:break-all;font-size:.85em">claude mcp add rosman -e ROSMAN_TOKEN=&lt;token&gt; -e ROSMAN_CERT_PIN={{.MCPPin}} -- /path/to/rosman mcp https://{{.MCPHost}}</pre>
+  <p class="small" style="margin:8px 0 4px"><b>Claude Desktop</b> — {{t "mcp.cd"}}</p>
+  <pre class="mono" style="white-space:pre-wrap;word-break:break-all;font-size:.85em">{"mcpServers": {"rosman": {
+  "command": "/path/to/rosman", "args": ["mcp", "https://{{.MCPHost}}"],
+  "env": {"ROSMAN_TOKEN": "&lt;token&gt;", "ROSMAN_CERT_PIN": "{{.MCPPin}}"}}}}</pre>
+  <p class="muted small">{{t "mcp.bin"}} <a href="https://github.com/BorisGB2001/rosman/releases/latest" target="_blank" rel="noopener">GitHub Releases</a>. {{t "mcp.http"}} <code class="mono">https://{{.MCPHost}}/mcp</code></p>
+  <p class="muted small">{{t "mcp.tools"}}: <code class="mono">list_devices</code>, <code class="mono">get_device</code>, <code class="mono">get_logs</code>, <code class="mono">log_summary</code>, <code class="mono">get_alerts</code>, <code class="mono">get_config</code></p>
+</div>
 {{template "tail" .}}{{end}}

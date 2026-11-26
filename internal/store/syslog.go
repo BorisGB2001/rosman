@@ -228,3 +228,59 @@ func (s *Store) AllDeviceAddrs() (map[string][]int64, error) {
 	}
 	return out, rows.Err()
 }
+
+// ---- AI reports ----
+
+func (s *Store) CreateAIReport(r model.AIReport) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO ai_reports(actor,device_id,title,status,model,lines,matched) VALUES(?,?,?,'running',?,?,?)`,
+		r.Actor, r.DeviceID, r.Title, r.Model, r.Lines, r.Matched)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) FinishAIReport(id int64, result, errText string, in, out int64) error {
+	status := "done"
+	if errText != "" {
+		status = "error"
+	}
+	_, err := s.db.Exec(`UPDATE ai_reports SET status=?,result=?,error=?,tokens_in=?,tokens_out=? WHERE id=?`, status, result, errText, in, out, id)
+	return err
+}
+
+// FailStaleAIReports marks analyses left "running" by a restart as failed.
+func (s *Store) FailStaleAIReports() error {
+	_, err := s.db.Exec(`UPDATE ai_reports SET status='error', error='interrupted by a restart' WHERE status='running'`)
+	return err
+}
+
+const aiCols = `r.id,r.created_at,r.actor,r.device_id,COALESCE(d.name,''),r.title,r.status,r.model,r.lines,r.matched,r.tokens_in,r.tokens_out,r.result,r.error`
+
+func scanAI(sc interface{ Scan(...any) error }) (model.AIReport, error) {
+	var r model.AIReport
+	err := sc.Scan(&r.ID, &r.CreatedAt, &r.Actor, &r.DeviceID, &r.DeviceName, &r.Title, &r.Status, &r.Model, &r.Lines, &r.Matched, &r.TokensIn, &r.TokensOut, &r.Result, &r.Error)
+	r.CreatedAt = r.CreatedAt.Local()
+	return r, err
+}
+
+func (s *Store) AIReport(id int64) (model.AIReport, error) {
+	return scanAI(s.db.QueryRow(`SELECT `+aiCols+` FROM ai_reports r LEFT JOIN devices d ON d.id=r.device_id WHERE r.id=?`, id))
+}
+
+func (s *Store) AIReports(limit int) ([]model.AIReport, error) {
+	rows, err := s.db.Query(`SELECT `+aiCols+` FROM ai_reports r LEFT JOIN devices d ON d.id=r.device_id ORDER BY r.id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.AIReport
+	for rows.Next() {
+		r, err := scanAI(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

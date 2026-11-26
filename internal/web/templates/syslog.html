@@ -27,6 +27,10 @@
     <label style="flex-direction:row;gap:6px;align-items:center;margin-left:auto" title="{{t "slg.live_tip"}}"><input type="checkbox" id="sloglive" {{if .Live}}checked{{end}}> {{t "slg.live"}}</label>
     <a class="iconbtn" href="/syslog.csv?{{.Query}}" title="{{t "slg.csv"}}">{{template "aico" "backup"}}</a>
   </form>
+  {{if canWrite .User}}<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+    <form class="inline" method="post" action="/ai/analyze"><input type="hidden" name="dev" value="{{if .Dev}}{{.Dev}}{{end}}"><input type="hidden" name="sev" value="{{.Sev}}"><input type="hidden" name="range" value="{{.Range}}"><input type="hidden" name="q" value="{{.Q}}"><input type="hidden" name="back" value="/syslog?{{.Query}}"><button class="btn sm primary" type="submit" {{if not (aiOn)}}disabled title="{{t "ai.err_nokey"}}"{{else}}title="{{t "ai.btn_tip"}}"{{end}}>✦ {{t "ai.btn"}}</button></form>
+    <span class="muted small">{{t "ai.btn_note"}}{{if not (aiOn)}} — {{if isAdmin .User}}<a href="/settings#ai">{{t "nav.settings"}}</a>{{else}}{{t "ai.ask_admin"}}{{end}}{{end}}</span>
+  </div>{{end}}
   <div class="scroll"><table class="slog">
     <thead><tr><th>{{t "au.time"}}</th><th>{{t "col.name"}}</th><th>{{t "slg.c_sev"}}</th><th>{{t "slg.c_topics"}}</th><th>{{t "slg.c_msg"}}</th></tr></thead>
     <tbody>

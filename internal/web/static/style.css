@@ -620,3 +620,16 @@ button.badge.addrpick:hover { border-color: var(--accent); color: var(--fg); }
 .slog tr.svbad td { background: color-mix(in srgb, var(--bad) 7%, transparent); }
 .slog tr.svwarn td { background: color-mix(in srgb, var(--warn) 6%, transparent); }
 .nowrap { white-space: nowrap; }
+
+/* boris.gb 2026-11-26 11:57 - отчёт ИИ по логам: читаемая колонка текста, блоки команд, индикатор ожидания */
+.aireport { max-width: 980px; line-height: 1.55; }
+.aireport h3 { margin: 18px 0 8px; text-transform: none; letter-spacing: 0; font-size: 16px; color: var(--fg, inherit); }
+.aireport h4 { margin: 14px 0 6px; font-size: 14px; }
+.aireport p { margin: 8px 0; }
+.aireport ul, .aireport ol { margin: 6px 0 10px; padding-left: 22px; }
+.aireport li { margin: 4px 0; }
+.aireport code { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 12.5px; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+.aireport .aicont { margin: 2px 0 2px 22px; }
+.aicode { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 12.5px; background: var(--bg); border: 1px solid var(--border, #2a2f3a); border-radius: 6px; padding: 10px 12px; white-space: pre-wrap; word-break: break-word; margin: 8px 0; }
+.spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: aispin .8s linear infinite; vertical-align: -1px; margin-right: 6px; }
+@keyframes aispin { to { transform: rotate(360deg); } }

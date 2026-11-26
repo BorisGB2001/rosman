@@ -387,3 +387,21 @@ type SyslogTop struct {
 	Devices int
 	Sev     int
 }
+
+// AIReport is one AI analysis of device logs.
+type AIReport struct {
+	ID         int64
+	CreatedAt  time.Time
+	Actor      string
+	DeviceID   int64 // 0 = several devices
+	DeviceName string
+	Title      string
+	Status     string // running | done | error
+	Model      string
+	Lines      int // log lines sent to the model
+	Matched    int // log lines that matched the filter
+	TokensIn   int64
+	TokensOut  int64
+	Result     string // Markdown
+	Error      string
+}

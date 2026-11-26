@@ -31,6 +31,16 @@
   </div>
 </div>
 
+{{if .LogCrit}}
+<div class="card" style="border-color:var(--bad)">
+  <div class="cardhead" style="margin-bottom:8px"><h3 style="margin:0;color:var(--bad)">{{t "slg.crit24"}}</h3>
+    <a class="btn sm" style="margin-left:auto" href="/syslog?sev=err&range=24h">{{t "slg.dev_all"}}</a></div>
+  <div class="scroll"><table class="slog"><tbody>
+  {{range .LogCrit}}<tr class="svbad"><td class="muted mono nowrap">{{ts .TS}}</td><td class="nowrap"><a href="/devices/{{.DeviceID}}#syslog">{{.DeviceName}}</a></td><td class="mono small muted">{{.Topics}}</td><td class="lmsg">{{.Msg}}</td>
+    <td class="nowrap">{{if canWrite $.User}}<form class="inline" method="post" action="/ai/analyze"><input type="hidden" name="dev" value="{{.DeviceID}}"><input type="hidden" name="range" value="24h"><input type="hidden" name="back" value="/dashboard"><button class="btn sm" type="submit" {{if not (aiOn)}}disabled title="{{t "ai.err_nokey"}}"{{else}}title="{{t "ai.btn_tip"}}"{{end}}>✦ {{t "ai.btn"}}</button></form>{{end}}</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+{{end}}
 <div class="grid2">
   <div class="card">
     <h3>{{t "dash.topcpu"}}</h3>
