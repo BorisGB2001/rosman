@@ -1,0 +1,94 @@
+{{define "syslog"}}{{template "head" .}}
+<div class="cardhead"><h1 style="margin:0">{{t "slg.title"}}</h1>
+  <span class="muted small">{{t "slg.subtitle"}}</span>
+  <span style="margin-left:auto">{{if .Info.Listen}}<span class="badge good">udp {{.Info.Listen}}</span>{{else if .Info.Enabled}}<span class="badge bad" title="{{.Info.Err}}">{{t "slg.not_listening"}}</span>{{else}}<span class="badge">{{t "slg.off"}}</span>{{end}}</span>
+</div>
+{{if and .Info.Enabled (not .Info.Listen)}}<div class="card" style="border-color:var(--bad)"><b>{{t "slg.not_listening"}}:</b> <span class="mono small">{{.Info.Err}}</span> {{if isAdmin .User}}— <a href="/settings#syslog">{{t "nav.settings"}}</a>{{end}}</div>{{end}}
+
+<div class="tiles four">
+  <div class="tile"><span>{{t "slg.t_total"}}</span><b>{{.Total}}</b></div>
+  <div class="tile"><span>{{t "slg.t_err"}}</span><b {{if .ErrN}}style="color:var(--bad)"{{end}}>{{.ErrN}}</b></div>
+  <div class="tile"><span>{{t "slg.t_warn"}}</span><b {{if .WarnN}}style="color:var(--warn)"{{end}}>{{.WarnN}}</b></div>
+  <div class="tile"><span>{{t "slg.t_dev"}}</span><b>{{.Sending}} <small class="muted" style="font-size:13px;font-weight:400">/ {{.Configured}}</small></b></div>
+</div>
+
+{{if eq .Configured 0}}<div class="card"><p style="margin:0">{{t "slg.howto"}}</p></div>{{end}}
+
+<div class="card">
+  <form method="get" action="/syslog" style="display:flex;flex-direction:row;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+    <select name="dev" onchange="this.form.submit()"><option value="">{{t "slg.f_alldev"}}</option>{{range .Devices}}<option value="{{.ID}}" {{if eq .ID $.Dev}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+    <span class="pseg">
+      <a href="#" data-set="sev=" class="{{if eq .Sev ""}}on{{end}}">{{t "slg.f_all"}}</a><a href="#" data-set="sev=warn" class="{{if eq .Sev "warn"}}on{{end}}">{{t "slg.f_warn"}}</a><a href="#" data-set="sev=err" class="{{if eq .Sev "err"}}on{{end}}">{{t "slg.f_err"}}</a>
+    </span>
+    <span class="pseg">{{range $r := (split "1h 24h 7d all")}}<a href="#" data-set="range={{$r}}" class="{{if eq $r $.Range}}on{{end}}">{{if eq $r "all"}}{{t "slg.f_alltime"}}{{else}}{{$r}}{{end}}</a>{{end}}</span>
+    <input type="hidden" name="sev" value="{{.Sev}}"><input type="hidden" name="range" value="{{.Range}}">
+    <input type="search" name="q" value="{{.Q}}" placeholder="{{t "slg.f_search"}}" style="width:230px">
+    <button class="btn sm" type="submit">{{t "slg.f_apply"}}</button>
+    <label style="flex-direction:row;gap:6px;align-items:center;margin-left:auto" title="{{t "slg.live_tip"}}"><input type="checkbox" id="sloglive" {{if .Live}}checked{{end}}> {{t "slg.live"}}</label>
+    <a class="iconbtn" href="/syslog.csv?{{.Query}}" title="{{t "slg.csv"}}">{{template "aico" "backup"}}</a>
+  </form>
+  <div class="scroll"><table class="slog">
+    <thead><tr><th>{{t "au.time"}}</th><th>{{t "col.name"}}</th><th>{{t "slg.c_sev"}}</th><th>{{t "slg.c_topics"}}</th><th>{{t "slg.c_msg"}}</th></tr></thead>
+    <tbody>
+    {{range .Rows}}
+      <tr class="sv{{sevClass .Sev}}"><td class="muted mono nowrap">{{ts .TS}}</td><td class="nowrap"><a href="/devices/{{.DeviceID}}#syslog">{{if .DeviceName}}{{.DeviceName}}{{else}}{{.Src}}{{end}}</a></td><td><span class="badge {{sevClass .Sev}}">{{sevName .Sev}}</span></td><td class="mono small muted">{{.Topics}}</td><td class="lmsg">{{.Msg}}</td></tr>
+    {{else}}
+      <tr><td colspan="5" class="muted">{{t "slg.empty"}}</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
+    {{if .Paged}}<a class="btn sm" href="/syslog?{{.Query}}">« {{t "slg.newest"}}</a>{{end}}
+    {{if .Older}}<a class="btn sm" href="/syslog?{{.Query}}&before={{.Older}}">{{t "slg.older"}} »</a>{{end}}
+    <span class="muted small" style="margin-left:auto">{{t "slg.stored"}}: {{.Info.Stored}} · {{t "slg.keep"}} {{.Info.Days}} {{t "slg.days"}}{{if .Info.Dropped}} · {{t "slg.dropped"}}: {{.Info.Dropped}}{{end}}</span>
+  </div>
+</div>
+
+<div class="pair">
+<div class="card">
+  <h3>{{t "slg.by_dev"}}</h3>
+  <div class="scroll"><table class="dtable">
+    <thead><tr><th>{{t "col.name"}}</th><th>{{t "slg.t_total"}}</th><th>{{t "slg.t_err"}}</th><th>{{t "slg.t_warn"}}</th><th>{{t "slg.last"}}</th></tr></thead>
+    <tbody>{{range .ByDev}}<tr><td><a href="/syslog?dev={{.DeviceID}}&range={{$.Range}}">{{if .DeviceName}}{{.DeviceName}}{{else}}#{{.DeviceID}}{{end}}</a></td><td>{{.Total}}</td><td {{if .Errors}}style="color:var(--bad);font-weight:600"{{end}}>{{.Errors}}</td><td {{if .Warnings}}style="color:var(--warn)"{{end}}>{{.Warnings}}</td><td class="muted mono nowrap">{{ts .Last}}</td></tr>
+    {{else}}<tr><td colspan="5" class="muted">{{t "slg.empty"}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{if .Silent}}<p class="small" style="margin:10px 0 0;color:var(--warn)">{{t "slg.silent"}}: {{range $i, $d := .Silent}}{{if $i}}, {{end}}<a href="/devices/{{$d.ID}}#syslog">{{$d.Name}}</a>{{end}}</p>{{end}}
+</div>
+<div class="card">
+  <h3>{{t "slg.top"}}</h3>
+  <div class="scroll"><table class="dtable slog">
+    <thead><tr><th>{{t "slg.count"}}</th><th>{{t "slg.t_dev"}}</th><th>{{t "slg.c_msg"}}</th></tr></thead>
+    <tbody>{{range .Top}}<tr class="sv{{sevClass .Sev}}"><td><b>{{.Count}}</b></td><td>{{.Devices}}</td><td class="lmsg">{{.Msg}}</td></tr>
+    {{else}}<tr><td colspan="3" class="muted">{{t "slg.top_none"}}</td></tr>{{end}}</tbody>
+  </table></div>
+</div>
+</div>
+
+{{if .Info.Unknown}}
+<details class="card" style="border-color:var(--warn)">
+  <summary style="cursor:pointer;font-weight:600">{{t "slg.unknown"}} ({{len .Info.Unknown}})</summary>
+  <p class="muted small" style="margin:8px 0">{{t "slg.unknown_note"}}</p>
+  <table class="dtable"><thead><tr><th>IP</th><th>{{t "slg.host"}}</th><th>{{t "slg.count"}}</th><th>{{t "slg.last"}}</th></tr></thead>
+  <tbody>{{range .Info.Unknown}}<tr><td class="mono">{{.Addr}}</td><td>{{.Host}}</td><td>{{.Count}}</td><td class="muted mono">{{ts .Last}}</td></tr>{{end}}</tbody></table>
+</details>
+{{end}}
+<script>
+(function(){
+  var f = document.querySelector('form[action="/syslog"]');
+  f.querySelectorAll('a[data-set]').forEach(function(a){
+    a.addEventListener('click', function(e){
+      e.preventDefault();
+      var kv = a.dataset.set.split('=');
+      f.elements[kv[0]].value = kv[1];
+      f.submit();
+    });
+  });
+  // Live view: reload the first page every 10 s while the box is ticked.
+  var live = document.getElementById('sloglive'), timer;
+  function url(on){ var u = new URL(location.href); u.searchParams.delete('before'); if (on) u.searchParams.set('live','1'); else u.searchParams.delete('live'); return u; }
+  function arm(){ clearTimeout(timer); if (live.checked) timer = setTimeout(function(){ location.replace(url(true)); }, 10000); }
+  live.addEventListener('change', function(){ if (live.checked) arm(); else { clearTimeout(timer); history.replaceState(null, '', url(false)); } });
+  arm();
+})();
+</script>
+{{template "tail" .}}{{end}}

@@ -375,3 +375,22 @@ CREATE TABLE IF NOT EXISTS vendor_model_images (
     created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_vendor_model_images ON vendor_model_images(model_id);
+
+-- Syslog messages received from managed devices (ROSMan as a syslog collector).
+CREATE TABLE IF NOT EXISTS syslog (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts        TIMESTAMP NOT NULL,
+    device_id INTEGER NOT NULL,
+    src       TEXT NOT NULL DEFAULT '',
+    sev       INTEGER NOT NULL DEFAULT 6,
+    topics    TEXT NOT NULL DEFAULT '',
+    msg       TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_syslog_ts ON syslog(ts);
+CREATE INDEX IF NOT EXISTS idx_syslog_dev ON syslog(device_id, ts);
+-- Devices ROSMan has configured to send their log here.
+CREATE TABLE IF NOT EXISTS device_syslog (
+    device_id     INTEGER PRIMARY KEY,
+    target        TEXT NOT NULL DEFAULT '',
+    configured_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

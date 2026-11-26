@@ -613,3 +613,10 @@ button.badge.addrpick:hover { border-color: var(--accent); color: var(--fg); }
 /* boris.gb 2026-11-26 12:20 - панель по раскладке: строки, внутри строки отдельные плашки */
 .fprows { display: flex; flex-direction: column; gap: 12px; }
 .fprow { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; }
+
+/* boris.gb 2026-11-26 11:22 - журнал syslog: плотная таблица, цвет строки по важности, длинные сообщения переносятся */
+.slog td { vertical-align: top; }
+.slog .lmsg { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
+.slog tr.svbad td { background: color-mix(in srgb, var(--bad) 7%, transparent); }
+.slog tr.svwarn td { background: color-mix(in srgb, var(--warn) 6%, transparent); }
+.nowrap { white-space: nowrap; }

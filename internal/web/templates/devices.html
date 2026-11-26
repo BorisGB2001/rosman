@@ -37,6 +37,7 @@
     <button class="btn sm" type="submit" name="action" value="poll" onclick="return selConfirm('{{t "bulk.confirm"}}')">{{t "dev.poll"}}</button>
     <button class="btn sm" type="submit" name="action" value="backup" onclick="return selConfirm('{{t "bulk.confirm"}}')">{{t "dev.backup"}}</button>
     <button class="btn sm" type="submit" name="action" value="fwcheck" onclick="return selConfirm('{{t "bulk.confirm"}}')">{{t "dev.fw_check"}}</button>
+    <button class="btn sm" type="submit" name="action" value="syslog_on" title="{{t "slg.bulk_on_tip"}}" onclick="return selConfirm('{{t "slg.bulk_on_confirm"}}')">{{t "slg.bulk_on"}}</button>
     <button class="btn sm danger" type="submit" name="action" value="upgrade" onclick="return selConfirm('{{t "bulk.upgrade_confirm"}}')" {{if not .HasSSH}}disabled title="{{t "dev.need_ssh"}}"{{end}}>⬆ {{t "bulk.upgrade"}}</button>
     <button class="btn sm danger" type="submit" name="action" value="reboot" onclick="return selConfirm('{{t "bulk.reboot_confirm"}}')">⟲ {{t "dev.reboot"}}</button>
     {{if .Templates}}

@@ -653,7 +653,7 @@ func (s *Store) DeleteDevice(id int64) error {
 		return err
 	}
 	for _, t := range []string{"metrics", "configs", "alerts", "device_tags", "device_ports",
-		"device_clients", "device_neighbors", "iface_traffic", "topo_pos", "topo_hidden", "device_images", "bridge_hosts", "device_vlans"} {
+		"device_clients", "device_neighbors", "iface_traffic", "topo_pos", "topo_hidden", "device_images", "bridge_hosts", "device_vlans", "syslog", "device_syslog"} {
 		if _, err := tx.Exec(`DELETE FROM `+t+` WHERE device_id=?`, id); err != nil {
 			tx.Rollback()
 			return err

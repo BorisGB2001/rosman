@@ -347,3 +347,43 @@ type Config struct {
 	SHA256   string
 	Content  string
 }
+
+// SyslogMsg is one log line received from a device over syslog.
+type SyslogMsg struct {
+	ID         int64
+	TS         time.Time
+	DeviceID   int64
+	DeviceName string // joined for display
+	Src        string
+	Sev        int // syslog severity 0 (emerg) … 7 (debug)
+	Topics     string
+	Msg        string
+}
+
+// SyslogFilter narrows a syslog query. Zero values mean "any".
+type SyslogFilter struct {
+	DeviceID int64
+	MaxSev   int // 0 = any; otherwise sev <= MaxSev (3 = errors and worse)
+	Text     string
+	Since    time.Time
+	BeforeID int64
+	Limit    int
+}
+
+// SyslogDevStat is the per-device summary on the log page.
+type SyslogDevStat struct {
+	DeviceID   int64
+	DeviceName string
+	Total      int
+	Errors     int
+	Warnings   int
+	Last       time.Time
+}
+
+// SyslogTop is a frequently repeated message.
+type SyslogTop struct {
+	Msg     string
+	Count   int
+	Devices int
+	Sev     int
+}

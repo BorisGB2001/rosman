@@ -49,6 +49,13 @@ Localization lives in plain JSON files under
   `ROSMAN_BACKUP_INTERVAL`) with a per-device override (1 day … 1 year) on the
   device page; the device list shows the last backup and flags it red when it
   is older than the device's period (or 30 days by default).
+- **Syslog collector** — ROSMan listens on UDP (default port 5514, Settings →
+  Syslog) and stores device logs. One click on a device page (or a bulk action
+  on the device list) creates a remote logging action `rosman` on the device
+  and rules for the chosen topics. The **Device log** page filters by device,
+  severity, period and text, summarises messages per device, lists the most
+  repeated ones and exports CSV. Only known device addresses are accepted;
+  messages are kept 14 days by default.
 
 Credentials are encrypted at rest (AES-256-GCM); passwords are bcrypt-hashed.
 

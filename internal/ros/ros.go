@@ -1366,3 +1366,106 @@ func APIPrint(d model.Device, pass string, timeout time.Duration, sentence ...st
 	}
 	return out, nil
 }
+
+// SyslogAction is the name of the logging action ROSMan manages on devices.
+const SyslogAction = "rosman"
+
+// ConfigureSyslog makes the device send its log to host:port over syslog. It
+// creates (or updates) the remote logging action "rosman" and one logging rule
+// per topic entry that uses it; rules of that action that are no longer wanted
+// are removed. Nothing else in /system/logging is touched.
+func ConfigureSyslog(d model.Device, pass, host string, port int, topics []string, timeout time.Duration) error {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	base := []string{"=target=remote", "=remote=" + host, "=remote-port=" + strconv.Itoa(port)}
+	// RFC 3164 framing gives us the device name; the parameter was renamed in
+	// newer RouterOS, and the default bare format is understood as well, so
+	// fall through the variants until the device accepts one.
+	variants := [][]string{{"=bsd-syslog=yes", "=syslog-facility=daemon"}, {"=remote-log-format=syslog"}, {}}
+	r, err := c.Run("/system/logging/action/print", "?name="+SyslogAction)
+	if err != nil {
+		return fmt.Errorf("read logging actions: %w", err)
+	}
+	var lastErr error
+	done := false
+	for _, v := range variants {
+		var args []string
+		if len(r.Re) > 0 {
+			args = append([]string{"/system/logging/action/set", "=.id=" + r.Re[0].Map[".id"]}, base...)
+		} else {
+			args = append([]string{"/system/logging/action/add", "=name=" + SyslogAction}, base...)
+		}
+		if _, lastErr = c.Run(append(args, v...)...); lastErr == nil {
+			done = true
+			break
+		}
+	}
+	if !done {
+		return fmt.Errorf("set logging action: %w", lastErr)
+	}
+	rules, err := c.Run("/system/logging/print", "?action="+SyslogAction)
+	if err != nil {
+		return fmt.Errorf("read logging rules: %w", err)
+	}
+	want := map[string]bool{}
+	for _, t := range topics {
+		want[t] = true
+	}
+	have := map[string]bool{}
+	for _, re := range rules.Re {
+		t := re.Map["topics"]
+		if !want[t] || have[t] {
+			if _, err := c.Run("/system/logging/remove", "=.id="+re.Map[".id"]); err != nil {
+				return fmt.Errorf("remove logging rule %q: %w", t, err)
+			}
+			continue
+		}
+		have[t] = true
+		if re.Map["disabled"] == "true" {
+			if _, err := c.Run("/system/logging/set", "=.id="+re.Map[".id"], "=disabled=no"); err != nil {
+				return fmt.Errorf("enable logging rule %q: %w", t, err)
+			}
+		}
+	}
+	for _, t := range topics {
+		if have[t] {
+			continue
+		}
+		if _, err := c.Run("/system/logging/add", "=topics="+t, "=action="+SyslogAction); err != nil {
+			return fmt.Errorf("add logging rule %q: %w", t, err)
+		}
+	}
+	return nil
+}
+
+// RemoveSyslog undoes ConfigureSyslog: removes the rules that use the "rosman"
+// action and then the action itself.
+func RemoveSyslog(d model.Device, pass string, timeout time.Duration) error {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	rules, err := c.Run("/system/logging/print", "?action="+SyslogAction)
+	if err != nil {
+		return fmt.Errorf("read logging rules: %w", err)
+	}
+	for _, re := range rules.Re {
+		if _, err := c.Run("/system/logging/remove", "=.id="+re.Map[".id"]); err != nil {
+			return fmt.Errorf("remove logging rule: %w", err)
+		}
+	}
+	acts, err := c.Run("/system/logging/action/print", "?name="+SyslogAction)
+	if err != nil {
+		return fmt.Errorf("read logging actions: %w", err)
+	}
+	for _, re := range acts.Re {
+		if _, err := c.Run("/system/logging/action/remove", "=.id="+re.Map[".id"]); err != nil {
+			return fmt.Errorf("remove logging action: %w", err)
+		}
+	}
+	return nil
+}

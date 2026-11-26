@@ -81,6 +81,7 @@ func main() {
 	a.Restart = func() { restart.Store(true); stop() }
 
 	go scheduler.Run(ctx, a)
+	go a.RunSyslog(ctx)
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Listen,

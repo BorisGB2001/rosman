@@ -51,6 +51,18 @@
   <label>{{t "set.snmp_allowed"}}<textarea name="snmp_allowed" rows="2" placeholder="10.6.0.19, 10.0.0.0/24">{{index .V "snmp_allowed"}}</textarea></label>
   <p class="muted small">{{t "set.snmp_allowed_note"}}</p>
 </div>
+<div class="card narrow" id="syslog">
+  <h3>{{t "slg.set_title"}} {{if .Syslog.Listen}}<span class="badge good">udp {{.Syslog.Listen}}</span>{{else if .Syslog.Enabled}}<span class="badge bad">{{t "slg.not_listening"}}</span>{{else}}<span class="badge">off</span>{{end}}</h3>
+  <p class="muted small">{{t "slg.set_note"}}</p>
+  {{if .Syslog.Err}}<p class="small" style="color:var(--bad)">{{.Syslog.Err}}</p>{{end}}
+  <label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="syslog_enabled" {{if .Syslog.Enabled}}checked{{end}}> {{t "slg.set_enable"}}</label>
+  <label>{{t "slg.set_port"}}<input name="syslog_port" value="{{.Syslog.Port}}" style="width:90px"></label>
+  <label>{{t "slg.set_host"}}<input name="syslog_host" value="{{index .V "syslog_host"}}" placeholder="{{t "slg.set_host_ph"}}"></label>
+  <label>{{t "slg.set_topics"}}<input name="syslog_topics" value="{{.Syslog.Topics}}" placeholder="info warning error critical"></label>
+  <p class="muted small">{{t "slg.set_topics_note"}}</p>
+  <label>{{t "slg.set_days"}}<input name="syslog_days" value="{{.Syslog.Days}}" style="width:90px"></label>
+  <p class="muted small">{{t "slg.stored"}}: {{.Syslog.Stored}} · <a href="/syslog">{{t "slg.title"}}</a></p>
+</div>
 <div class="card narrow">
   <h3>{{t "ret.title"}}</h3>
   <p class="muted small">{{t "ret.note"}}</p>

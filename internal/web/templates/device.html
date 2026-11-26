@@ -205,6 +205,22 @@
 </div>
 </div>
 {{end}}
+<div class="card" id="syslog">
+  <div class="cardhead" style="margin-bottom:8px"><h3 style="margin:0">{{t "slg.dev_title"}} {{if .SyslogTarget}}<span class="badge good">→ {{.SyslogTarget}}</span>{{else}}<span class="badge">off</span>{{end}}</h3>
+    <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <a class="btn sm" href="/syslog?dev={{.D.ID}}&range=7d">{{t "slg.dev_all"}}</a>
+    {{if canWrite .User}}<form class="inline" method="post" action="/devices/{{.D.ID}}/syslog">
+      {{if .SyslogTarget}}<input type="hidden" name="on" value="0"><button class="btn sm" type="submit" onclick="return confirm('{{t "slg.dev_off_confirm"}}')">{{t "slg.dev_off"}}</button>
+      {{else}}<input type="hidden" name="on" value="1"><button class="btn sm primary" type="submit" {{if not .SyslogInfo.Listen}}disabled title="{{t "slg.not_listening"}}"{{end}}>{{t "slg.dev_on"}}</button>{{end}}
+    </form>
+    {{if .SyslogTarget}}<form class="inline" method="post" action="/devices/{{.D.ID}}/syslog"><input type="hidden" name="on" value="1"><button class="btn sm" type="submit" title="{{t "slg.dev_reapply_tip"}}">{{t "slg.dev_reapply"}}</button></form>{{end}}{{end}}
+    </span></div>
+  {{if .SyslogRecent}}
+  <div class="scroll"><table class="dtable slog">
+    <tbody>{{range .SyslogRecent}}<tr class="sv{{sevClass .Sev}}"><td class="muted mono nowrap">{{ts .TS}}</td><td><span class="badge {{sevClass .Sev}}">{{sevName .Sev}}</span></td><td class="mono small muted">{{.Topics}}</td><td class="lmsg">{{.Msg}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted small" style="margin:0">{{if .SyslogTarget}}{{t "slg.dev_none_yet"}}{{else}}{{t "slg.dev_note"}}{{end}}</p>{{end}}
+</div>
 <div class="card">
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
     <h3 style="margin:0">{{t "dev.configs"}}</h3>

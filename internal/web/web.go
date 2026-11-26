@@ -50,7 +50,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-var Version = "1.6.1"
+var Version = "1.7.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -77,6 +77,9 @@ func New(a *app.App) (*Server, error) {
 			return humanDur(time.Since(*t))
 		},
 		"humanDur": humanDur,
+		"sevName":  sevName,
+		"split":    strings.Fields,
+		"sevClass": sevClass,
 		"ts":       func(t time.Time) string { return t.Format("2006-01-02 15:04:05") },
 		"tsp":      func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02 15:04:05") },
 		"dateT":    func(t time.Time) string { if t.IsZero() { return "—" }; return t.Format("2006-01-02") },
@@ -323,6 +326,9 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/delete", s.authed(s.requireRole(model.RoleAdmin, s.deviceDelete)))
 	mux.Handle("POST /devices/{id}/type", s.authed(s.requireRole(model.RoleOperator, s.deviceSetType)))
 	mux.Handle("GET /activity", s.authed(s.activityJSON))
+	mux.Handle("GET /syslog", s.authed(s.syslogPage))
+	mux.Handle("GET /syslog.csv", s.authed(s.syslogCSV))
+	mux.Handle("POST /devices/{id}/syslog", s.authed(s.requireRole(model.RoleOperator, s.deviceSyslog)))
 	mux.Handle("GET /devices/{id}/layout", s.authed(s.requireRole(model.RoleOperator, s.deviceLayoutPage)))
 	mux.Handle("POST /devices/{id}/layout", s.authed(s.requireRole(model.RoleOperator, s.deviceLayoutSave)))
 	mux.Handle("POST /devices/{id}/sshkey", s.authed(s.requireRole(model.RoleOperator, s.deviceInstallKey)))
@@ -1811,6 +1817,12 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 		"Addrs": devAddrs, "CatChoices": catChoices, "CatBest": catBest, "SNMPPool": snmpPool,
 		"BkN": bkN, "BkUnit": bkUnit, "BkOwn": humanDur(time.Duration(d.BackupIntervalSec) * time.Second), "BkGlobal": humanDur(s.a.BackupInterval()),
 		"BkStale": s.a.BackupStale(d), "BkStaleAfter": humanDur(s.a.BackupStaleAfter(d)),
+		"SyslogTarget": func() string { m, _ := s.a.Store.DeviceSyslogTargets(); return m[d.ID] }(),
+		"SyslogRecent": func() []model.SyslogMsg {
+			rows, _ := s.a.Store.Syslog(model.SyslogFilter{DeviceID: d.ID, Limit: 12})
+			return rows
+		}(),
+		"SyslogInfo": s.a.SyslogStatus(),
 	})
 }
 
@@ -3304,6 +3316,10 @@ func (s *Server) bulkRun(w http.ResponseWriter, r *http.Request) {
 			}
 			return "rebooting", nil
 		})
+	case "syslog_on":
+		results = s.a.ForDevices("syslog_on", ids, 8, s.syslogBulk(lang, true))
+	case "syslog_off":
+		results = s.a.ForDevices("syslog_off", ids, 8, s.syslogBulk(lang, false))
 	case "upgrade":
 		// Only devices that actually have a newer RouterOS; the job itself
 		// (backup → install → reboot → verify, in waves) runs in the
@@ -4193,7 +4209,9 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 			"alert_cpu": get("alert_cpu"), "alert_temp": get("alert_temp"), "alert_mem": get("alert_mem"),
 			"backup_interval_hours": get("backup_interval_hours"), "backup_stale_days": get("backup_stale_days"),
 			"snmp_allowed": get("snmp_allowed"),
+			"syslog_host": get("syslog_host"), "syslog_topics": get("syslog_topics"),
 		},
+		"Syslog":     s.a.SyslogStatus(),
 		"BkEnvHours": int(s.a.Cfg.BackupInterval.Hours()),
 		"Upd":        s.a.UpdateInfo(Version), "ExePath": app.ExePath,
 		"BpwSet": get("backup_password_enc") != "", "SmtpPwSet": get("smtp_pass_enc") != "",
@@ -4605,10 +4623,29 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
 	}
 	poolErr := ""
 	if pool, err := app.NormalizePool(r.FormValue("snmp_allowed")); err != nil {
-		poolErr = err.Error() // keep the previous value rather than store a bad pool
+		poolErr = "SNMP: " + err.Error() // keep the previous value rather than store a bad pool
 	} else {
 		set("snmp_allowed", pool)
 	}
+	// Syslog collector: on/off, port, the address devices send to, retention.
+	if r.FormValue("syslog_enabled") == "on" {
+		set("syslog_enabled", "on")
+	} else {
+		set("syslog_enabled", "off")
+	}
+	for _, k := range []string{"syslog_port", "syslog_days"} {
+		v := strings.TrimSpace(r.FormValue(k))
+		if n, err := strconv.Atoi(v); v == "" || (err == nil && n > 0 && n < 65536) {
+			set(k, v)
+		}
+	}
+	if h := strings.TrimSpace(r.FormValue("syslog_host")); h == "" || net.ParseIP(h) != nil {
+		set("syslog_host", h)
+	} else if poolErr == "" {
+		poolErr = "syslog: bad address " + h
+	}
+	set("syslog_topics", strings.Join(app.NormalizeTopics(r.FormValue("syslog_topics")), " "))
+	s.a.SyslogReload()
 	if r.FormValue("git_enabled") == "on" {
 		set("git_enabled", "on")
 	} else {
@@ -4626,7 +4663,7 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "settings_save", "")
 	if poolErr != "" {
-		http.Redirect(w, r, "/settings?err="+urlq("SNMP: "+poolErr), http.StatusSeeOther)
+		http.Redirect(w, r, "/settings?err="+urlq(poolErr), http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/settings?msg=saved", http.StatusSeeOther)
