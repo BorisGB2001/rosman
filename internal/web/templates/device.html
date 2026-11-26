@@ -92,7 +92,8 @@
   <tr><th>{{t "dev.firmware"}}</th><td>{{if .D.FwLatest}}{{.D.FwLatest}} <small class="muted">{{.D.FwChannel}}</small>{{else}}—{{end}}</td><th>{{t "dev.uplink"}}</th><td>{{if .UplinkName}}<a href="/devices/{{.UplinkID}}">{{.UplinkName}}</a>{{if .UplinkPort}} <span class="muted">· {{.UplinkPort}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td></tr>
   <tr><th>CPU</th><td>{{.H.CPU}}%</td><th>{{t "dev.mem"}}</th><td>{{mb .H.FreeMem}} {{t "dev.free"}} / {{mb .H.TotalMem}}</td></tr>
   <tr><th>api-ssl cert</th><td>{{if .D.APISSLCert}}{{.D.APISSLCert}}{{else}}—{{end}}</td><th>{{t "dev.expires"}}</th><td>{{date .D.APICertExpiry}}</td></tr>
-  <tr><th>{{t "col.seen"}}</th><td class="muted">{{ago .D.LastSeen}}</td><th>{{t "dev.sshuser"}}</th><td>{{.D.SSHUser}}</td></tr>
+  <tr><th>{{t "col.seen"}}</th><td class="muted">{{if .D.LastFail}}<span class="badge bad" title="{{t "col.failing_since"}}">{{t "dev.no_link"}} · {{ago .D.LastFail}}</span> {{end}}{{ago .D.LastSeen}}</td><th>{{t "dev.sshuser"}}</th><td>{{.D.SSHUser}}</td></tr>
+  <tr><th>{{t "col.lastbackup"}}</th><td>{{if .D.LastBackup}}<span class="badge {{if .BkStale}}bad{{else}}good{{end}}">{{ago .D.LastBackup}}</span> <span class="muted small">{{tsp .D.LastBackup}}</span>{{else}}<span class="badge bad">{{t "bk.never"}}</span>{{end}}</td><th>{{t "bkp.period"}}</th><td class="muted">{{if .D.BackupIntervalSec}}{{.BkOwn}}{{else}}{{.BkGlobal}} <span class="small">({{t "bkp.global"}})</span>{{end}} · <span class="small">{{t "bkp.red_after"}} {{.BkStaleAfter}}</span></td></tr>
   <tr><th>API cert pin</th><td class="mono" colspan="3">{{if .D.APICertPin}}{{.D.APICertPin}}{{else}}—{{end}}</td></tr>
   <tr><th>SSH host pin</th><td class="mono" colspan="3">{{if .D.SSHHostPin}}{{.D.SSHHostPin}}{{else}}—{{end}}</td></tr>
 </table></div>
@@ -131,7 +132,8 @@
   {{if .HasTemp}}<div style="margin-top:10px"><div class="muted small">{{t "dev.temp"}} — {{printf "%.0f" .H.Temp}}°C</div>{{.TempGraph}}</div>{{end}}
 </div>
 {{if canWrite .User}}
-<div class="card narrow">
+<div class="pair">
+<div class="card">
   <h3>SNMP {{if .D.SNMPEnabled}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</h3>
   <form class="inline" method="post" action="/devices/{{.D.ID}}/snmp" style="gap:8px;flex-wrap:wrap">
     <label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="snmp_enabled" {{if .D.SNMPEnabled}}checked{{end}}> {{t "dev.snmp_enable"}}</label>
@@ -142,23 +144,7 @@
   <form class="inline" method="post" action="/devices/{{.D.ID}}/snmppoll" style="margin-top:8px"><button class="btn sm primary" type="submit">{{t "dev.snmp_poll"}}</button></form>
   <p class="muted small">{{t "dev.snmp_note"}}</p>
 </div>
-{{end}}
 <div class="card">
-  <h3>{{t "dev.configs"}} <a href="/devices/{{.D.ID}}/diff" class="btn sm secondary" style="margin-left:8px">{{t "diff.compare"}}</a></h3>
-  <div class="scroll"><table>
-    <thead><tr><th>{{t "dev.taken"}}</th><th></th><th>SHA-256</th><th></th></tr></thead>
-    <tbody>
-    {{range .Configs}}
-      <tr><td>{{ts .TakenAt}}</td><td><span class="badge">{{.Kind}}</span></td><td class="mono">{{slice .SHA256 0 16}}…</td>
-        <td class="nowrap">{{if eq .Kind "export"}}<a href="/configs/{{.ID}}">{{t "dev.view"}}</a> · {{end}}<a href="/configs/{{.ID}}/download">↓</a>{{if canWrite $.User}} · <form class="inline" method="post" action="/configs/{{.ID}}/restore"><button class="link" type="submit" onclick="return confirm('{{t "diff.restore_confirm"}}')">{{t "diff.restore"}}</button></form>{{end}}</td></tr>
-    {{else}}
-      <tr><td colspan="4" class="muted">{{t "dev.no_configs"}}{{if not $.HasSSH}} {{t "dev.need_ssh"}}{{end}}</td></tr>
-    {{end}}
-    </tbody>
-  </table></div>
-</div>
-{{if canWrite .User}}
-<div class="card narrow">
   <h3>{{t "dev.site"}} / {{t "dev.tags"}} / {{t "col.type"}}</h3>
   <form class="inline" method="post" action="/devices/{{.D.ID}}/type" style="margin-bottom:10px">
     <select name="device_type" onchange="this.form.submit()">
@@ -172,6 +158,19 @@
     <label style="flex-direction:row;gap:6px;align-items:center">{{t "poll.interval"}}
       <input name="poll_interval_sec" value="{{.D.PollIntervalSec}}" style="width:80px" placeholder="0">
       <span class="muted small">{{t "poll.sec_default" }} {{.GlobalPollSec}}s</span></label>
+    <button class="btn sm" type="submit">{{t "set.save"}}</button>
+  </form>
+  <form class="inline" method="post" action="/devices/{{.D.ID}}/backupinterval" style="margin-bottom:10px">
+    <label style="flex-direction:row;gap:6px;align-items:center">{{t "bkp.period"}}
+      <input name="n" type="number" min="0" value="{{.BkN}}" style="width:70px" placeholder="0">
+      <select name="unit">
+        <option value="h" {{if eq .BkUnit "h"}}selected{{end}}>{{t "bkp.u_h"}}</option>
+        <option value="d" {{if eq .BkUnit "d"}}selected{{end}}>{{t "bkp.u_d"}}</option>
+        <option value="w" {{if eq .BkUnit "w"}}selected{{end}}>{{t "bkp.u_w"}}</option>
+        <option value="mo" {{if eq .BkUnit "mo"}}selected{{end}}>{{t "bkp.u_mo"}}</option>
+        <option value="y" {{if eq .BkUnit "y"}}selected{{end}}>{{t "bkp.u_y"}}</option>
+      </select>
+      <span class="muted small">{{t "bkp.zero_default"}} {{.BkGlobal}}</span></label>
     <button class="btn sm" type="submit">{{t "set.save"}}</button>
   </form>
   <form class="inline" method="post" action="/devices/{{.D.ID}}/site" style="margin-bottom:10px">
@@ -188,7 +187,22 @@
     <button class="btn sm" type="submit">+</button>
   </form>
 </div>
+</div>
 {{end}}
+<div class="card">
+  <h3>{{t "dev.configs"}} <a href="/devices/{{.D.ID}}/diff" class="btn sm secondary" style="margin-left:8px">{{t "diff.compare"}}</a></h3>
+  <div class="scroll"><table>
+    <thead><tr><th>{{t "dev.taken"}}</th><th></th><th>SHA-256</th><th></th></tr></thead>
+    <tbody>
+    {{range .Configs}}
+      <tr><td>{{ts .TakenAt}}</td><td><span class="badge">{{.Kind}}</span></td><td class="mono">{{slice .SHA256 0 16}}…</td>
+        <td class="nowrap">{{if eq .Kind "export"}}<a href="/configs/{{.ID}}">{{t "dev.view"}}</a> · {{end}}<a href="/configs/{{.ID}}/download">↓</a>{{if canWrite $.User}} · <form class="inline" method="post" action="/configs/{{.ID}}/restore"><button class="link" type="submit" onclick="return confirm('{{t "diff.restore_confirm"}}')">{{t "diff.restore"}}</button></form>{{end}}</td></tr>
+    {{else}}
+      <tr><td colspan="4" class="muted">{{t "dev.no_configs"}}{{if not $.HasSSH}} {{t "dev.need_ssh"}}{{end}}</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
 <div class="card">
   <h3>{{t "dev.traffic"}} <span class="muted small">{{t "dev.traffic_note"}}</span></h3>
   <div class="scroll"><table>

@@ -546,3 +546,41 @@ small.client.script, small.client.empty { color: var(--warn); }
 .gallery img { max-width: 100%; max-height: 240px; width: auto; object-fit: contain; display: block; margin: 0 auto; border-radius: 6px; }
 .gallery .gcap { margin-top: 6px; text-align: center; }
 .gnav { justify-content: center; align-items: center; gap: 10px; margin-top: 6px; }
+
+/* boris.gb 2026-11-26 07:50 - строка статуса (подвал): что сейчас делает сервер, с прогрессом или бегущей полосой */
+.sbar { position: fixed; left: 220px; right: 0; bottom: 0; z-index: 900; height: 28px; padding: 0 16px; display: flex; align-items: center; gap: 10px; font-size: 12px; background: var(--surface); border-top: 1px solid var(--line); color: var(--muted); white-space: nowrap; overflow: hidden; }
+.sbar-ico { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--good); }
+.sbar.run .sbar-ico { width: 12px; height: 12px; background: none; border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); border-top-color: var(--accent); animation: sbar-spin .8s linear infinite; }
+.sbar.err .sbar-ico { background: var(--bad); }
+.sbar.warn .sbar-ico { background: var(--warn); }
+.sbar-title { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+.sbar.run .sbar-title, .sbar.err .sbar-title, .sbar.ok .sbar-title, .sbar.warn .sbar-title { color: var(--fg); font-weight: 600; }
+.sbar-detail { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sbar.err .sbar-detail { color: var(--bad); }
+.sbar-track { flex: none; width: 220px; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 16%, transparent); overflow: hidden; position: relative; display: block; }
+.sbar-track.off { display: none; }
+.sbar-track i { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--accent); transition: width .5s ease; background-image: linear-gradient(90deg, transparent 0, rgba(255,255,255,.35) 50%, transparent 100%); background-size: 60px 100%; background-repeat: no-repeat; animation: sbar-shine 1.3s linear infinite; }
+.sbar-track.ind i { position: absolute; left: 0; width: 35%; background-image: none; animation: sbar-run 1.25s ease-in-out infinite; transition: none; }
+.sbar-pct { flex: none; font-variant-numeric: tabular-nums; }
+.sbar-more { flex: none; color: var(--accent); cursor: help; }
+@keyframes sbar-spin { to { transform: rotate(360deg); } }
+@keyframes sbar-run { 0% { left: -35%; } 100% { left: 100%; } }
+@keyframes sbar-shine { 0% { background-position: -60px 0; } 100% { background-position: 260px 0; } }
+@media (prefers-reduced-motion: reduce) { .sbar-track i, .sbar.run .sbar-ico { animation-duration: 4s; } }
+@media (max-width: 900px) { .sbar { left: 0; } .sbar-track { width: 90px; } }
+main { padding-bottom: 56px; }
+/* нажатая кнопка отправки формы: видно, что запрос ушёл */
+.btn.busy, button.busy { pointer-events: none; opacity: .65; position: relative; }
+.btn.busy::after { content: ""; display: inline-block; width: 10px; height: 10px; margin-left: 7px; vertical-align: -1px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: sbar-spin .7s linear infinite; }
+/* устройство без связи: строка подсвечена красным */
+tr.rowdown td { background: color-mix(in srgb, var(--bad) 11%, transparent); }
+tr.rowdown td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+tr.rowdown a { color: var(--bad); }
+.downdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-right: 6px; vertical-align: 1px; }
+/* иконки-кнопки со всплывающей подписью */
+.iconbtn { display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px; position: relative; }
+[data-tip]:hover::after, [data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); right: 0; background: var(--fg); color: var(--bg); padding: 3px 9px; border-radius: 5px; font-size: 12px; font-weight: 400; white-space: nowrap; z-index: 60; pointer-events: none; }
+/* две карточки в одну строку (SNMP + локация на странице устройства) */
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: stretch; }
+.pair > .card { min-width: 0; }
+@media (max-width: 900px) { .pair { grid-template-columns: 1fr; gap: 0; } }

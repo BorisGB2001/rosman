@@ -13,6 +13,9 @@
       <option value="both" {{if eq (index .V "backup_mode") "both"}}selected{{end}}>{{t "set.mode_both"}}</option>
     </select>
   </label>
+  <label>{{t "set.bk_interval"}}<input name="backup_interval_hours" type="number" min="0" value="{{index .V "backup_interval_hours"}}" placeholder="{{.BkEnvHours}}" style="width:90px"></label>
+  <label>{{t "set.bk_stale"}}<input name="backup_stale_days" type="number" min="0" value="{{index .V "backup_stale_days"}}" placeholder="30" style="width:90px"></label>
+  <p class="muted small" style="margin:4px 0 8px">{{t "set.bk_interval_note"}}</p>
   <label>{{t "set.password"}} {{if .BpwSet}}<span class="muted small">({{t "set.secret_keep"}})</span>{{end}}<input name="backup_password" type="password"></label>
   <div style="margin:10px 0 4px" class="muted">{{t "set.deliver"}}:</div>
   <label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="deliver" value="folder" {{if contains (index .V "backup_deliver") "folder"}}checked{{end}}> {{t "set.folder"}}</label>
@@ -72,10 +75,23 @@
 </div>
 
 {{if isAdmin .User}}
+<div class="card narrow" id="update" {{if .Upd.Outdated}}style="border-color:var(--bad)"{{end}}>
+  <h3 style="margin-top:0">{{t "upd.title"}} {{if .Upd.Outdated}}<span class="badge bad">{{t "upd.available"}} {{.Upd.Latest}}</span>{{else if .Upd.Latest}}<span class="badge good">{{t "upd.current"}}</span>{{else}}<span class="badge">{{t "upd.unknown"}}</span>{{end}}</h3>
+  <table style="margin-bottom:10px">
+    <tr><th>{{t "upd.installed"}}</th><td>v{{version}}</td></tr>
+    <tr><th>{{t "upd.latest"}}</th><td>{{if .Upd.Latest}}<a href="https://github.com/BorisGB2001/rosman/releases/latest" target="_blank" rel="noopener">{{.Upd.Latest}} ↗</a>{{else}}—{{end}}</td></tr>
+    <tr><th>{{t "upd.checked"}}</th><td class="muted">{{if .Upd.Checked.IsZero}}—{{else}}{{ts .Upd.Checked}}{{end}}</td></tr>
+  </table>
+  <div class="badges">
+    <form method="post" action="/settings/update/check"><button class="btn sm" type="submit">{{t "upd.check"}}</button></form>
+    {{if .Upd.Outdated}}<form method="post" action="/settings/update/apply" onsubmit="return confirm('{{t "upd.confirm"}}')"><button class="btn sm primary" type="submit">⬆ {{t "upd.apply"}} {{.Upd.Latest}}</button></form>{{end}}
+  </div>
+  <p class="muted small" style="margin-top:8px">{{t "upd.note"}} <span class="mono">{{.ExePath}}</span></p>
+</div>
 <div class="card narrow" style="border-color:var(--accent)">
   <h3 style="margin-top:0">{{t "bk.full_title"}}</h3>
   <p class="muted small">{{t "bk.full_note"}}</p>
-  <form method="post" action="/settings/backup/export" style="margin-bottom:14px">
+  <form method="post" action="/settings/backup/export" style="margin-bottom:14px" data-nobusy>
     <label>{{t "bk.password"}}<input type="password" name="password" minlength="8" required placeholder="≥ 8"></label>
     <div style="margin-top:8px"><button class="btn primary" type="submit">↓ {{t "bk.export"}}</button></div>
   </form>

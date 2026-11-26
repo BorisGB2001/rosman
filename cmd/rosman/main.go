@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -73,6 +74,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Self-update asks for a restart: shut down gracefully, then re-exec the
+	// (already replaced) binary in place — same PID, so it works the same under
+	// systemd and when run by hand.
+	var restart atomic.Bool
+	a.Restart = func() { restart.Store(true); stop() }
+
 	go scheduler.Run(ctx, a)
 
 	httpSrv := &http.Server{
@@ -82,7 +89,9 @@ func main() {
 		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
 	}
 
+	drained := make(chan struct{})
 	go func() {
+		defer close(drained)
 		<-ctx.Done()
 		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -92,6 +101,17 @@ func main() {
 	log.Printf("listening on https://%s", cfg.Listen)
 	if err := httpSrv.ListenAndServeTLS(cfg.TLSCertPath, cfg.TLSKeyPath); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server: %v", err)
+	}
+	if ctx.Err() != nil {
+		<-drained // let in-flight requests finish before exiting or re-exec
+	}
+	if restart.Load() && app.ExePath != "" {
+		log.Printf("restarting into the updated binary")
+		st.Close()
+		if err := syscall.Exec(app.ExePath, os.Args, os.Environ()); err != nil {
+			log.Printf("re-exec failed: %v — exiting so the service manager restarts us", err)
+			os.Exit(1)
+		}
 	}
 	log.Printf("stopped")
 }

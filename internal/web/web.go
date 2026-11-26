@@ -48,7 +48,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-const Version = "1.3.0"
+var Version = "1.4.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -72,8 +72,9 @@ func New(a *app.App) (*Server, error) {
 			if t == nil {
 				return "—"
 			}
-			return time.Since(*t).Round(time.Second).String()
+			return humanDur(time.Since(*t))
 		},
+		"humanDur": humanDur,
 		"ts":       func(t time.Time) string { return t.Format("2006-01-02 15:04:05") },
 		"tsp":      func(t *time.Time) string { if t == nil { return "—" }; return t.Format("2006-01-02 15:04:05") },
 		"dateT":    func(t time.Time) string { if t.IsZero() { return "—" }; return t.Format("2006-01-02") },
@@ -139,7 +140,102 @@ func New(a *app.App) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{a: a, tmpl: t}, nil
+	srv := &Server{a: a, tmpl: t}
+	// After a device is added and polled, attach its catalog template.
+	a.AfterAdd = srv.autoTemplate
+	return srv, nil
+}
+
+// humanDur renders a duration compactly with at most two units ("42s", "17m",
+// "3h 5m", "12d 4h") instead of Go's "292h13m7s".
+func humanDur(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	sec := int64(d / time.Second)
+	switch {
+	case sec < 60:
+		return fmt.Sprintf("%ds", sec)
+	case sec < 3600:
+		return fmt.Sprintf("%dm", sec/60)
+	case sec < 86400:
+		if m := sec % 3600 / 60; m > 0 {
+			return fmt.Sprintf("%dh %dm", sec/3600, m)
+		}
+		return fmt.Sprintf("%dh", sec/3600)
+	default:
+		if h := sec % 86400 / 3600; h > 0 {
+			return fmt.Sprintf("%dd %dh", sec/86400, h)
+		}
+		return fmt.Sprintf("%dd", sec/86400)
+	}
+}
+
+// autoTemplate attaches the catalog template that matches a freshly added
+// device's model: when the operator typed no notes, the model's catalog notes
+// (default settings / description) become the device notes. The catalog photo
+// and port layout are matched by model on the device page automatically.
+func (s *Server) autoTemplate(id int64) {
+	d, err := s.a.Store.Device(id)
+	if err != nil || d.Model == "" {
+		return
+	}
+	cm, ok := s.a.Store.VendorModelByNorm(normModel(d.Model))
+	if !ok {
+		return
+	}
+	if strings.TrimSpace(d.Notes) == "" && strings.TrimSpace(cm.Notes) != "" {
+		_ = s.a.Store.SetDeviceNotes(id, cm.Notes)
+	}
+}
+
+// activityJSON feeds the status bar: running background/foreground operations
+// and the ones that finished a moment ago, with localized titles.
+func (s *Server) activityJSON(w http.ResponseWriter, r *http.Request) {
+	lang := langOf(r)
+	type item struct {
+		ID      int64  `json:"id"`
+		Title   string `json:"title"`
+		Detail  string `json:"detail"`
+		Done    int    `json:"done"`
+		Total   int    `json:"total"`
+		Failed  int    `json:"failed"`
+		Pct     int    `json:"pct"`
+		Running bool   `json:"running"`
+		Err     string `json:"err"`
+		Elapsed string `json:"elapsed"`
+	}
+	acts := s.a.Activities()
+	out := make([]item, 0, len(acts))
+	for _, x := range acts {
+		it := item{ID: x.ID, Title: i18n.T(lang, "act."+x.Kind), Done: x.Done, Total: x.Total,
+			Failed: x.Failed, Running: x.Running(), Err: x.Err}
+		if x.Subject != "" {
+			it.Title += ": " + x.Subject
+		}
+		if x.Stage != "" {
+			it.Detail = i18n.T(lang, "act.stage."+x.Stage)
+			if x.Detail != "" {
+				it.Detail += " — " + x.Detail
+			}
+		} else {
+			it.Detail = x.Detail
+		}
+		if x.Total > 0 {
+			it.Pct = x.Done * 100 / x.Total
+			if it.Pct > 100 {
+				it.Pct = 100
+			}
+		}
+		end := time.Now()
+		if !x.Running() {
+			end = x.Finished
+		}
+		it.Elapsed = humanDur(end.Sub(x.Started))
+		out = append(out, it)
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, 200, map[string]any{"tasks": out})
 }
 
 func (s *Server) Routes() http.Handler {
@@ -156,6 +252,10 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/new", s.authed(s.requireRole(model.RoleOperator, s.newDeviceSubmit)))
 	mux.Handle("POST /devices/{id}/delete", s.authed(s.requireRole(model.RoleAdmin, s.deviceDelete)))
 	mux.Handle("POST /devices/{id}/type", s.authed(s.requireRole(model.RoleOperator, s.deviceSetType)))
+	mux.Handle("GET /activity", s.authed(s.activityJSON))
+	mux.Handle("POST /devices/{id}/backupinterval", s.authed(s.requireRole(model.RoleOperator, s.deviceSetBackupInterval)))
+	mux.Handle("POST /settings/update/check", s.authed(s.requireRole(model.RoleAdmin, s.updateCheck)))
+	mux.Handle("POST /settings/update/apply", s.authed(s.requireRole(model.RoleAdmin, s.updateApply)))
 	mux.Handle("POST /devices/{id}/pollinterval", s.authed(s.requireRole(model.RoleOperator, s.deviceSetPollInterval)))
 	mux.Handle("POST /devices/{id}/setip", s.authed(s.requireRole(model.RoleOperator, s.deviceSetIP)))
 	mux.Handle("GET /devices/import", s.authed(s.requireRole(model.RoleOperator, s.importForm)))
@@ -758,13 +858,17 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		DevTags  []string
 		Outdated bool
 		Alerts   int
-		Addrs    []model.NetAddr
+		// BackupStale: never backed up, or older than the device's period.
+		BackupStale bool
+		BackupEvery string // effective backup period, for the tooltip
+		Addrs       []model.NetAddr
 		Macs     []model.NetMac
 		LTE      model.LTEInfo
 		VPNCount int
 		VPNInfo  string
 	}
 	rows := make([]row, 0, len(devs))
+	outdatedN := 0
 	for _, d := range devs {
 		if fSite != "" {
 			if d.SiteID == nil || strconv.FormatInt(*d.SiteID, 10) != fSite {
@@ -780,7 +884,10 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		rr := row{Device: d, Alerts: alertN[d.ID]}
 		if l := fwFirst(d.FwLatest); l != "" && l != fwFirst(d.ROSVersion) {
 			rr.Outdated = true
+			outdatedN++
 		}
+		rr.BackupStale = s.a.BackupStale(d)
+		rr.BackupEvery = humanDur(s.a.BackupIntervalFor(d))
 		if d.SiteID != nil {
 			rr.SiteName = siteName[*d.SiteID]
 		}
@@ -849,6 +956,7 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "devices", map[string]any{"Active": "devices", "Devices": rows,
 		"Sites": sites, "AllTags": allTags, "FSite": fSite, "FTag": fTag, "FType": fType,
 		"Discovered": discovered, "ShowAllNeigh": showAllNeigh, "Templates": tpls,
+		"OutdatedN": outdatedN, "HasSSH": s.a.HasSSHKey(),
 		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
 }
 
@@ -1173,7 +1281,10 @@ func (s *Server) deviceReboot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", 404)
 		return
 	}
-	if err := s.a.Reboot(d); err != nil {
+	t := s.a.StartTask("reboot_one", d.Name, 0)
+	err = s.a.Reboot(d)
+	t.Finish(err)
+	if err != nil {
 		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
 		return
 	}
@@ -1330,6 +1441,61 @@ func (s *Server) deviceSetPollInterval(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?msg=poll-interval-saved", http.StatusSeeOther)
 }
 
+// deviceSetBackupInterval sets the per-device backup period from a number and
+// a unit (hours/days/weeks/months/years); 0 or empty returns to the fleet-wide
+// period.
+func (s *Server) deviceSetBackupInterval(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	n, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("n")))
+	unit := map[string]int{"h": 3600, "d": 86400, "w": 7 * 86400, "mo": 30 * 86400, "y": 365 * 86400}[r.FormValue("unit")]
+	if n < 0 || unit == 0 {
+		n = 0
+	}
+	if n > 100000 {
+		n = 100000
+	}
+	_ = s.a.Store.SetDeviceBackupInterval(id, n*unit)
+	http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?msg=backup-interval-saved", http.StatusSeeOther)
+}
+
+// splitInterval turns seconds into the largest whole unit for the period form.
+func splitInterval(sec int) (n int, unit string) {
+	for _, u := range []struct {
+		k string
+		s int
+	}{{"y", 365 * 86400}, {"mo", 30 * 86400}, {"w", 7 * 86400}, {"d", 86400}, {"h", 3600}} {
+		if sec >= u.s && sec%u.s == 0 {
+			return sec / u.s, u.k
+		}
+	}
+	if sec > 0 {
+		return (sec + 3599) / 3600, "h"
+	}
+	return 0, "d"
+}
+
+// updateCheck re-queries GitHub for the latest release right now.
+func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
+	s.a.RefreshUpdate(Version)
+	http.Redirect(w, r, "/settings?msg=upd-checked#update", http.StatusSeeOther)
+}
+
+// updateApply downloads and installs the latest release, then restarts the
+// process. The browser gets a small page that waits for the service to come
+// back and returns to settings.
+func (s *Server) updateApply(w http.ResponseWriter, r *http.Request) {
+	tag, err := s.a.SelfUpdate(Version)
+	if err != nil {
+		http.Redirect(w, r, "/settings?err="+urlq(err.Error())+"#update", http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "self_update", "v"+Version+" → "+tag)
+	s.render(w, r, "restarting", map[string]any{"Active": "settings", "Tag": tag})
+	if s.a.Restart != nil {
+		go func() { time.Sleep(800 * time.Millisecond); s.a.Restart() }()
+	}
+}
+
 func (s *Server) deviceDelete(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	d, err := s.a.Store.Device(id)
@@ -1365,7 +1531,10 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 	}
 	var results []app.ApplyResult
 	added := 0
+	imp := s.a.StartTask("import", "", len(rows))
+	defer imp.Finish(nil)
 	for i, row := range rows {
+		imp.Advance(i)
 		if len(row) == 0 || (len(row) == 1 && strings.TrimSpace(row[0]) == "") {
 			continue
 		}
@@ -1385,6 +1554,7 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 		if name != "" {
 			label = name + " (" + ip + ")"
 		}
+		imp.Detail(label)
 		if ip == "" || user == "" || pass == "" {
 			results = append(results, app.ApplyResult{Device: label, OK: false, Detail: "need ip,user,pass"})
 			continue
@@ -1426,12 +1596,13 @@ func (s *Server) newDeviceSubmit(w http.ResponseWriter, r *http.Request) {
 			"Name": r.FormValue("name"), "IP": r.FormValue("ip"), "APIUser": r.FormValue("api_user"), "CatModels": catModels})
 		return
 	}
-	// Seed notes from a chosen catalog template, if the operator picked one.
+	// Notes typed (or picked from a catalog template) by the operator win over
+	// the template that AddDevice attached automatically from the model.
 	if notes := strings.TrimSpace(r.FormValue("notes")); notes != "" {
 		_ = s.a.Store.SetDeviceNotes(id, notes)
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "add_device", r.FormValue("ip"))
-	http.Redirect(w, r, "/devices/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+	http.Redirect(w, r, "/devices/"+strconv.FormatInt(id, 10)+"?msg=device-added", http.StatusSeeOther)
 }
 
 func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
@@ -1502,6 +1673,7 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 			faceplate = fp
 		}
 	}
+	bkN, bkUnit := splitInterval(d.BackupIntervalSec)
 	s.render(w, r, "device", map[string]any{"Active": "devices",
 		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors, "Traffic": traffic,
 		"Sites": sites, "DevTags": devTags, "BackupMode": s.a.BackupMode(),
@@ -1517,6 +1689,8 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 		"HasSSH": s.a.HasSSHKey(), "Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
 		"InMaint":       s.a.Store.InMaintenance(d.ID, time.Now()),
 		"GlobalPollSec": int(s.a.Cfg.PollInterval.Seconds()),
+		"BkN": bkN, "BkUnit": bkUnit, "BkOwn": humanDur(time.Duration(d.BackupIntervalSec) * time.Second), "BkGlobal": humanDur(s.a.BackupInterval()),
+		"BkStale": s.a.BackupStale(d), "BkStaleAfter": humanDur(s.a.BackupStaleAfter(d)),
 	})
 }
 
@@ -1736,7 +1910,10 @@ func (s *Server) devicePoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dst := "/devices/" + r.PathValue("id")
-	if err := s.a.PollDevice(d); err != nil {
+	t := s.a.StartTask("poll_one", d.Name, 0)
+	err = s.a.PollDevice(d)
+	t.Finish(err)
+	if err != nil {
 		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
 		return
 	}
@@ -1751,7 +1928,9 @@ func (s *Server) deviceBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dst := "/devices/" + r.PathValue("id")
+	t := s.a.StartTask("backup_one", d.Name, 0)
 	changed, err := s.a.BackupDevice(d, r.FormValue("mode"))
+	t.Finish(err)
 	if err != nil {
 		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
 		return
@@ -1772,7 +1951,10 @@ func (s *Server) deviceFwCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dst := "/devices/" + r.PathValue("id")
-	if err := s.a.RefreshFirmware(d); err != nil {
+	t := s.a.StartTask("fwcheck_one", d.Name, 0)
+	err = s.a.RefreshFirmware(d)
+	t.Finish(err)
+	if err != nil {
 		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
 		return
 	}
@@ -2608,12 +2790,12 @@ func looksLikeMAC(s string) bool {
 func (s *Server) backupsPage(w http.ResponseWriter, r *http.Request) {
 	devs, _ := s.a.Store.Devices()
 	times, _ := s.a.Store.LastConfigTimes()
-	const staleAfter = 7 * 24 * time.Hour
 	type row struct {
 		ID                 int64
 		Name, Model        string
 		Export, Binary     *time.Time
-		Status             string // ok | stale | never
+		Last               *time.Time // last successful backup run
+		Status             string     // ok | stale | never
 	}
 	rows := make([]row, 0, len(devs))
 	var okN, staleN, neverN int
@@ -2627,17 +2809,14 @@ func (s *Server) backupsPage(w http.ResponseWriter, r *http.Request) {
 		} else if t, ok := times[d.ID]["archive"]; ok {
 			rr.Binary = &t
 		}
-		var newest *time.Time
-		for _, t := range []*time.Time{rr.Export, rr.Binary} {
-			if t != nil && (newest == nil || t.After(*newest)) {
-				newest = t
-			}
-		}
+		// Status follows the last successful backup RUN (an unchanged export
+		// stores no new version but still counts) and the device's own period.
+		rr.Last = d.LastBackup
 		switch {
-		case newest == nil:
+		case d.LastBackup == nil:
 			rr.Status = "never"
 			neverN++
-		case time.Since(*newest) > staleAfter:
+		case s.a.BackupStale(d):
 			rr.Status = "stale"
 			staleN++
 		default:
@@ -2679,7 +2858,8 @@ func (s *Server) devicesCSV(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="rosman-devices-%s.csv"`, time.Now().Format("2006-01-02")))
 	cw := csv.NewWriter(w)
 	_ = cw.Write([]string{"name", "ip", "mac", "model", "serial", "ros_version", "ros_latest", "ros_outdated",
-		"board_fw", "board_fw_available", "board_fw_outdated", "type", "site", "last_seen", "alerts"})
+		"board_fw", "board_fw_available", "board_fw_outdated", "type", "site", "tags", "last_seen", "online",
+		"last_backup", "backup_stale", "alerts", "notes"})
 	for _, d := range devs {
 		mac := ""
 		if macs, _ := s.a.Store.DeviceMacs(d.ID); len(macs) > 0 {
@@ -2696,8 +2876,15 @@ func (s *Server) devicesCSV(w http.ResponseWriter, r *http.Request) {
 		if d.LastSeen != nil {
 			seen = d.LastSeen.Format("2006-01-02 15:04")
 		}
+		lastBk := ""
+		if d.LastBackup != nil {
+			lastBk = d.LastBackup.Format("2006-01-02 15:04")
+		}
+		tags, _ := s.a.Store.DeviceTags(d.ID)
 		_ = cw.Write([]string{d.Name, d.IP, mac, d.Model, d.Serial, d.ROSVersion, rosLatest, boolStr(rosOutdated),
-			d.RBCurrentFw, d.RBUpgradeFw, boolStr(rbOutdated), d.DeviceType, site, seen, strconv.Itoa(alertN[d.ID])})
+			d.RBCurrentFw, d.RBUpgradeFw, boolStr(rbOutdated), d.DeviceType, site, strings.Join(tags, " "), seen,
+			boolStr(d.LastFail == nil && d.LastSeen != nil), lastBk, boolStr(s.a.BackupStale(d)),
+			strconv.Itoa(alertN[d.ID]), d.Notes})
 	}
 	cw.Flush()
 }
@@ -2870,66 +3057,95 @@ func (s *Server) renderBulk(w http.ResponseWriter, r *http.Request, results []ap
 func (s *Server) bulkRun(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	action := r.FormValue("action")
-	ids := r.Form["ids"]
+	var ids []int64
+	for _, sid := range r.Form["ids"] {
+		if id, err := strconv.ParseInt(sid, 10, 64); err == nil {
+			ids = append(ids, id)
+		}
+	}
 	if len(ids) == 0 {
-		s.renderBulk(w, r, nil, "", "no devices selected")
+		s.renderBulk(w, r, nil, "", i18n.T(langOf(r), "bulk.err_none"))
 		return
 	}
 	guard, _ := strconv.Atoi(r.FormValue("guard"))
 	if guard == 0 {
 		guard = 120
 	}
-	var tpl model.Template
-	if action == "template" {
+	user := userFrom(r).Username
+	var results []app.ApplyResult
+	detail := action
+	switch action {
+	case "poll":
+		results = s.a.ForDevices("poll", ids, 8, func(d model.Device) (string, error) {
+			return "", s.a.PollDevice(d)
+		})
+	case "backup":
+		results = s.a.ForDevices("backup", ids, 8, func(d model.Device) (string, error) {
+			changed, err := s.a.BackupDevice(d, "")
+			if err != nil {
+				return "", err
+			}
+			if changed {
+				return "new version", nil
+			}
+			return "no change", nil
+		})
+	case "fwcheck":
+		results = s.a.ForDevices("fwcheck", ids, 8, func(d model.Device) (string, error) {
+			if err := s.a.RefreshFirmware(d); err != nil {
+				return "", err
+			}
+			nd, _ := s.a.Store.Device(d.ID)
+			return nd.FwStatus, nil
+		})
+	case "reboot":
+		results = s.a.ForDevices("reboot", ids, 8, func(d model.Device) (string, error) {
+			if err := s.a.Reboot(d); err != nil {
+				return "", err
+			}
+			return "rebooting", nil
+		})
+	case "upgrade":
+		// Only devices that actually have a newer RouterOS; the job itself
+		// (backup → install → reboot → verify, in waves) runs in the
+		// background and is followed on the Firmware page and the status bar.
+		var todo []int64
+		for _, id := range ids {
+			if d, err := s.a.Store.Device(id); err == nil {
+				if l := fwFirst(d.FwLatest); l != "" && l != fwFirst(d.ROSVersion) {
+					todo = append(todo, id)
+				}
+			}
+		}
+		if len(todo) == 0 {
+			http.Redirect(w, r, "/?err="+urlq(i18n.T(langOf(r), "bulk.err_uptodate")), http.StatusSeeOther)
+			return
+		}
+		if _, err := s.a.StartUpgrade(todo, 1, 4, true, user); err != nil {
+			http.Redirect(w, r, "/?err="+urlq(err.Error()), http.StatusSeeOther)
+			return
+		}
+		_ = s.a.Store.AddAudit(user, "fw_upgrade", fmt.Sprintf("%d devices", len(todo)))
+		http.Redirect(w, r, "/firmware", http.StatusSeeOther)
+		return
+	case "template":
 		tid, _ := strconv.ParseInt(r.FormValue("template_id"), 10, 64)
-		var err error
-		if tpl, err = s.a.Store.Template(tid); err != nil {
+		tpl, err := s.a.Store.Template(tid)
+		if err != nil {
 			s.renderBulk(w, r, nil, "", "template not found")
 			return
 		}
-	}
-	results := make([]app.ApplyResult, 0, len(ids))
-	for _, sid := range ids {
-		id, _ := strconv.ParseInt(sid, 10, 64)
-		d, err := s.a.Store.Device(id)
-		if err != nil {
-			continue
-		}
-		res := app.ApplyResult{Device: d.Name, OK: true, Detail: "ok"}
-		switch action {
-		case "poll":
-			if err := s.a.PollDevice(d); err != nil {
-				res.OK, res.Detail = false, err.Error()
-			}
-		case "backup":
-			if changed, err := s.a.BackupDevice(d, ""); err != nil {
-				res.OK, res.Detail = false, err.Error()
-			} else if changed {
-				res.Detail = "new version"
-			} else {
-				res.Detail = "no change"
-			}
-		case "fwcheck":
-			if err := s.a.RefreshFirmware(d); err != nil {
-				res.OK, res.Detail = false, err.Error()
-			} else {
-				res.Detail = d.FwStatus
-			}
-		case "template":
-			if err := s.a.ApplyTemplate(d, tpl.Body, guard); err != nil {
-				res.OK, res.Detail = false, err.Error()
-			}
-		default:
-			s.renderBulk(w, r, nil, "", "unknown action")
-			return
-		}
-		results = append(results, res)
-	}
-	detail := action
-	if action == "template" {
 		detail = "template:" + tpl.Name
+		// Sequential on purpose: a config change is rolled out one device at
+		// a time, each under its own change-guard.
+		results = s.a.ForDevices("template", ids, 1, func(d model.Device) (string, error) {
+			return "", s.a.ApplyTemplate(d, tpl.Body, guard)
+		})
+	default:
+		s.renderBulk(w, r, nil, "", "unknown action")
+		return
 	}
-	_ = s.a.Store.AddAudit(userFrom(r).Username, "bulk_"+action, fmt.Sprintf("%d devices (%s)", len(results), detail))
+	_ = s.a.Store.AddAudit(user, "bulk_"+action, fmt.Sprintf("%d devices (%s)", len(results), detail))
 	s.renderBulk(w, r, results, action, "")
 }
 
@@ -3669,7 +3885,10 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 			"git_dir": get("git_dir"), "git_remote": get("git_remote"), "git_branch": get("git_branch"),
 			"git_last": get("git_last"),
 			"alert_cpu": get("alert_cpu"), "alert_temp": get("alert_temp"), "alert_mem": get("alert_mem"),
+			"backup_interval_hours": get("backup_interval_hours"), "backup_stale_days": get("backup_stale_days"),
 		},
+		"BkEnvHours": int(s.a.Cfg.BackupInterval.Hours()),
+		"Upd":        s.a.UpdateInfo(Version), "ExePath": app.ExePath,
 		"BpwSet": get("backup_password_enc") != "", "SmtpPwSet": get("smtp_pass_enc") != "",
 		"GitEnabled": get("git_enabled") == "on",
 		"Retention":  s.a.MetricsRetentionDays(), "MetricCount": func() int64 { n, _ := s.a.Store.CountMetrics(); return n }(),
@@ -4099,7 +4318,7 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
 	set := func(k, v string) { _ = s.a.Store.SetSetting(k, v) }
 	set("backup_mode", r.FormValue("backup_mode"))
 	set("backup_deliver", strings.Join(r.Form["deliver"], ","))
-	for _, k := range []string{"backup_folder", "tg_token", "tg_chat", "smtp_host", "smtp_port", "smtp_user", "smtp_from", "smtp_to", "git_dir", "git_remote", "git_branch", "metrics_retention_days", "alert_cpu", "alert_temp", "alert_mem"} {
+	for _, k := range []string{"backup_folder", "tg_token", "tg_chat", "smtp_host", "smtp_port", "smtp_user", "smtp_from", "smtp_to", "git_dir", "git_remote", "git_branch", "metrics_retention_days", "alert_cpu", "alert_temp", "alert_mem", "backup_interval_hours", "backup_stale_days"} {
 		set(k, strings.TrimSpace(r.FormValue(k)))
 	}
 	if r.FormValue("git_enabled") == "on" {

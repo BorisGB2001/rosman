@@ -5,6 +5,7 @@ import (
 	"context"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"rosman/internal/app"
@@ -22,7 +23,9 @@ func Run(ctx context.Context, a *app.App) {
 		base = a.Cfg.PollInterval
 	}
 	pollT := time.NewTicker(base)
-	backupT := time.NewTicker(a.Cfg.BackupInterval)
+	// Backups are due-based too (per-device period, else the fleet-wide one),
+	// so a short tick only finds the devices whose period has elapsed.
+	backupT := time.NewTicker(5 * time.Minute)
 	pruneT := time.NewTicker(24 * time.Hour)
 	cronT := time.NewTicker(60 * time.Second)
 	defer pollT.Stop()
@@ -33,7 +36,25 @@ func Run(ctx context.Context, a *app.App) {
 	lastPoll := map[int64]time.Time{}
 	var lpMu sync.Mutex
 
-	go runDuePoll(a, lastPoll, &lpMu)
+	// Polls and backups run off the loop goroutine so a slow device (or a long
+	// backup round) never delays cron jobs or the next tick; the busy flags
+	// keep rounds from overlapping.
+	var pollBusy, backupBusy atomic.Bool
+	poll := func() {
+		if !pollBusy.CompareAndSwap(false, true) {
+			return
+		}
+		go func() { defer pollBusy.Store(false); runDuePoll(a, lastPoll, &lpMu) }()
+	}
+	lastTry := map[int64]time.Time{}
+	backup := func() {
+		if !backupBusy.CompareAndSwap(false, true) {
+			return
+		}
+		go func() { defer backupBusy.Store(false); runBackup(a, lastTry) }()
+	}
+
+	poll()
 	go runPrune(a)
 
 	for {
@@ -41,9 +62,9 @@ func Run(ctx context.Context, a *app.App) {
 		case <-ctx.Done():
 			return
 		case <-pollT.C:
-			runDuePoll(a, lastPoll, &lpMu)
+			poll()
 		case <-backupT.C:
-			runBackup(a)
+			backup()
 		case <-pruneT.C:
 			runPrune(a)
 		case <-cronT.C:
@@ -74,6 +95,11 @@ func runDuePoll(a *app.App, lastPoll map[int64]time.Time, mu *sync.Mutex) {
 		}
 	}
 	mu.Unlock()
+	if len(due) == 0 {
+		return
+	}
+	t := a.StartTask("poll", "", len(due))
+	defer t.Finish(nil)
 
 	sem := make(chan struct{}, maxConcurrent)
 	var wg sync.WaitGroup
@@ -83,9 +109,12 @@ func runDuePoll(a *app.App, lastPoll map[int64]time.Time, mu *sync.Mutex) {
 		go func(d model.Device) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			if err := a.PollDevice(d); err != nil {
+			t.Detail(d.Name)
+			err := a.PollDevice(d)
+			if err != nil {
 				log.Printf("poll %s (%s): %v", d.Name, d.IP, err)
 			}
+			t.Step(d.Name, err == nil)
 			if d.SNMPEnabled {
 				if err := a.SNMPPollDevice(d); err != nil {
 					log.Printf("snmp %s (%s): %v", d.Name, d.IP, err)
@@ -104,45 +133,60 @@ func runPrune(a *app.App) {
 	}
 }
 
-func eachDevice(a *app.App, fn func(id int64)) {
+// runBackup backs up the devices whose backup period (their own, else the
+// fleet-wide one) has elapsed since their last successful backup. lastTry
+// remembers attempts so an unreachable device is retried once per hour rather
+// than on every tick. It is only touched from the single backup goroutine.
+func runBackup(a *app.App, lastTry map[int64]time.Time) {
+	if !a.HasSSHKey() {
+		return
+	}
 	devs, err := a.Store.Devices()
 	if err != nil {
 		log.Printf("scheduler: list devices: %v", err)
 		return
 	}
-	sem := make(chan struct{}, maxConcurrent)
-	var wg sync.WaitGroup
+	now := time.Now()
+	var due []model.Device
 	for _, d := range devs {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(id int64) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			fn(id)
-		}(d.ID)
+		iv := a.BackupIntervalFor(d)
+		if d.LastBackup != nil && now.Sub(*d.LastBackup) < iv {
+			continue
+		}
+		retry := time.Hour
+		if iv < retry {
+			retry = iv
+		}
+		if lt, ok := lastTry[d.ID]; ok && now.Sub(lt) < retry {
+			continue
+		}
+		lastTry[d.ID] = now
+		due = append(due, d)
 	}
-	wg.Wait()
-}
-
-
-func runBackup(a *app.App) {
-	if !a.HasSSHKey() {
+	if len(due) == 0 {
 		return
 	}
-	eachDevice(a, func(id int64) {
-		d, err := a.Store.Device(id)
-		if err != nil {
-			return
-		}
-		changed, err := a.BackupDevice(d, "")
-		if err != nil {
-			log.Printf("backup %s (%s): %v", d.Name, d.IP, err)
-			return
-		}
-		if changed {
-			log.Printf("backup %s: new config version stored", d.Name)
-		}
-	})
+	t := a.StartTask("backup", "", len(due))
+	defer t.Finish(nil)
+	sem := make(chan struct{}, maxConcurrent)
+	var wg sync.WaitGroup
+	for _, d := range due {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(d model.Device) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			t.Detail(d.Name)
+			changed, err := a.BackupDevice(d, "")
+			if err != nil {
+				log.Printf("backup %s (%s): %v", d.Name, d.IP, err)
+			} else if changed {
+				log.Printf("backup %s: new config version stored", d.Name)
+			}
+			t.Step(d.Name, err == nil)
+		}(d)
+	}
+	wg.Wait()
 	// Mirror the latest exports into the git repo, if enabled.
 	a.GitExportIfEnabled()
 }

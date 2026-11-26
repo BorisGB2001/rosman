@@ -58,6 +58,8 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE devices ADD COLUMN rb_upgrade_fw TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE fw_jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'ros'`,
 		`ALTER TABLE vendor_models ADD COLUMN port_layout TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE devices ADD COLUMN last_backup_at TIMESTAMP`,
+		`ALTER TABLE devices ADD COLUMN backup_interval_sec INTEGER NOT NULL DEFAULT 0`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -65,6 +67,10 @@ func Open(path string) (*Store, error) {
 	_, _ = db.Exec(`UPDATE devices SET device_type=CASE
 		WHEN upper(model) LIKE 'CRS%' OR upper(model) LIKE 'CSS%' OR upper(model) LIKE '%SWITCH%' OR upper(model) LIKE 'NETPOWER%'
 		THEN 'switch' ELSE 'router' END WHERE device_type='' AND model!=''`)
+	// Backfill last_backup_at from stored config versions for devices backed up
+	// before the column existed.
+	_, _ = db.Exec(`UPDATE devices SET last_backup_at=(SELECT c.taken_at FROM configs c
+		WHERE c.device_id=devices.id ORDER BY c.taken_at DESC LIMIT 1) WHERE last_backup_at IS NULL`)
 	return &Store{db: db}, nil
 }
 
@@ -665,13 +671,16 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	var last, exp sql.NullTime
 	var site sql.NullInt64
 	var snmpEn int
-	var fail sql.NullTime
+	var fail, lastBk sql.NullTime
 	err := row.Scan(&d.ID, &d.Name, &d.IP, &d.APIPort, &tls, &d.APIUser, &d.APIPassEnc,
 		&d.SSHUser, &d.APICertPin, &d.SSHHostPin, &d.Model, &d.Serial, &d.ROSVersion, &last, &d.CreatedAt,
 		&d.APISSLCert, &exp, &d.FwLatest, &d.FwChannel, &d.FwStatus, &site,
 		&snmpEn, &d.SNMPCommEnc, &d.SNMPPort, &d.DeviceType, &fail, &d.PollIntervalSec, &d.Notes,
-		&d.RBCurrentFw, &d.RBUpgradeFw)
+		&d.RBCurrentFw, &d.RBUpgradeFw, &lastBk, &d.BackupIntervalSec)
 	d.APITLS = tls != 0
+	if lastBk.Valid {
+		d.LastBackup = &lastBk.Time
+	}
 	d.SNMPEnabled = snmpEn != 0
 	if fail.Valid {
 		d.LastFail = &fail.Time
@@ -688,7 +697,7 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	return d, err
 }
 
-const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id,snmp_enabled,snmp_community_enc,snmp_port,device_type,last_fail_at,poll_interval_sec,notes,rb_current_fw,rb_upgrade_fw`
+const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id,snmp_enabled,snmp_community_enc,snmp_port,device_type,last_fail_at,poll_interval_sec,notes,rb_current_fw,rb_upgrade_fw,last_backup_at,backup_interval_sec`
 
 // SetDeviceType sets a device's role (router/switch/mix, or "" for unknown).
 func (s *Store) SetDeviceType(id int64, t string) error {
@@ -705,7 +714,22 @@ func (s *Store) SetDevicePollInterval(id int64, sec int) error {
 	return err
 }
 
-// MarkDeviceFail records the time of the latest poll failure.
+// SetDeviceBackupInterval sets a per-device backup period in seconds (0 = global).
+func (s *Store) SetDeviceBackupInterval(id int64, sec int) error {
+	if sec < 0 {
+		sec = 0
+	}
+	_, err := s.db.Exec(`UPDATE devices SET backup_interval_sec=? WHERE id=?`, sec, id)
+	return err
+}
+
+// MarkDeviceBackup records a successful backup run (even when the export was
+// unchanged and no new version was stored — the device WAS backed up).
+func (s *Store) MarkDeviceBackup(id int64, at time.Time) error {
+	_, err := s.db.Exec(`UPDATE devices SET last_backup_at=? WHERE id=?`, at, id)
+	return err
+}
+
 // MarkDeviceFail records a failed poll. The timestamp is set only on the first
 // failure of a streak (last_fail_at IS NULL) and left untouched on subsequent
 // consecutive failures, so it marks when the device first went bad; a

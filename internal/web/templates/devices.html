@@ -22,34 +22,49 @@
       </select>
     </form>
     <button type="button" class="btn sm secondary gearbtn" data-cols-for="devtable" title="{{t "col.columns"}}">⚙</button>
-    <a class="btn sm secondary" href="/devices.csv" title="{{t "dev.export_csv"}}">↓ CSV</a>
+    {{if canWrite .User}}<a class="btn sm secondary iconbtn" href="/devices/import" data-tip="{{t "imp.title"}}" aria-label="{{t "imp.title"}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></a>{{end}}
+    <a class="btn sm secondary iconbtn" href="/devices.csv" data-tip="{{t "dev.export_csv"}}" aria-label="{{t "dev.export_csv"}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></a>
     {{if isAdmin .User}}<a class="btn secondary sm" href="/provision">{{t "prov.title"}}</a>{{end}}
-    {{if canWrite .User}}<a class="btn secondary sm" href="/devices/import">{{t "imp.title"}}</a>
-    <a class="btn primary sm" href="/devices/new">+ {{t "nav.add"}}</a>{{end}}
+    {{if canWrite .User}}<a class="btn primary sm" href="/devices/new">+ {{t "nav.add"}}</a>{{end}}
   </div>
 </div>
 <div class="card">
   {{if canWrite .User}}
-  <form id="bulkform" method="post" action="/bulk" style="display:flex;flex-direction:row;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-    <span class="muted small">{{t "bulk.selected"}}</span>
-    <button class="btn sm" type="submit" name="action" value="poll" onclick="return confirm('{{t "bulk.confirm"}}')">{{t "dev.poll"}}</button>
-    <button class="btn sm" type="submit" name="action" value="backup" onclick="return confirm('{{t "bulk.confirm"}}')">{{t "dev.backup"}}</button>
-    <button class="btn sm" type="submit" name="action" value="fwcheck" onclick="return confirm('{{t "bulk.confirm"}}')">{{t "dev.fw_check"}}</button>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+  <form id="bulkform" method="post" action="/bulk" style="display:flex;flex-direction:row;gap:8px;align-items:center;flex-wrap:wrap">
+    <span class="muted small">{{t "bulk.selected"}} <b id="selcount">0</b></span>
+    <button class="btn sm" type="submit" name="action" value="poll" onclick="return selConfirm('{{t "bulk.confirm"}}')">{{t "dev.poll"}}</button>
+    <button class="btn sm" type="submit" name="action" value="backup" onclick="return selConfirm('{{t "bulk.confirm"}}')">{{t "dev.backup"}}</button>
+    <button class="btn sm" type="submit" name="action" value="fwcheck" onclick="return selConfirm('{{t "bulk.confirm"}}')">{{t "dev.fw_check"}}</button>
+    <button class="btn sm danger" type="submit" name="action" value="upgrade" onclick="return selConfirm('{{t "bulk.upgrade_confirm"}}')" {{if not .HasSSH}}disabled title="{{t "dev.need_ssh"}}"{{end}}>⬆ {{t "bulk.upgrade"}}</button>
+    <button class="btn sm danger" type="submit" name="action" value="reboot" onclick="return selConfirm('{{t "bulk.reboot_confirm"}}')">⟲ {{t "dev.reboot"}}</button>
     {{if .Templates}}
     <span class="muted">·</span>
     <select name="template_id" style="max-width:160px">{{range .Templates}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
     <input name="guard" value="120" style="width:70px" title="{{t "tpl.guard"}}">
-    <button class="btn sm" type="submit" name="action" value="template" onclick="return confirm('{{t "bulk.confirm"}}')">{{t "tpl.apply"}}</button>
+    <button class="btn sm" type="submit" name="action" value="template" onclick="return selConfirm('{{t "bulk.confirm"}}')">{{t "tpl.apply"}}</button>
     {{end}}
   </form>
+  {{if and .OutdatedN .HasSSH}}
+  <form method="post" action="/firmware/upgrade" style="margin-left:auto" onsubmit="return confirm('{{t "bulk.upgrade_all_confirm"}} ({{.OutdatedN}})')">
+    <input type="hidden" name="all_outdated" value="on"><input type="hidden" name="canary" value="1"><input type="hidden" name="concurrency" value="4"><input type="hidden" name="halt" value="on">
+    <button class="btn sm danger" type="submit">⬆ {{t "bulk.upgrade_all"}} <span class="badge bad">{{.OutdatedN}}</span></button>
+  </form>
+  {{end}}
+  </div>
+  <script>
+  function selCount(){ return document.querySelectorAll('.dchk:checked').length; }
+  function selConfirm(msg){ var n=selCount(); if(!n){ alert('{{t "bulk.err_none"}}'); return false; } return confirm(msg+' ('+n+')'); }
+  document.addEventListener('change', function(e){ if(e.target.matches('.dchk, #dchkall')){ var c=document.getElementById('selcount'); if(c) c.textContent=selCount(); } });
+  </script>
   {{end}}
   <div class="scroll"><table id="devtable" class="dtable">
-    <thead><tr>{{if canWrite .User}}<th data-nosort style="width:28px"><input type="checkbox" form="bulkform" onclick="document.querySelectorAll('.dchk').forEach(c=>c.checked=this.checked)"></th>{{end}}<th data-col="name" data-label="{{t "col.name"}}">{{t "col.name"}}</th><th data-col="ip" data-label="IP">IP</th><th data-col="mac" data-label="MAC">MAC</th><th data-col="site" data-label="{{t "col.site"}}">{{t "col.site"}}</th><th data-col="tags" data-label="{{t "col.tags"}}">{{t "col.tags"}}</th><th data-col="type" data-label="{{t "col.type"}}">{{t "col.type"}}</th><th data-col="model" data-label="{{t "col.model"}}">{{t "col.model"}}</th><th data-col="ros" data-label="RouterOS">RouterOS</th><th data-col="latest" data-label="{{t "fw.latest"}}">{{t "fw.latest"}}</th><th data-col="rbfw" data-label="{{t "col.rb_fw"}}">{{t "col.rb_fw"}}</th><th data-col="alerts" data-label="{{t "nav.alerts"}}">{{t "nav.alerts"}}</th><th data-col="serial" data-label="{{t "dev.serial"}}">{{t "dev.serial"}}</th><th data-col="cpu" data-label="CPU">CPU</th><th data-col="poll" data-label="{{t "col.poll"}}">{{t "col.poll"}}</th><th data-col="lte" data-label="LTE">LTE</th><th data-col="vpn" data-label="VPN">VPN</th><th data-col="seen" data-label="{{t "col.seen"}}">{{t "col.seen"}}</th><th data-col="added" data-label="{{t "col.added"}}">{{t "col.added"}}</th><th data-col="lastpoll" data-label="{{t "col.lastpoll"}}">{{t "col.lastpoll"}}</th><th data-nosort data-col="actions" data-label="{{t "col.actions"}}">{{t "col.actions"}}</th></tr></thead>
+    <thead><tr>{{if canWrite .User}}<th data-nosort style="width:28px"><input type="checkbox" id="dchkall" title="{{t "bulk.all"}}" onclick="document.querySelectorAll('.dchk').forEach(c=>{ if(c.closest('tr').style.display!=='none') c.checked=this.checked; })"></th>{{end}}<th data-col="name" data-label="{{t "col.name"}}">{{t "col.name"}}</th><th data-col="ip" data-label="IP">IP</th><th data-col="mac" data-label="MAC">MAC</th><th data-col="site" data-label="{{t "col.site"}}">{{t "col.site"}}</th><th data-col="tags" data-label="{{t "col.tags"}}">{{t "col.tags"}}</th><th data-col="type" data-label="{{t "col.type"}}">{{t "col.type"}}</th><th data-col="model" data-label="{{t "col.model"}}">{{t "col.model"}}</th><th data-col="ros" data-label="RouterOS">RouterOS</th><th data-col="latest" data-label="{{t "fw.latest"}}">{{t "fw.latest"}}</th><th data-col="rbfw" data-label="{{t "col.rb_fw"}}">{{t "col.rb_fw"}}</th><th data-col="alerts" data-label="{{t "nav.alerts"}}">{{t "nav.alerts"}}</th><th data-col="serial" data-label="{{t "dev.serial"}}">{{t "dev.serial"}}</th><th data-col="cpu" data-label="CPU">CPU</th><th data-col="poll" data-label="{{t "col.poll"}}">{{t "col.poll"}}</th><th data-col="lte" data-label="LTE">LTE</th><th data-col="vpn" data-label="VPN">VPN</th><th data-col="seen" data-label="{{t "col.seen"}}">{{t "col.seen"}}</th><th data-col="added" data-label="{{t "col.added"}}">{{t "col.added"}}</th><th data-col="lastpoll" data-label="{{t "col.lastpoll"}}">{{t "col.lastpoll"}}</th><th data-col="backup" data-label="{{t "col.lastbackup"}}">{{t "col.lastbackup"}}</th><th data-nosort data-col="actions" data-label="{{t "col.actions"}}">{{t "col.actions"}}</th></tr></thead>
     <tbody>
     {{range .Devices}}
-      <tr>
+      <tr{{if .LastFail}} class="rowdown" title="{{t "col.failing_since"}}: {{ago .LastFail}}"{{end}}>
         {{if canWrite $.User}}<td><input class="dchk" type="checkbox" name="ids" value="{{.ID}}" form="bulkform"></td>{{end}}
-        <td><a href="/devices/{{.ID}}">{{.Name}}</a></td>
+        <td class="nowrap">{{if .LastFail}}<span class="downdot" title="{{t "dev.no_link"}}"></span>{{end}}<a href="/devices/{{.ID}}">{{.Name}}</a></td>
         <td class="mono">{{$dev := .}}{{if .Addrs}}<details class="celldd"><summary title="{{range .Addrs}}{{.Address}} ({{.Iface}})&#10;{{end}}">{{.IP}}{{if gt (len .Addrs) 1}} <span class="muted small">+{{sub (len .Addrs) 1}}</span>{{end}}</summary><div class="ddlist">{{range .Addrs}}{{if canWrite $.User}}<form class="inline" method="post" action="/devices/{{$dev.ID}}/setip"><input type="hidden" name="ip" value="{{.Address}}"><button class="link" type="submit" title="{{t "ip.setdefault"}}">{{.Address}}</button></form>{{else}}{{.Address}}{{end}} <span class="muted">{{.Iface}}</span>{{if eq (ipbase .Address) $dev.IP}} <span class="badge good">default</span>{{end}}<br>{{end}}</div></details>{{else}}{{.IP}}{{end}}</td>
         <td class="mono">{{if .Macs}}<details class="celldd"><summary>{{(index .Macs 0).Mac}}{{if gt (len .Macs) 1}} <span class="muted small">+{{sub (len .Macs) 1}}</span>{{end}}</summary><div class="ddlist">{{range .Macs}}{{.Mac}} <span class="muted">{{.Iface}}</span><br>{{end}}</div></details>{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="muted">{{.SiteName}}</td>
@@ -68,6 +83,7 @@
         <td class="muted" data-sort="{{tsp .LastSeen}}">{{ago .LastSeen}}</td>
         <td class="muted" data-sort="{{ts .CreatedAt}}">{{dateT .CreatedAt}}</td>
         <td class="muted" data-sort="{{if .LastFail}}{{tsp .LastFail}}{{else}}{{tsp .LastSeen}}{{end}}">{{if .LastFail}}<span class="badge bad" title="{{t "col.failing_since"}}">{{ago .LastFail}}</span>{{else if .LastSeen}}<span class="badge good">{{ago .LastSeen}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+        <td data-sort="{{tsp .LastBackup}}">{{if .LastBackup}}<span class="badge {{if .BackupStale}}bad{{else}}good{{end}}" title="{{tsp .LastBackup}} · {{t "bkp.period"}}: {{.BackupEvery}}{{if .BackupStale}} · {{t "bkp.overdue"}}{{end}}">{{ago .LastBackup}}</span>{{else}}<span class="badge bad" title="{{t "bkp.period"}}: {{.BackupEvery}}">{{t "bk.never"}}</span>{{end}}</td>
         <td><div style="display:flex;gap:12px;align-items:center;font-size:15px">
           <a href="/devices/{{.ID}}" title="{{t "act.edit"}}" style="text-decoration:none">✏️</a>
           <a href="#" title="{{t "act.copy"}}" style="text-decoration:none" onclick="navigator.clipboard&&navigator.clipboard.writeText('{{.IP}}');return false;">⧉</a>
@@ -75,7 +91,7 @@
         </div></td>
       </tr>
     {{else}}
-      <tr><td colspan="21" class="muted">{{t "devices.empty"}} {{if canWrite $.User}}<a href="/devices/new">{{t "devices.add_first"}}</a>{{end}}</td></tr>
+      <tr><td colspan="22" class="muted">{{t "devices.empty"}} {{if canWrite $.User}}<a href="/devices/new">{{t "devices.add_first"}}</a>{{end}}</td></tr>
     {{end}}
     </tbody>
   </table></div>

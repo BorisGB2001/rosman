@@ -1,0 +1,21 @@
+{{define "restarting"}}{{template "head" .}}
+<div class="card narrow" style="margin-top:40px">
+  <h3 style="margin-top:0">{{t "upd.restarting"}} {{.Tag}}</h3>
+  <p class="muted">{{t "upd.restarting_note"}}</p>
+  <div class="sbar-track ind" style="width:100%;height:6px"><i></i></div>
+  <p class="muted small" id="rs-state" style="margin-top:10px"></p>
+</div>
+<script>
+(function(){
+  var st=document.getElementById('rs-state'), n=0;
+  function probe(){
+    n++; st.textContent='… '+n;
+    fetch('/login',{cache:'no-store'}).then(function(r){
+      if(r.ok){ location.href='/settings?msg=updated#update'; } else { setTimeout(probe,1500); }
+    }).catch(function(){ setTimeout(probe,1500); });
+  }
+  // give the old process time to exit before the first probe
+  setTimeout(probe,3500);
+})();
+</script>
+{{template "tail" .}}{{end}}

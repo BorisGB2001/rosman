@@ -121,6 +121,8 @@ type Device struct {
 	LastFail        *time.Time // last poll failure
 	Notes           string     // free-text admin description shown on the device card
 	PollIntervalSec int        // per-device poll interval in seconds (0 = global default)
+	LastBackup        *time.Time // last successful backup run (changed or not)
+	BackupIntervalSec int        // per-device backup period in seconds (0 = global default)
 }
 
 // FwJob is a firmware upgrade run.

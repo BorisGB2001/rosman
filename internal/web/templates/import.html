@@ -8,7 +8,9 @@
 10.0.0.1,admin,secret,gw-main,8729,admin
 10.0.0.2,admin,secret</pre>
   <form method="post" action="/devices/import">
-    <textarea name="csv" rows="10" style="width:100%;font-family:monospace" placeholder="ip,api_user,api_pass,name,api_port,ssh_user" required>{{.CSV}}</textarea>
+    <label style="flex-direction:row;gap:8px;align-items:center;margin-bottom:8px">{{t "imp.file"}}
+      <input type="file" accept=".csv,text/csv,text/plain" onchange="var f=this.files[0];if(!f)return;var r=new FileReader();r.onload=function(){document.getElementById('csvtext').value=r.result;};r.readAsText(f);"></label>
+    <textarea id="csvtext" name="csv" rows="10" style="width:100%;font-family:monospace" placeholder="ip,api_user,api_pass,name,api_port,ssh_user" required>{{.CSV}}</textarea>
     <label style="flex-direction:row;gap:8px;align-items:flex-start;margin-top:10px"><input type="checkbox" name="setup_tls" style="margin-top:3px"> <span>{{t "newdev.setup_tls"}} <span class="muted small">({{t "newdev.setup_tls_note"}})</span></span></label>
     <fieldset style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px">
       <legend class="muted small" style="padding:0 6px">{{t "newdev.bootstrap"}}</legend>

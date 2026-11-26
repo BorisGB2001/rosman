@@ -21,6 +21,9 @@ for pair in linux/amd64 linux/arm64 darwin/arm64 darwin/amd64; do
   GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -o "dist/rosman_${os}_${arch}" ./cmd/rosman
 done
 
+# boris.gb 2026-11-26 07:39 - контрольные суммы: самообновление ROSMan сверяет скачанный бинарник с SHA256SUMS
+(cd dist && shasum -a 256 rosman_* > SHA256SUMS)
+
 echo "== тег и релиз =="
 git tag -a "$VER" -m "ROSMan $VER"
 git push origin "$VER"

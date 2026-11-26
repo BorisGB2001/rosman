@@ -36,9 +36,19 @@ Localization lives in plain JSON files under
 - **Access & accounts** — roles (viewer / operator / admin), **TOTP 2FA**,
   personal **API tokens** with a read-only JSON API, user management, and an audit
   log.
-- **Self-update indicator** — the version badge in the corner is green when you
-  run the latest release and red (linking to the new release) when an update is
-  available.
+- **Self-update** — the version badge in the corner is green when you run the
+  latest release and red when an update is available; an admin installs it from
+  Settings → *ROSMan update* (the release binary is downloaded from GitHub,
+  checked against the release `SHA256SUMS`, swapped in place and the service
+  restarts itself; the previous binary is kept as `rosman.prev`). The service
+  user needs write access to the directory holding the binary.
+- **Status bar** — a footer line shows what the server is doing right now (fleet
+  poll, backups, bulk onboarding, upgrades, adding a device…) with a progress
+  bar, so a long operation is never mistaken for a hang.
+- **Backup schedule** — a fleet-wide backup period (Settings, default
+  `ROSMAN_BACKUP_INTERVAL`) with a per-device override (1 day … 1 year) on the
+  device page; the device list shows the last backup and flags it red when it
+  is older than the device's period (or 30 days by default).
 
 Credentials are encrypted at rest (AES-256-GCM); passwords are bcrypt-hashed.
 

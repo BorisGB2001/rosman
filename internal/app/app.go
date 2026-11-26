@@ -36,6 +36,12 @@ type App struct {
 	Box    *secret.Box
 	Notify *notify.Notifier
 	signer ssh.Signer // fleet SSH key for /export; may be nil
+
+	// AfterAdd, when set, runs after a device has been added and polled — the
+	// web layer uses it to attach the matching catalog template.
+	AfterAdd func(id int64)
+	// Restart, when set, gracefully restarts the process (used by self-update).
+	Restart func()
 }
 
 func New(cfg config.Config, st *store.Store, box *secret.Box) (*App, error) {
@@ -66,7 +72,19 @@ func (a *App) SSHPublicKey() string {
 
 // AddDevice probes the device once (API) to capture its cert pin and identity,
 // then stores it. The API password is encrypted at rest.
-func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser string, setupTLS bool, bootUser, bootPass string) (int64, error) {
+func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser string, setupTLS bool, bootUser, bootPass string) (id int64, err error) {
+	label := ip
+	if name != "" {
+		label = name + " (" + ip + ")"
+	}
+	t := a.StartTask("add_device", label, 5)
+	defer func() { t.Finish(err) }()
+	return a.addDevice(t, name, ip, apiPort, apiUser, apiPass, sshUser, setupTLS, bootUser, bootPass)
+}
+
+// addDevice does the work of AddDevice, reporting its stages to t (may be nil
+// when the caller — bulk onboarding — tracks progress itself).
+func (a *App) addDevice(t *Task, name, ip string, apiPort int, apiUser, apiPass, sshUser string, setupTLS bool, bootUser, bootPass string) (int64, error) {
 	enc, err := a.Box.Encrypt(apiPass)
 	if err != nil {
 		return 0, err
@@ -79,11 +97,14 @@ func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser 
 	// the API user, install ROSMan's key and set up api-ssl before probing. The
 	// bootstrap password is used only here and is never stored.
 	if bootUser != "" {
+		t.Stage("bootstrap", ip)
 		if err := ros.ProvisionDevice(d, bootUser, bootPass, apiUser, apiPass, a.SSHPublicKey(), a.signer, a.Cfg.SSHTimeout+90*time.Second); err != nil {
 			return 0, fmt.Errorf("provision over SSH failed: %w", err)
 		}
 	}
 	// First contact: pin whatever certificate the device presents (TOFU).
+	t.Advance(1)
+	t.Stage("probe", ip)
 	h, pin, err := ros.Poll(d, apiPass, a.Cfg.APITimeout)
 	if err != nil {
 		// If api-ssl rejects the TLS handshake (usually no certificate on the
@@ -94,6 +115,7 @@ func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser 
 			if su == "" {
 				su = apiUser
 			}
+			t.Stage("setup_tls", ip)
 			if _, serr := ros.SetupAPISSL(d, su, apiPass, a.signer, 20*time.Second); serr != nil {
 				return 0, fmt.Errorf("probe failed (%v); api-ssl setup over SSH failed: %w", err, serr)
 			}
@@ -108,6 +130,8 @@ func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser 
 		d.Name = h.Identity
 	}
 	d.Model, d.Serial, d.ROSVersion = h.Model, h.Serial, h.Version
+	t.Advance(2)
+	t.Stage("save", strings.TrimSpace(h.Model+" "+h.Version))
 	id, err := a.Store.CreateDevice(d)
 	if err != nil {
 		return 0, err
@@ -117,6 +141,23 @@ func (a *App) AddDevice(name, ip string, apiPort int, apiUser, apiPass, sshUser 
 	_ = a.Store.UpdateInventory(id, h.Model, h.Serial, h.Version, now)
 	_ = a.Store.UpdateCertInfo(id, h.APISSLCert, h.APICertExpiry)
 	_ = a.Store.AddHealth(model.Health{DeviceID: id, TS: now, CPU: h.CPU, FreeMem: h.FreeMem, TotalMem: h.TotalMem, Uptime: h.Uptime})
+	// Full first poll right away, so ports, addresses, neighbours and firmware
+	// are on the device page immediately instead of after the next scheduler
+	// tick. A failure here is not fatal — the device is added and will be
+	// polled again on schedule.
+	t.Advance(3)
+	t.Stage("first_poll", d.Name)
+	if nd, e := a.Store.Device(id); e == nil {
+		if e := a.PollDevice(nd); e != nil {
+			log.Printf("add %s: first poll: %v", ip, e)
+		}
+	}
+	t.Advance(4)
+	if a.AfterAdd != nil {
+		t.Stage("catalog", h.Model)
+		a.AfterAdd(id)
+	}
+	t.Advance(5)
 	return id, nil
 }
 
@@ -157,6 +198,8 @@ func (a *App) StartProvision(targets []ProvTarget, bootUser, bootPass, apiUser, 
 
 func (a *App) runProvisionJob(jobID int64, bootUser, bootPass, apiUser, apiPass string, apiPort, concurrency int) {
 	items, _ := a.Store.ProvisionItems(jobID)
+	t := a.StartTask("provision", "", len(items))
+	defer t.Finish(nil)
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	for _, it := range items {
@@ -167,13 +210,15 @@ func (a *App) runProvisionJob(jobID int64, bootUser, bootPass, apiUser, apiPass 
 			defer func() { <-sem }()
 			_ = a.Store.SetProvisionItem(it.ID, "working", "")
 			name := it.Name
-			id, err := a.AddDevice(name, it.IP, apiPort, apiUser, apiPass, apiUser, false, bootUser, bootPass)
+			t.Detail(it.IP)
+			_, err := a.addDevice(nil, name, it.IP, apiPort, apiUser, apiPass, apiUser, false, bootUser, bootPass)
 			if err != nil {
 				_ = a.Store.SetProvisionItem(it.ID, "failed", err.Error())
+				t.Step(it.IP, false)
 				return
 			}
-			_ = id
 			_ = a.Store.SetProvisionItem(it.ID, "done", "")
+			t.Step(it.IP, true)
 		}(it)
 	}
 	wg.Wait()
@@ -402,6 +447,12 @@ func (a *App) jobHasFailure(jobID int64) bool {
 
 func (a *App) runUpgradeJob(jobID int64, canary, concurrency int, halt bool, kind string) {
 	items, _ := a.Store.FwItems(jobID)
+	tk := "upgrade"
+	if kind == "routerboard" {
+		tk = "rb_upgrade"
+	}
+	t := a.StartTask(tk, "", len(items))
+	defer t.Finish(nil)
 	idx := 0
 	waveSize := canary
 	if waveSize < 1 {
@@ -416,7 +467,20 @@ func (a *App) runUpgradeJob(jobID int64, canary, concurrency int, halt bool, kin
 		var wg sync.WaitGroup
 		for _, it := range wave {
 			wg.Add(1)
-			go func(it model.FwItem) { defer wg.Done(); a.upgradeItem(it, kind) }(it)
+			go func(it model.FwItem) {
+				defer wg.Done()
+				t.Detail(it.DeviceName)
+				a.upgradeItem(it, kind)
+				ok := true
+				if cur, _ := a.Store.FwItems(jobID); cur != nil {
+					for _, c := range cur {
+						if c.ID == it.ID && c.Status == "failed" {
+							ok = false
+						}
+					}
+				}
+				t.Step(it.DeviceName, ok)
+			}(it)
 		}
 		wg.Wait()
 		idx = end
@@ -427,6 +491,7 @@ func (a *App) runUpgradeJob(jobID int64, canary, concurrency int, halt bool, kin
 		if halt && a.jobHasFailure(jobID) {
 			for _, it := range items[idx:] {
 				_ = a.Store.SetFwItem(it.ID, "skipped", "остановлено после ошибки")
+				t.Step("", false)
 			}
 			break
 		}
@@ -601,17 +666,22 @@ func (a *App) RunCommand(d model.Device, command string, guardSeconds int) (stri
 // and returns a per-device result with captured output.
 func (a *App) RunCommandOn(ids []int64, command string, guardSeconds int) []CmdResult {
 	results := make([]CmdResult, 0, len(ids))
+	t := a.StartTask("run_command", "", len(ids))
+	defer t.Finish(nil)
 	for _, id := range ids {
 		d, err := a.Store.Device(id)
 		if err != nil {
+			t.Step("", false)
 			continue
 		}
+		t.Detail(d.Name)
 		res := CmdResult{Device: d.Name, IP: d.IP, OK: true}
 		out, rerr := a.RunCommand(d, command, guardSeconds)
 		res.Output = out
 		if rerr != nil {
 			res.OK, res.Detail = false, rerr.Error()
 		}
+		t.Step(d.Name, res.OK)
 		results = append(results, res)
 	}
 	return results
@@ -621,11 +691,15 @@ func (a *App) RunCommandOn(ids []int64, command string, guardSeconds int) []CmdR
 func (a *App) ApplyTemplateAll(script string, guardSeconds int) []ApplyResult {
 	devs, _ := a.Store.Devices()
 	results := make([]ApplyResult, 0, len(devs))
+	t := a.StartTask("template", "", len(devs))
+	defer t.Finish(nil)
 	for _, d := range devs {
+		t.Detail(d.Name)
 		r := ApplyResult{Device: d.Name, OK: true, Detail: "ok"}
 		if err := a.ApplyTemplate(d, script, guardSeconds); err != nil {
 			r.OK, r.Detail = false, err.Error()
 		}
+		t.Step(d.Name, r.OK)
 		results = append(results, r)
 	}
 	return results
@@ -971,6 +1045,16 @@ func (a *App) settingDecrypt(key string) string {
 // stores a version, and delivers it to the configured destinations. mode=="" uses
 // the configured default.
 func (a *App) BackupDevice(d model.Device, mode string) (changed bool, err error) {
+	changed, err = a.backupDevice(d, mode)
+	if err == nil {
+		// Record the run even when the export was unchanged: the device WAS
+		// backed up now, which is what the "last backup" column reports.
+		_ = a.Store.MarkDeviceBackup(d.ID, time.Now())
+	}
+	return changed, err
+}
+
+func (a *App) backupDevice(d model.Device, mode string) (changed bool, err error) {
 	if a.signer == nil {
 		return false, fmt.Errorf("no SSH key configured (set ROSMAN_SSH_KEY) — backup needs SSH")
 	}
@@ -1213,4 +1297,92 @@ func normalizeExport(s string) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// ---- backup schedule ----
+
+// BackupInterval is the fleet-wide backup period: the "backup_interval_hours"
+// setting when set, else ROSMAN_BACKUP_INTERVAL.
+func (a *App) BackupInterval() time.Duration {
+	if h := a.settingIntDefault("backup_interval_hours", 0); h > 0 {
+		return time.Duration(h) * time.Hour
+	}
+	return a.Cfg.BackupInterval
+}
+
+// BackupIntervalFor is the backup period that applies to one device: its own
+// override when set, else the fleet-wide one.
+func (a *App) BackupIntervalFor(d model.Device) time.Duration {
+	if d.BackupIntervalSec > 0 {
+		return time.Duration(d.BackupIntervalSec) * time.Second
+	}
+	return a.BackupInterval()
+}
+
+// BackupStaleAfter is the age past which a device's last backup is flagged
+// red. With a per-device period it is that period plus a grace (so a backup
+// that is merely due does not flash red); otherwise the fleet-wide threshold
+// ("backup_stale_days", default 30 days).
+func (a *App) BackupStaleAfter(d model.Device) time.Duration {
+	if d.BackupIntervalSec > 0 {
+		p := time.Duration(d.BackupIntervalSec) * time.Second
+		grace := p / 4
+		if grace < 30*time.Minute {
+			grace = 30 * time.Minute
+		}
+		return p + grace
+	}
+	days := a.settingIntDefault("backup_stale_days", 30)
+	if days < 1 {
+		days = 30
+	}
+	return time.Duration(days) * 24 * time.Hour
+}
+
+// BackupStale reports whether the device has no backup, or one older than
+// BackupStaleAfter.
+func (a *App) BackupStale(d model.Device) bool {
+	return d.LastBackup == nil || time.Since(*d.LastBackup) > a.BackupStaleAfter(d)
+}
+
+// ---- bulk helpers ----
+
+// ForDevices runs fn for each device id with bounded concurrency, reporting
+// progress as an activity of the given kind. fn returns a short detail and an
+// error; results come back in input order.
+func (a *App) ForDevices(kind string, ids []int64, concurrency int, fn func(d model.Device) (string, error)) []ApplyResult {
+	if concurrency < 1 {
+		concurrency = 1
+	}
+	t := a.StartTask(kind, "", len(ids))
+	defer t.Finish(nil)
+	results := make([]ApplyResult, len(ids))
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	for i, id := range ids {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, id int64) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			d, err := a.Store.Device(id)
+			if err != nil {
+				results[i] = ApplyResult{Device: fmt.Sprintf("#%d", id), Detail: "not found"}
+				t.Step("", false)
+				return
+			}
+			t.Detail(d.Name)
+			detail, err := fn(d)
+			res := ApplyResult{Device: d.Name, OK: err == nil, Detail: detail}
+			if err != nil {
+				res.Detail = err.Error()
+			} else if res.Detail == "" {
+				res.Detail = "ok"
+			}
+			results[i] = res
+			t.Step(d.Name, err == nil)
+		}(i, id)
+	}
+	wg.Wait()
+	return results
 }

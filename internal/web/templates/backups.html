@@ -28,6 +28,7 @@
       <th data-col="name" data-label="{{t "col.name"}}">{{t "col.name"}}</th>
       <th data-col="model" data-label="{{t "col.model"}}">{{t "col.model"}}</th>
       <th data-col="status" data-label="{{t "al.state"}}">{{t "al.state"}}</th>
+      <th data-col="last" data-label="{{t "col.lastbackup"}}">{{t "col.lastbackup"}}</th>
       <th data-col="export" data-label="{{t "bk.export"}}">{{t "bk.export"}}</th>
       <th data-col="binary" data-label="{{t "bk.binary"}}">{{t "bk.binary"}}</th>
     </tr></thead>
@@ -41,10 +42,11 @@
           {{else if eq .Status "stale"}}<span class="badge" style="background:var(--warn);color:#1a1a1a">{{t "bk.stale"}}</span>
           {{else}}<span class="badge bad">{{t "bk.never"}}</span>{{end}}
         </td>
+        <td class="muted" data-sort="{{tsp .Last}}">{{if .Last}}{{ago .Last}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="muted" data-sort="{{tsp .Export}}">{{if .Export}}{{ago .Export}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="muted" data-sort="{{tsp .Binary}}">{{if .Binary}}{{ago .Binary}}{{else}}<span class="muted">—</span>{{end}}</td>
       </tr>
-    {{else}}<tr><td colspan="5" class="muted">{{t "devices.empty"}}</td></tr>{{end}}
+    {{else}}<tr><td colspan="6" class="muted">{{t "devices.empty"}}</td></tr>{{end}}
     </tbody>
   </table></div>
   <p class="muted small">{{t "bk.note"}}</p>
