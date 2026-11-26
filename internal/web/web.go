@@ -50,7 +50,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-var Version = "1.6.0"
+var Version = "1.6.1"
 
 const (
 	cookieName  = "rosman_session"
@@ -198,6 +198,8 @@ func (s *Server) explain(lang string, d model.Device, channel string, err error)
 		}
 		// The two usual causes have a one-click fix on the device page.
 		switch es := err.Error(); {
+		case strings.Contains(es, "unable to authenticate") && s.a.StorageCheck(d) != nil:
+			return fmt.Sprintf(i18n.T(lang, "diag.ssh_nokey_storage"), es, s.a.StorageCheck(d).Error())
 		case strings.Contains(es, "unable to authenticate"):
 			return fmt.Sprintf(i18n.T(lang, "diag.ssh_nokey"), es)
 		case strings.Contains(es, "host key changed"):
@@ -4726,6 +4728,10 @@ func (s *Server) deviceIssueCert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dst := "/devices/" + r.PathValue("id")
+	if err := s.a.StorageCheck(d); err != nil {
+		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
 	if err := s.a.IssueCert(d); err != nil {
 		msg := err.Error()
 		// The certificate is installed over SSH: say so when SSH is the problem.

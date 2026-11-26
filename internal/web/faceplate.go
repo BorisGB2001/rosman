@@ -171,9 +171,12 @@ func facePlateSVG(ports []model.Port, lang string) template.HTML {
 }
 
 // facePlateFromLayout renders the panel from a layout (a catalog model's
-// template or a device's own), overlaying live link status. A slot's label
-// matches a real port by its full interface name ("wifi1", "ether5") or by its
-// short panel label ("5", "S1", "W1"); a slot may carry its own display name.
+// template or a device's own), overlaying live link status. Each layout row is
+// a line of the panel; a gap tile splits the row into separate framed blocks
+// (like the bays of a real front panel). A block whose ports all belong to one
+// named group is titled with that group. A slot's label matches a real port by
+// its full interface name ("wifi1", "ether5") or by its short panel label
+// ("5", "S1", "W1"); a slot may carry its own display name.
 // Returns "" when the layout is empty.
 func facePlateFromLayout(layoutJSON string, ports []model.Port) template.HTML {
 	pl, ok := parsePortLayout(layoutJSON)
@@ -189,33 +192,25 @@ func facePlateFromLayout(layoutJSON string, ports []model.Port) template.HTML {
 	for _, p := range ports { // full names win over short labels
 		byLabel[strings.ToLower(p.Name)] = p
 	}
-	groupColor := map[string]string{}
+	groupColor, groupName := map[string]string{}, map[string]string{}
 	for _, g := range pl.Groups {
-		if g.Color != "" {
-			groupColor[g.ID] = g.Color
-		}
+		groupColor[g.ID], groupName[g.ID] = g.Color, g.Name
 	}
-	maxCols := 0
-	for _, row := range pl.Rows {
-		if len(row) > maxCols {
-			maxCols = len(row)
-		}
-	}
-	if maxCols == 0 {
-		return ""
-	}
-	W := maxCols*(fpCW+fpGap) - fpGap + 2*fpPad
-	H := len(pl.Rows)*(fpCH+fpGap+fpLbl) - fpGap + 2*fpPad
 	var b strings.Builder
-	fmt.Fprintf(&b, `<svg viewBox="0 0 %d %d" style="width:%dpx;max-width:100%%;height:auto">`, W, H, W*85/100)
-	fmt.Fprintf(&b, `<rect x="0.5" y="0.5" width="%d" height="%d" rx="9" fill="var(--bg)" stroke="var(--line)"/>`, W-1, H-1)
-	for r, row := range pl.Rows {
-		for c, slot := range row {
-			if slot.Gap || slot.Label == "" {
-				continue
+	drawn := 0
+	block := func(slots []portSlot) {
+		if len(slots) == 0 {
+			return
+		}
+		W := len(slots)*(fpCW+fpGap) - fpGap + 2*fpPad
+		H := fpCH + fpLbl + 2*fpPad
+		var svg strings.Builder
+		up, total := 0, 0
+		group, same := slots[0].Group, true
+		for c, slot := range slots {
+			if slot.Group != group {
+				same = false
 			}
-			x := fpPad + c*(fpCW+fpGap)
-			y := fpPad + r*(fpCH+fpGap+fpLbl)
 			low := strings.ToLower(slot.Label)
 			p, present := byLabel[low]
 			// Group colour is the base; live status dims a disabled/absent port
@@ -227,13 +222,14 @@ func facePlateFromLayout(layoutJSON string, ports []model.Port) template.HTML {
 			kind := "ether"
 			switch {
 			case present:
-				kind = portKind(p)
-				if kind == "" {
+				total++
+				if kind = portKind(p); kind == "" {
 					kind = "ether"
 				}
 				if p.Disabled {
 					color = "var(--line)"
 				} else if p.Running {
+					up++
 					if groupColor[slot.Group] == "" {
 						color = "var(--good)"
 					}
@@ -257,11 +253,36 @@ func facePlateFromLayout(layoutJSON string, ports []model.Port) template.HTML {
 				text = slot.Name
 				title += " — " + slot.Name
 			}
-			drawPort(&b, x, y, kind, color, led, title, shortText(text, 8))
+			drawPort(&svg, fpPad+c*(fpCW+fpGap), fpPad, kind, color, led, title, shortText(text, 8))
+			drawn++
 		}
+		b.WriteString(`<div class="fpgroup">`)
+		if name := groupName[group]; same && name != "" {
+			fmt.Fprintf(&b, `<div class="fptitle">%s <span>%d / %d</span></div>`, template.HTMLEscapeString(name), up, total)
+		}
+		fmt.Fprintf(&b, `<svg viewBox="0 0 %d %d" style="width:%dpx;max-width:100%%;height:auto">`, W, H, W*85/100)
+		fmt.Fprintf(&b, `<rect x="0.5" y="0.5" width="%d" height="%d" rx="9" fill="var(--bg)" stroke="var(--line)"/>`, W-1, H-1)
+		b.WriteString(svg.String())
+		b.WriteString(`</svg></div>`)
 	}
-	b.WriteString("</svg>")
-	return template.HTML(b.String())
+	for _, row := range pl.Rows {
+		b.WriteString(`<div class="fprow">`)
+		var cur []portSlot
+		for _, slot := range row {
+			if slot.Gap || slot.Label == "" {
+				block(cur)
+				cur = nil
+				continue
+			}
+			cur = append(cur, slot)
+		}
+		block(cur)
+		b.WriteString(`</div>`)
+	}
+	if drawn == 0 {
+		return ""
+	}
+	return template.HTML(`<div class="fprows">` + b.String() + `</div>`)
 }
 
 // realPortsJS lists a device's panel-worthy interfaces for the layout editor.

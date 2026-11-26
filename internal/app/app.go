@@ -839,6 +839,30 @@ func (a *App) settingIntDefault(key string, def int) int {
 // evalThresholds raises or clears CPU / temperature / memory alerts against the
 // operator-configured thresholds (settings alert_cpu / alert_temp / alert_mem,
 // each 0 = disabled). Notifications fire only on the active/clear transition.
+// StorageMinFree is the free flash below which RouterOS can no longer save
+// configuration changes reliably.
+const StorageMinFree = 256 << 10
+
+// StorageCheck returns an error when the device's flash is too full to persist
+// a configuration change.
+func (a *App) StorageCheck(d model.Device) error {
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return nil
+	}
+	rows, err := ros.APIPrint(d, pass, a.Cfg.APITimeout, "/system/resource/print")
+	if err != nil || len(rows) == 0 {
+		return nil // unknown — do not block
+	}
+	free, total := rows[0]["free-hdd-space"], rows[0]["total-hdd-space"]
+	f, e1 := strconv.ParseInt(free, 10, 64)
+	t, e2 := strconv.ParseInt(total, 10, 64)
+	if e1 != nil || e2 != nil || t == 0 || f >= StorageMinFree {
+		return nil
+	}
+	return fmt.Errorf("на устройстве заполнена флеш-память (свободно %d КБ из %d МБ): RouterOS не сохраняет изменения конфигурации, поэтому ключ, сертификат или настройка не удержатся. Освободите место на устройстве", f/1024, t/1024/1024)
+}
+
 func (a *App) evalThresholds(d model.Device, h ros.Health) {
 	check := func(rule, label string, val, thresh int, unit string) {
 		if thresh <= 0 {
@@ -854,6 +878,21 @@ func (a *App) evalThresholds(d model.Device, h ros.Health) {
 			}
 		} else if ok, _ := a.Store.ResolveAlert(d.ID, rule); ok {
 			a.alertNotifyDev(d, "✅ "+d.Name+": "+label+" OK", fmt.Sprintf("%d%s < %d%s", val, unit, thresh, unit))
+		}
+	}
+	// Flash nearly full: RouterOS then silently fails to save ANY config change
+	// (keys, certificates, settings are lost again), so this is always checked.
+	if h.TotalHDD > 0 {
+		if h.FreeHDD < StorageMinFree {
+			prev, _ := a.Store.AlertState(d.ID, "storage_full")
+			detail := fmt.Sprintf("флеш-память заполнена: свободно %d КБ из %d МБ — устройство не сохраняет изменения конфигурации",
+				h.FreeHDD/1024, h.TotalHDD/1024/1024)
+			_ = a.Store.RaiseAlert(d.ID, "storage_full", "crit", detail)
+			if prev != "active" {
+				a.alertNotifyDev(d, "⛔ "+d.Name+": нет места на флеше", detail)
+			}
+		} else if ok, _ := a.Store.ResolveAlert(d.ID, "storage_full"); ok {
+			a.alertNotifyDev(d, "✅ "+d.Name+": место на флеше появилось", fmt.Sprintf("свободно %d КБ", h.FreeHDD/1024))
 		}
 	}
 	check("cpu_high", "CPU", h.CPU, a.settingIntDefault("alert_cpu", 0), "%")
@@ -1462,6 +1501,9 @@ func (a *App) InstallSSHKey(d model.Device) error {
 	}
 	if a.CheckSSH(d) == nil {
 		return nil // already works
+	}
+	if err := a.StorageCheck(d); err != nil {
+		return err
 	}
 	pass, err := a.Box.Decrypt(d.APIPassEnc)
 	if err != nil {

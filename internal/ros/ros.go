@@ -35,6 +35,8 @@ type Health struct {
 	CPU      int
 	FreeMem  int64
 	TotalMem int64
+	FreeHDD  int64 // free flash, bytes (0 when unknown)
+	TotalHDD int64
 	Uptime   string
 	APISSLCert    string     // cert bound to the api-ssl service
 	APICertExpiry *time.Time // its invalid-after
@@ -138,6 +140,7 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 		h.Uptime = m["uptime"]
 		h.CPU = atoi(m["cpu-load"])
 		h.FreeMem = atoi64(m["free-memory"])
+		h.FreeHDD, h.TotalHDD = atoi64(m["free-hdd-space"]), atoi64(m["total-hdd-space"])
 		h.TotalMem = atoi64(m["total-memory"])
 	}
 	if r, err := c.Run("/system/routerboard/print"); err == nil && len(r.Re) > 0 {
@@ -1343,4 +1346,23 @@ func InstallSSHKeyAPI(d model.Device, pass, user, pubKey string, timeout time.Du
 		return fmt.Errorf("add ssh key for %s: %w", user, err)
 	}
 	return nil
+}
+
+// APIPrint runs one read-only API sentence (e.g. "/user/ssh-keys/print") with
+// the device's pinned certificate and returns the reply rows.
+func APIPrint(d model.Device, pass string, timeout time.Duration, sentence ...string) ([]map[string]string, error) {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+	r, err := c.Run(sentence...)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]string, 0, len(r.Re))
+	for _, re := range r.Re {
+		out = append(out, re.Map)
+	}
+	return out, nil
 }

@@ -90,7 +90,9 @@
 .ltile{position:relative;width:58px;display:flex;flex-direction:column;align-items:center;cursor:grab;user-select:none}
 .ltile .pbody{width:42px;height:34px;border-radius:5px;border:1px solid #0005;background:var(--muted);display:flex;align-items:center;justify-content:center}
 .ltile .pbody .slot{width:16px;height:6px;border-radius:1px;background:var(--surface)}
-.ltile.gap .pbody{background:none;border:1px dashed var(--line)}
+.ltile.gap{width:22px;align-self:stretch}
+.ltile.gap .pbody{background:none;border:0;border-left:2px dashed var(--accent);border-radius:0;width:2px;height:100%;min-height:46px}
+.lblock{display:flex;gap:8px;align-items:flex-end;padding:6px 8px;border:1px solid var(--line);border-radius:9px;background:var(--bg)}
 .ltile .plabel{font-size:10px;color:var(--muted);margin-top:2px;max-width:58px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ltile .pname{font-size:10px;color:var(--accent);max-width:58px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ltile .pedit{position:absolute;top:-6px;left:-4px;font-size:10px;line-height:1;cursor:pointer;opacity:0;background:var(--accent);color:#fff;border-radius:50%;width:15px;height:15px;display:flex;align-items:center;justify-content:center}
@@ -134,7 +136,13 @@ function lgFromReal(){
     var gid='';
     if(KIND_COLORS[k]){ gid='k_'+k; groups.push({id:gid,name:KIND_NAMES[k],color:KIND_COLORS[k]}); }
     var per=ps.length>16?Math.ceil(ps.length/2):ps.length;
-    for(var i=0;i<ps.length;i+=per){ rows.push(ps.slice(i,i+per).map(function(p){ var s={label:p.name}; if(gid) s.group=gid; return s; })); }
+    for(var i=0;i<ps.length;i+=per){
+      var tiles=ps.slice(i,i+per).map(function(p){ var s={label:p.name}; if(gid) s.group=gid; return s; });
+      var last=rows[rows.length-1];
+      // small banks share a line as separate blocks; a full bank gets its own line
+      if(last && per<=12 && last.filter(function(s){return !s.gap;}).length+tiles.length<=18){ last.push({gap:true}); Array.prototype.push.apply(last,tiles); }
+      else rows.push(tiles);
+    }
   });
   STATE={groups:groups,rows:rows}; lgRender();
 }
@@ -179,7 +187,13 @@ function lgRender(){
     rd.addEventListener('dragover',function(e){e.preventDefault();rd.classList.add('drop');});
     rd.addEventListener('dragleave',function(){rd.classList.remove('drop');});
     rd.addEventListener('drop',function(e){e.preventDefault();rd.classList.remove('drop');lgDrop(ri,row.length);});
-    row.forEach(function(slot,ci){ rd.appendChild(mkTile(slot,ri,ci)); });
+    var blk=null;
+    row.forEach(function(slot,ci){
+      var t=mkTile(slot,ri,ci);
+      if(slot.gap){ blk=null; rd.appendChild(t); return; }
+      if(!blk){ blk=document.createElement('div'); blk.className='lblock'; rd.appendChild(blk); }
+      blk.appendChild(t);
+    });
     grid.appendChild(rd);
   });
   document.getElementById('emptyhint').style.display=STATE.rows.length?'none':'block';

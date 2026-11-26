@@ -552,9 +552,9 @@
   "lay.tiles": "Ports",
   "lay.label": "label",
   "lay.add_port": "Add port",
-  "lay.add_gap": "Add gap",
+  "lay.add_gap": "Split into blocks",
   "lay.add_row": "Add row",
-  "lay.drag_hint": "Drag tiles to reorder; hover × to remove.",
+  "lay.drag_hint": "Each row is a line of the panel. \"Split into blocks\" inserts a divider: ports on either side are drawn as separate blocks in the same line. A block made of ports of one group is titled with the group name. Drag tiles and dividers; on hover the cross deletes and the pencil renames.",
   "lay.brush": "Active group",
   "lay.brush_switch": "— click a group on the left to switch, then click ports.",
   "lay.empty": "No ports yet. Generate a grid or add ports.",
@@ -885,5 +885,6 @@
   "ssh.pin_confirm": "Forget the pinned SSH host key and accept whatever the device presents next? Only do this when the key changed for a known reason (upgrade, reset).",
   "diag.ssh_nokey": "No SSH access: %s. The API answers — the user on the device has no ROSMan SSH key. Press “Install SSH key” on the device page.",
   "diag.ssh_hostkey": "No SSH access: %s. The device changed its SSH host key (this happens after a RouterOS upgrade). If expected, press “Accept new host key” on the device page.",
-  "act.ssh_key": "Installing SSH key"
+  "act.ssh_key": "Installing SSH key",
+  "diag.ssh_nokey_storage": "No SSH access: %s. Underlying cause: %s"
 }
