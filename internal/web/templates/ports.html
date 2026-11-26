@@ -3,13 +3,11 @@
   <a class="btn sm secondary" href="/ports.csv">↓ CSV</a></div>
 <p class="muted small" style="margin-top:-6px">{{t "cap.subtitle"}}</p>
 
-<div class="card">
-  <div style="display:flex;gap:24px;flex-wrap:wrap">
-    <div><div class="muted small">{{t "cap.total"}}</div><div style="font-size:24px;font-weight:600">{{.TTotal}}</div></div>
-    <div><div class="muted small">{{t "cap.used"}}</div><div style="font-size:24px;font-weight:600;color:var(--good)">{{.TUp}}</div></div>
-    <div><div class="muted small">{{t "cap.free"}}</div><div style="font-size:24px;font-weight:600;color:var(--accent)">{{.TFree}}</div></div>
-    <div><div class="muted small">{{t "cap.disabled"}}</div><div style="font-size:24px;font-weight:600;color:var(--muted)">{{.TDis}}</div></div>
-  </div>
+<div class="tiles four">
+  <div class="tile"><span>{{t "cap.total"}}</span><b>{{.TTotal}}</b></div>
+  <div class="tile"><span>{{t "cap.used"}}</span><b style="color:var(--good)">{{.TUp}}</b><small>{{pct .TUp .TTotal}}%</small></div>
+  <div class="tile"><span>{{t "cap.free"}}</span><b style="color:var(--accent)">{{.TFree}}</b><small>{{pct .TFree .TTotal}}%</small></div>
+  <div class="tile"><span>{{t "cap.disabled"}}</span><b style="color:var(--muted)">{{.TDis}}</b><small>{{pct .TDis .TTotal}}%</small></div>
 </div>
 
 <div class="card">

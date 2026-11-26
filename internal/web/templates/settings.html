@@ -46,6 +46,11 @@
   <label>{{t "thr.temp"}}<input name="alert_temp" value="{{index .V "alert_temp"}}" placeholder="70" style="width:90px"></label>
   <label>{{t "thr.mem"}}<input name="alert_mem" value="{{index .V "alert_mem"}}" placeholder="90" style="width:90px"></label>
 </div>
+<div class="card narrow" id="snmp">
+  <h3>SNMP</h3>
+  <label>{{t "set.snmp_allowed"}}<textarea name="snmp_allowed" rows="2" placeholder="10.6.0.19, 10.0.0.0/24">{{index .V "snmp_allowed"}}</textarea></label>
+  <p class="muted small">{{t "set.snmp_allowed_note"}}</p>
+</div>
 <div class="card narrow">
   <h3>{{t "ret.title"}}</h3>
   <p class="muted small">{{t "ret.note"}}</p>

@@ -1386,3 +1386,69 @@ func (a *App) ForDevices(kind string, ids []int64, concurrency int, fn func(d mo
 	wg.Wait()
 	return results
 }
+
+// ---- channel diagnosis / SNMP provisioning ----
+
+// CheckAPI reports whether the device answers on the API (dial + login).
+func (a *App) CheckAPI(d model.Device) error {
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return err
+	}
+	_, err = ros.ServedFingerprint(d, pass, 8*time.Second)
+	return err
+}
+
+// CheckSSH reports whether the device accepts ROSMan's SSH key.
+func (a *App) CheckSSH(d model.Device) error {
+	if a.signer == nil {
+		return fmt.Errorf("no SSH key configured (ROSMAN_SSH_KEY)")
+	}
+	return ros.CheckSSH(d, a.signer, 8*time.Second)
+}
+
+// SNMPAllowed returns the configured allowed SNMP source pool, normalised to a
+// comma-separated list of IPs/CIDRs, or an error naming the bad entry.
+func (a *App) SNMPAllowed() (string, error) {
+	return NormalizePool(a.setting("snmp_allowed"))
+}
+
+// NormalizePool validates a list of IPs/CIDRs separated by commas, spaces or
+// newlines and returns it comma-separated.
+func NormalizePool(raw string) (string, error) {
+	var out []string
+	for _, f := range strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\r' || r == '\t' }) {
+		if strings.Contains(f, "/") {
+			if _, _, err := net.ParseCIDR(f); err != nil {
+				return "", fmt.Errorf("bad network %q", f)
+			}
+		} else if net.ParseIP(f) == nil {
+			return "", fmt.Errorf("bad address %q", f)
+		}
+		out = append(out, f)
+	}
+	return strings.Join(out, ","), nil
+}
+
+// ConfigureSNMP enables SNMP on the device itself and limits the community to
+// the allowed pool from settings. community=="" reuses the stored one.
+func (a *App) ConfigureSNMP(d model.Device, community string) error {
+	pool, err := a.SNMPAllowed()
+	if err != nil {
+		return err
+	}
+	if pool == "" {
+		return fmt.Errorf("allowed SNMP pool is not set (Settings → SNMP)")
+	}
+	if community == "" && d.SNMPCommEnc != "" {
+		community, _ = a.Box.Decrypt(d.SNMPCommEnc)
+	}
+	if community == "" {
+		return fmt.Errorf("SNMP community is required")
+	}
+	pass, err := a.Box.Decrypt(d.APIPassEnc)
+	if err != nil {
+		return err
+	}
+	return ros.ConfigureSNMP(d, pass, community, pool, a.Cfg.APITimeout)
+}

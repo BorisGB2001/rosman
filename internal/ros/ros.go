@@ -1289,3 +1289,43 @@ func atof(s string) float64 {
 	n, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	return n
 }
+
+// ConfigureSNMP enables SNMP on the device and restricts the given community
+// to the allowed source addresses (comma-separated IPs/CIDRs). The community is
+// created when missing; other communities are left untouched.
+func ConfigureSNMP(d model.Device, pass, community, addresses string, timeout time.Duration) error {
+	c, _, err := dialAPI(d, pass, d.APICertPin, timeout)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	r, err := c.Run("/snmp/community/print", "?name="+community)
+	if err != nil {
+		return fmt.Errorf("read snmp communities: %w", err)
+	}
+	if len(r.Re) > 0 {
+		if _, err := c.Run("/snmp/community/set", "=.id="+r.Re[0].Map[".id"], "=addresses="+addresses, "=read-access=yes", "=write-access=no"); err != nil {
+			return fmt.Errorf("set snmp community: %w", err)
+		}
+	} else {
+		if _, err := c.Run("/snmp/community/add", "=name="+community, "=addresses="+addresses, "=read-access=yes", "=write-access=no"); err != nil {
+			return fmt.Errorf("add snmp community: %w", err)
+		}
+	}
+	if _, err := c.Run("/snmp/set", "=enabled=yes"); err != nil {
+		return fmt.Errorf("enable snmp: %w", err)
+	}
+	return nil
+}
+
+// CheckSSH verifies that the device accepts ROSMan's key over SSH by running a
+// harmless read-only command.
+func CheckSSH(d model.Device, signer ssh.Signer, timeout time.Duration) error {
+	client, _, err := dialSSH(d, signer, timeout)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	_, err = run(client, ":put ok")
+	return err
+}

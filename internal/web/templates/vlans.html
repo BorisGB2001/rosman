@@ -4,9 +4,35 @@
   <a class="btn sm secondary" href="/vlans.csv">↓ CSV</a></div>
 <p class="muted small" style="margin-top:-6px">{{t "vlan.subtitle"}}</p>
 <div class="card">
-  <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
-    <input type="search" data-search-for="vlantable" placeholder="{{t "col.search"}}" style="width:200px">
+  <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+    <input type="search" data-search-for="{{if eq .By "device"}}vlandevtable{{else}}vlantable{{end}}" placeholder="{{t "col.search"}}" style="width:200px">
+    <span class="muted small">{{t "vlan.group_by"}}</span>
+    <span class="pseg lightseg"><a href="/vlans" class="{{if eq .By "vlan"}}on{{end}}">{{t "vlan.by_vlan"}} ({{.VlanCount}})</a><a href="/vlans?by=device" class="{{if eq .By "device"}}on{{end}}">{{t "vlan.by_device"}} ({{.DevCount}})</a></span>
   </div>
+  {{if eq .By "device"}}
+  <div class="scroll"><table id="vlandevtable" class="dtable">
+    <thead><tr>
+      <th data-col="dev" data-label="{{t "al.device"}}">{{t "al.device"}}</th>
+      <th data-col="n" data-label="VLAN">VLAN</th>
+      <th data-col="detail" data-label="{{t "vlan.dev_ports"}}">{{t "vlan.dev_ports"}}</th>
+    </tr></thead>
+    <tbody>
+    {{range .DevRows}}
+      <tr>
+        <td><a href="/devices/{{.DeviceID}}">{{.Device}}</a></td>
+        <td data-sort="{{len .Vlans}}">{{len .Vlans}}</td>
+        <td class="small">
+          {{range .Vlans}}<div style="margin:2px 0">
+            <span class="badge">{{.ID}}</span>
+            {{if .Untagged}}<span class="muted">· U:</span> <span class="mono">{{.Untagged}}</span>{{end}}
+            {{if .Tagged}}<span class="muted">· T:</span> <span class="mono">{{.Tagged}}</span>{{end}}
+          </div>{{end}}
+        </td>
+      </tr>
+    {{else}}<tr><td colspan="3" class="muted">{{t "vlan.none"}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+  {{else}}
   <div class="scroll"><table id="vlantable" class="dtable">
     <thead><tr>
       <th data-col="vlan" data-label="VLAN">VLAN</th>
@@ -29,6 +55,7 @@
     {{else}}<tr><td colspan="3" class="muted">{{t "vlan.none"}}</td></tr>{{end}}
     </tbody>
   </table></div>
+  {{end}}
   <p class="muted small">{{t "vlan.note"}}</p>
 </div>
 {{template "tail" .}}{{end}}

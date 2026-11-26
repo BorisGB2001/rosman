@@ -584,3 +584,16 @@ tr.rowdown a { color: var(--bad); }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: stretch; }
 .pair > .card { min-width: 0; }
 @media (max-width: 900px) { .pair { grid-template-columns: 1fr; gap: 0; } }
+
+/* boris.gb 2026-11-26 09:10 - карточка устройства: иконки действий, список адресов, заглушка фото */
+.devacts { gap: 6px; }
+.devacts .iconbtn, .card .iconbtn { padding: 5px 8px; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.addrlist { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+button.badge.addrpick { border: 1px solid transparent; cursor: pointer; font: inherit; font-family: var(--mono); font-size: 12px; }
+button.badge.addrpick:hover { border-color: var(--accent); color: var(--fg); }
+.noimg { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 150px; border: 1px dashed var(--line); border-radius: 10px; opacity: .8; }
+.pseg.lightseg { border-color: var(--line); }
+.pseg.lightseg a { color: var(--muted); }
+.pseg.lightseg a + a { border-left-color: var(--line); }
+.pseg.lightseg a.on { background: var(--info-bg); color: var(--fg); }

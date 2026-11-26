@@ -1,6 +1,8 @@
 {{define "topology"}}{{template "head" .}}
 <div class="cardhead"><h1 style="margin:0">{{t "topo.title"}}</h1>
-  <span class="muted small">{{.Count}} {{t "nav.devices"}} · {{.EdgeCount}} {{t "topo.links"}}</span></div>
+  <span class="muted small">{{.Count}} {{t "nav.devices"}} · {{.EdgeCount}} {{t "topo.links"}}</span>
+  {{if .CanWrite}}<form method="post" action="/topology/refresh" style="margin-left:auto"><button class="btn sm" type="submit" title="{{t "topo.check_hint"}}" style="display:inline-flex;gap:6px;align-items:center">{{template "aico" "links"}} {{t "topo.check"}}</button></form>{{end}}</div>
+<p class="muted small" style="margin-top:-6px">{{t "topo.auto_note"}}</p>
 <div class="card">
   {{if .Nodes}}
   <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:8px">

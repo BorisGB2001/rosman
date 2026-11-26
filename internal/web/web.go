@@ -18,7 +18,9 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"errors"
 	"net/url"
+	"sync"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -48,7 +50,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-var Version = "1.4.0"
+var Version = "1.5.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -144,6 +146,65 @@ func New(a *app.App) (*Server, error) {
 	// After a device is added and polled, attach its catalog template.
 	a.AfterAdd = srv.autoTemplate
 	return srv, nil
+}
+
+// ---- flash messages (shown as toasts after a redirect) ----
+
+type flashMsg struct {
+	OK, Errs []string
+	at       time.Time
+}
+
+var (
+	flashMu  sync.Mutex
+	flashes  = map[string]flashMsg{}
+	flashSeq int64
+)
+
+// putFlash stores messages for the next page and returns the id to pass as
+// ?flash=. Entries are single-use and expire after a few minutes.
+func putFlash(ok, errs []string) string {
+	flashMu.Lock()
+	defer flashMu.Unlock()
+	for k, v := range flashes {
+		if time.Since(v.at) > 5*time.Minute {
+			delete(flashes, k)
+		}
+	}
+	flashSeq++
+	id := fmt.Sprintf("%d-%d", time.Now().UnixNano(), flashSeq)
+	flashes[id] = flashMsg{OK: ok, Errs: errs, at: time.Now()}
+	return id
+}
+
+func takeFlash(id string) (flashMsg, bool) {
+	flashMu.Lock()
+	defer flashMu.Unlock()
+	f, ok := flashes[id]
+	delete(flashes, id)
+	return f, ok
+}
+
+// explain turns a failure on one management channel into a message that also
+// says whether the OTHER channel works, so the operator knows whether the
+// device is down or only SSH (key/service) or only the API (user/cert) is.
+func (s *Server) explain(lang string, d model.Device, channel string, err error) string {
+	if err == nil {
+		return ""
+	}
+	if channel == "ssh" {
+		if e := s.a.CheckAPI(d); e != nil {
+			return fmt.Sprintf(i18n.T(lang, "diag.ssh_api_fail"), err.Error(), e.Error())
+		}
+		return fmt.Sprintf(i18n.T(lang, "diag.ssh_fail_api_ok"), err.Error())
+	}
+	if !s.a.HasSSHKey() {
+		return fmt.Sprintf(i18n.T(lang, "diag.api_fail"), err.Error())
+	}
+	if e := s.a.CheckSSH(d); e != nil {
+		return fmt.Sprintf(i18n.T(lang, "diag.api_ssh_fail"), err.Error(), e.Error())
+	}
+	return fmt.Sprintf(i18n.T(lang, "diag.api_fail_ssh_ok"), err.Error())
 }
 
 // humanDur renders a duration compactly with at most two units ("42s", "17m",
@@ -253,6 +314,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/delete", s.authed(s.requireRole(model.RoleAdmin, s.deviceDelete)))
 	mux.Handle("POST /devices/{id}/type", s.authed(s.requireRole(model.RoleOperator, s.deviceSetType)))
 	mux.Handle("GET /activity", s.authed(s.activityJSON))
+	mux.Handle("POST /topology/refresh", s.authed(s.requireRole(model.RoleOperator, s.topoRefresh)))
 	mux.Handle("POST /devices/{id}/backupinterval", s.authed(s.requireRole(model.RoleOperator, s.deviceSetBackupInterval)))
 	mux.Handle("POST /settings/update/check", s.authed(s.requireRole(model.RoleAdmin, s.updateCheck)))
 	mux.Handle("POST /settings/update/apply", s.authed(s.requireRole(model.RoleAdmin, s.updateApply)))
@@ -453,6 +515,11 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 		data["User"] = userFrom(r)
 	}
 	data["Lang"], data["Theme"], data["Path"] = lang, theme, path
+	if fid := r.URL.Query().Get("flash"); fid != "" {
+		if f, ok := takeFlash(fid); ok {
+			data["FlashOK"], data["FlashErr"] = f.OK, f.Errs
+		}
+	}
 
 	t, err := s.tmpl.Clone()
 	if err != nil {
@@ -1428,6 +1495,10 @@ func (s *Server) deviceSetIP(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.UpdateDeviceIP(id, ip)
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "device_setip", ip)
+	if r.FormValue("next") == "device" {
+		http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?msg=default-ip-set", http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/?msg=default-ip-set", http.StatusSeeOther)
 }
 
@@ -1674,6 +1745,28 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	bkN, bkUnit := splitInterval(d.BackupIntervalSec)
+	devAddrs, _ := s.a.Store.DeviceAddrs(d.ID)
+	// Catalog models with a photo, for "add photo from template" when the
+	// device's own model has none; the closest name is preselected.
+	var catChoices []model.VendorModel
+	var catBest int64
+	if all, e := s.a.Store.AllVendorModels(); e == nil {
+		nm, bestLen := normModel(d.Model), 0
+		for _, m := range all {
+			if !m.HasImage {
+				continue
+			}
+			catChoices = append(catChoices, m)
+			n := 0
+			for n < len(nm) && n < len(m.Norm) && nm[n] == m.Norm[n] {
+				n++
+			}
+			if n > bestLen {
+				bestLen, catBest = n, m.ID
+			}
+		}
+	}
+	snmpPool, _ := s.a.SNMPAllowed()
 	s.render(w, r, "device", map[string]any{"Active": "devices",
 		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors, "Traffic": traffic,
 		"Sites": sites, "DevTags": devTags, "BackupMode": s.a.BackupMode(),
@@ -1689,6 +1782,7 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 		"HasSSH": s.a.HasSSHKey(), "Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err"),
 		"InMaint":       s.a.Store.InMaintenance(d.ID, time.Now()),
 		"GlobalPollSec": int(s.a.Cfg.PollInterval.Seconds()),
+		"Addrs": devAddrs, "CatChoices": catChoices, "CatBest": catBest, "SNMPPool": snmpPool,
 		"BkN": bkN, "BkUnit": bkUnit, "BkOwn": humanDur(time.Duration(d.BackupIntervalSec) * time.Second), "BkGlobal": humanDur(s.a.BackupInterval()),
 		"BkStale": s.a.BackupStale(d), "BkStaleAfter": humanDur(s.a.BackupStaleAfter(d)),
 	})
@@ -1762,6 +1856,18 @@ func (s *Server) deviceImageFromTemplate(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	cm, ok := s.a.Store.VendorModelByNorm(normModel(d.Model))
+	// The operator may pick a catalog model explicitly (the device's own model
+	// is not in the catalog, or has no photo).
+	if mid, _ := strconv.ParseInt(r.FormValue("model_id"), 10, 64); mid > 0 {
+		cm, ok = model.VendorModel{}, false
+		if all, e := s.a.Store.AllVendorModels(); e == nil {
+			for _, m := range all {
+				if m.ID == mid {
+					cm, ok = m, true
+				}
+			}
+		}
+	}
 	if !ok || !cm.HasImage {
 		http.Redirect(w, r, fmt.Sprintf("/devices/%d?err=%s", id, urlq("no template image for this model")), http.StatusSeeOther)
 		return
@@ -1914,7 +2020,7 @@ func (s *Server) devicePoll(w http.ResponseWriter, r *http.Request) {
 	err = s.a.PollDevice(d)
 	t.Finish(err)
 	if err != nil {
-		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		http.Redirect(w, r, dst+"?err="+urlq(s.explain(langOf(r), d, "api", err)), http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, dst+"?msg=polled", http.StatusSeeOther)
@@ -1932,7 +2038,11 @@ func (s *Server) deviceBackup(w http.ResponseWriter, r *http.Request) {
 	changed, err := s.a.BackupDevice(d, r.FormValue("mode"))
 	t.Finish(err)
 	if err != nil {
-		http.Redirect(w, r, dst+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		msg := err.Error()
+		if s.a.HasSSHKey() {
+			msg = s.explain(langOf(r), d, "ssh", err)
+		}
+		http.Redirect(w, r, dst+"?err="+urlq(msg), http.StatusSeeOther)
 		return
 	}
 	msg := "backup-unchanged"
@@ -2619,7 +2729,38 @@ func (s *Server) vlansPage(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, VlanRow{ID: id, Devices: dvs})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
-	s.render(w, r, "vlans", map[string]any{"Active": "vlans", "Rows": rows, "VlanCount": len(rows)})
+	// The same data grouped the other way: device → its VLANs.
+	type VlanOn struct {
+		ID               int
+		Tagged, Untagged string
+	}
+	type DevRow struct {
+		DeviceID int64
+		Device   string
+		Vlans    []VlanOn
+	}
+	byDev := map[int64]*DevRow{}
+	for _, vr := range rows {
+		for _, dv := range vr.Devices {
+			dr := byDev[dv.DeviceID]
+			if dr == nil {
+				dr = &DevRow{DeviceID: dv.DeviceID, Device: dv.Device}
+				byDev[dv.DeviceID] = dr
+			}
+			dr.Vlans = append(dr.Vlans, VlanOn{ID: vr.ID, Tagged: dv.Tagged, Untagged: dv.Untagged})
+		}
+	}
+	devRows := make([]DevRow, 0, len(byDev))
+	for _, dr := range byDev {
+		devRows = append(devRows, *dr)
+	}
+	sort.Slice(devRows, func(i, j int) bool { return devRows[i].Device < devRows[j].Device })
+	by := "vlan"
+	if r.URL.Query().Get("by") == "device" {
+		by = "device"
+	}
+	s.render(w, r, "vlans", map[string]any{"Active": "vlans", "Rows": rows, "VlanCount": len(rows),
+		"DevRows": devRows, "DevCount": len(devRows), "By": by})
 }
 
 // HostHit is one location where a searched host was found.
@@ -3063,8 +3204,34 @@ func (s *Server) bulkRun(w http.ResponseWriter, r *http.Request) {
 			ids = append(ids, id)
 		}
 	}
+	lang := langOf(r)
+	// Launched from the device list: stay there and report with toasts instead
+	// of switching to the bulk-operations page.
+	inline := r.FormValue("from") == "devices"
+	back := "/"
+	if q := r.FormValue("back"); inline && q != "" {
+		if v, err := url.ParseQuery(strings.TrimPrefix(q, "?")); err == nil {
+			v.Del("flash")
+			v.Del("msg")
+			v.Del("err")
+			if enc := v.Encode(); enc != "" {
+				back = "/?" + enc
+			}
+		}
+	}
+	fail := func(msg string) {
+		if inline {
+			sep := "?"
+			if strings.Contains(back, "?") {
+				sep = "&"
+			}
+			http.Redirect(w, r, back+sep+"flash="+putFlash(nil, []string{msg}), http.StatusSeeOther)
+			return
+		}
+		s.renderBulk(w, r, nil, "", msg)
+	}
 	if len(ids) == 0 {
-		s.renderBulk(w, r, nil, "", i18n.T(langOf(r), "bulk.err_none"))
+		fail(i18n.T(lang, "bulk.err_none"))
 		return
 	}
 	guard, _ := strconv.Atoi(r.FormValue("guard"))
@@ -3077,12 +3244,18 @@ func (s *Server) bulkRun(w http.ResponseWriter, r *http.Request) {
 	switch action {
 	case "poll":
 		results = s.a.ForDevices("poll", ids, 8, func(d model.Device) (string, error) {
-			return "", s.a.PollDevice(d)
+			if err := s.a.PollDevice(d); err != nil {
+				return "", errors.New(s.explain(lang, d, "api", err))
+			}
+			return "", nil
 		})
 	case "backup":
 		results = s.a.ForDevices("backup", ids, 8, func(d model.Device) (string, error) {
 			changed, err := s.a.BackupDevice(d, "")
 			if err != nil {
+				if s.a.HasSSHKey() {
+					return "", errors.New(s.explain(lang, d, "ssh", err))
+				}
 				return "", err
 			}
 			if changed {
@@ -3093,7 +3266,7 @@ func (s *Server) bulkRun(w http.ResponseWriter, r *http.Request) {
 	case "fwcheck":
 		results = s.a.ForDevices("fwcheck", ids, 8, func(d model.Device) (string, error) {
 			if err := s.a.RefreshFirmware(d); err != nil {
-				return "", err
+				return "", errors.New(s.explain(lang, d, "api", err))
 			}
 			nd, _ := s.a.Store.Device(d.ID)
 			return nd.FwStatus, nil
@@ -3101,7 +3274,7 @@ func (s *Server) bulkRun(w http.ResponseWriter, r *http.Request) {
 	case "reboot":
 		results = s.a.ForDevices("reboot", ids, 8, func(d model.Device) (string, error) {
 			if err := s.a.Reboot(d); err != nil {
-				return "", err
+				return "", errors.New(s.explain(lang, d, "api", err))
 			}
 			return "rebooting", nil
 		})
@@ -3118,21 +3291,31 @@ func (s *Server) bulkRun(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if len(todo) == 0 {
-			http.Redirect(w, r, "/?err="+urlq(i18n.T(langOf(r), "bulk.err_uptodate")), http.StatusSeeOther)
+			fail(i18n.T(lang, "bulk.err_uptodate"))
 			return
 		}
 		if _, err := s.a.StartUpgrade(todo, 1, 4, true, user); err != nil {
-			http.Redirect(w, r, "/?err="+urlq(err.Error()), http.StatusSeeOther)
+			fail(err.Error())
 			return
 		}
 		_ = s.a.Store.AddAudit(user, "fw_upgrade", fmt.Sprintf("%d devices", len(todo)))
+		if inline {
+			// The job runs in the background; its progress is in the status
+			// bar and on the Firmware page.
+			sep := "?"
+			if strings.Contains(back, "?") {
+				sep = "&"
+			}
+			http.Redirect(w, r, back+sep+"flash="+putFlash([]string{fmt.Sprintf(i18n.T(lang, "bulk.upgrade_started"), len(todo))}, nil), http.StatusSeeOther)
+			return
+		}
 		http.Redirect(w, r, "/firmware", http.StatusSeeOther)
 		return
 	case "template":
 		tid, _ := strconv.ParseInt(r.FormValue("template_id"), 10, 64)
 		tpl, err := s.a.Store.Template(tid)
 		if err != nil {
-			s.renderBulk(w, r, nil, "", "template not found")
+			fail("template not found")
 			return
 		}
 		detail = "template:" + tpl.Name
@@ -3142,10 +3325,36 @@ func (s *Server) bulkRun(w http.ResponseWriter, r *http.Request) {
 			return "", s.a.ApplyTemplate(d, tpl.Body, guard)
 		})
 	default:
-		s.renderBulk(w, r, nil, "", "unknown action")
+		fail("unknown action")
 		return
 	}
 	_ = s.a.Store.AddAudit(user, "bulk_"+action, fmt.Sprintf("%d devices (%s)", len(results), detail))
+	if inline {
+		okN := 0
+		var errs []string
+		for _, res := range results {
+			if res.OK {
+				okN++
+			} else if len(errs) < 8 {
+				errs = append(errs, res.Device+": "+res.Detail)
+			}
+		}
+		if n := len(results) - okN - len(errs); n > 0 {
+			errs = append(errs, fmt.Sprintf(i18n.T(lang, "bulk.more_errors"), n))
+		}
+		title := i18n.T(lang, "act."+action)
+		oks := []string{fmt.Sprintf(i18n.T(lang, "bulk.summary"), title, okN, len(results))}
+		if okN == 0 {
+			oks = nil
+			errs = append([]string{fmt.Sprintf(i18n.T(lang, "bulk.summary"), title, okN, len(results))}, errs...)
+		}
+		sep := "?"
+		if strings.Contains(back, "?") {
+			sep = "&"
+		}
+		http.Redirect(w, r, back+sep+"flash="+putFlash(oks, errs), http.StatusSeeOther)
+		return
+	}
 	s.renderBulk(w, r, results, action, "")
 }
 
@@ -3415,6 +3624,77 @@ func (s *Server) clientsPage(w http.ResponseWriter, r *http.Request) {
 // Negative so it never collides with a (always-positive) device id, and
 // non-zero so the position-save handler, which rejects id 0, accepts it.
 const rosmanNodeID = -1
+
+// topoRefresh re-polls every device right now (fresh bridge FDB / neighbours)
+// and reports which devices are attached somewhere else than before — the
+// "check links" button, for when something was re-plugged.
+func (s *Server) topoRefresh(w http.ResponseWriter, r *http.Request) {
+	lang := langOf(r)
+	devs, _ := s.a.Store.Devices()
+	name := map[int64]string{}
+	ids := make([]int64, 0, len(devs))
+	for _, d := range devs {
+		name[d.ID] = d.Name
+		ids = append(ids, d.ID)
+	}
+	type att struct {
+		parent int64
+		port   string
+	}
+	snapshot := func() map[int64]att {
+		load, _ := s.a.Store.BridgePortLoad()
+		m := map[int64]att{}
+		for _, d := range devs {
+			p, port := s.deviceAttachment(d.ID, load)
+			m[d.ID] = att{p, port}
+		}
+		return m
+	}
+	before := snapshot()
+	results := s.a.ForDevices("topo_check", ids, 8, func(d model.Device) (string, error) {
+		return "", s.a.PollDevice(d)
+	})
+	after := snapshot()
+	okN := 0
+	for _, res := range results {
+		if res.OK {
+			okN++
+		}
+	}
+	where := func(a att) string {
+		if a.parent == 0 {
+			return i18n.T(lang, "topo.nowhere")
+		}
+		if a.port != "" {
+			return name[a.parent] + " / " + a.port
+		}
+		return name[a.parent]
+	}
+	var changes []string
+	for _, d := range devs {
+		if before[d.ID] != after[d.ID] {
+			changes = append(changes, fmt.Sprintf("%s: %s → %s", d.Name, where(before[d.ID]), where(after[d.ID])))
+		}
+	}
+	oks := []string{fmt.Sprintf(i18n.T(lang, "topo.checked"), okN, len(results))}
+	if len(changes) == 0 {
+		oks = append(oks, i18n.T(lang, "topo.no_changes"))
+	} else {
+		oks = append(oks, i18n.T(lang, "topo.changes")+" "+strings.Join(changes, "; "))
+	}
+	var errs []string
+	if okN < len(results) {
+		var bad []string
+		for _, res := range results {
+			if !res.OK {
+				bad = append(bad, res.Device)
+			}
+		}
+		errs = append(errs, i18n.T(lang, "topo.unreachable")+" "+strings.Join(bad, ", "))
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "topo_check", fmt.Sprintf("%d changes", len(changes)))
+	http.Redirect(w, r, "/topology?flash="+putFlash(oks, errs), http.StatusSeeOther)
+}
 
 func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 	devs, _ := s.a.Store.Devices()
@@ -3886,6 +4166,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 			"git_last": get("git_last"),
 			"alert_cpu": get("alert_cpu"), "alert_temp": get("alert_temp"), "alert_mem": get("alert_mem"),
 			"backup_interval_hours": get("backup_interval_hours"), "backup_stale_days": get("backup_stale_days"),
+			"snmp_allowed": get("snmp_allowed"),
 		},
 		"BkEnvHours": int(s.a.Cfg.BackupInterval.Hours()),
 		"Upd":        s.a.UpdateInfo(Version), "ExePath": app.ExePath,
@@ -4321,6 +4602,12 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
 	for _, k := range []string{"backup_folder", "tg_token", "tg_chat", "smtp_host", "smtp_port", "smtp_user", "smtp_from", "smtp_to", "git_dir", "git_remote", "git_branch", "metrics_retention_days", "alert_cpu", "alert_temp", "alert_mem", "backup_interval_hours", "backup_stale_days"} {
 		set(k, strings.TrimSpace(r.FormValue(k)))
 	}
+	poolErr := ""
+	if pool, err := app.NormalizePool(r.FormValue("snmp_allowed")); err != nil {
+		poolErr = err.Error() // keep the previous value rather than store a bad pool
+	} else {
+		set("snmp_allowed", pool)
+	}
 	if r.FormValue("git_enabled") == "on" {
 		set("git_enabled", "on")
 	} else {
@@ -4337,6 +4624,10 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "settings_save", "")
+	if poolErr != "" {
+		http.Redirect(w, r, "/settings?err="+urlq("SNMP: "+poolErr), http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/settings?msg=saved", http.StatusSeeOther)
 }
 
@@ -4392,6 +4683,22 @@ func (s *Server) deviceSNMPSave(w http.ResponseWriter, r *http.Request) {
 	port, _ := strconv.Atoi(r.FormValue("snmp_port"))
 	if err := s.a.SaveSNMP(id, r.FormValue("snmp_enabled") == "on", r.FormValue("snmp_community"), port); err != nil {
 		http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?err="+urlq(err.Error()), http.StatusSeeOther)
+		return
+	}
+	// Optionally set SNMP up on the device itself, limited to the allowed pool.
+	if r.FormValue("snmp_configure") == "on" && r.FormValue("snmp_enabled") == "on" {
+		d, err := s.a.Store.Device(id)
+		if err == nil {
+			t := s.a.StartTask("snmp_configure", d.Name, 0)
+			err = s.a.ConfigureSNMP(d, r.FormValue("snmp_community"))
+			t.Finish(err)
+		}
+		if err != nil {
+			http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?err="+urlq(err.Error()), http.StatusSeeOther)
+			return
+		}
+		_ = s.a.Store.AddAudit(userFrom(r).Username, "snmp_configure", d.Name)
+		http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?msg=snmp-configured", http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?msg=snmp-saved", http.StatusSeeOther)

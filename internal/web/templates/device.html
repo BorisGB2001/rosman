@@ -11,21 +11,14 @@
   <a class="btn sm secondary" href="/devices/{{.D.ID}}/lte">LTE</a>
   <a class="btn sm secondary" href="/devices/{{.D.ID}}/vpn">VPN</a>
   <a class="btn sm secondary" href="/devices/{{.D.ID}}/net">{{t "net.title"}}</a>
-  {{if canWrite .User}}<div class="badges">
-    <form class="inline" method="post" action="/devices/{{.D.ID}}/poll"><button class="btn sm" type="submit">{{t "dev.poll"}}</button></form>
-    <form class="inline" method="post" action="/devices/{{.D.ID}}/backup">
-      <select name="mode">
-        <option value="export" {{if eq .BackupMode "export"}}selected{{end}}>{{t "set.mode_export"}}</option>
-        <option value="binary" {{if eq .BackupMode "binary"}}selected{{end}}>{{t "set.mode_binary"}}</option>
-        <option value="both" {{if eq .BackupMode "both"}}selected{{end}}>{{t "set.mode_both"}}</option>
-      </select>
-      <button class="btn sm primary" type="submit" {{if not .HasSSH}}disabled title="{{t "dev.need_ssh"}}"{{end}}>{{t "dev.backup"}}</button>
-    </form>
-    <form class="inline" method="post" action="/devices/{{.D.ID}}/fwcheck"><button class="btn sm" type="submit">{{t "dev.fw_check"}}</button></form>
-    {{if .D.FwLatest}}{{if ne (fwfirst .D.FwLatest) (fwfirst .D.ROSVersion)}}<form class="inline" method="post" action="/devices/{{.D.ID}}/upgrade"><button class="btn sm danger" type="submit" onclick="return confirm('{{t "fw.confirm"}}')">{{t "dev.upgrade"}} {{fwfirst .D.FwLatest}}</button></form>{{end}}{{end}}
-    {{if and .D.RBUpgradeFw (ne .D.RBUpgradeFw .D.RBCurrentFw)}}<form class="inline" method="post" action="/devices/{{.D.ID}}/rbupgrade"><button class="btn sm danger" type="submit" onclick="return confirm('{{t "dev.rb_confirm"}}')">{{t "dev.rb_upgrade"}} {{.D.RBUpgradeFw}}</button></form>{{end}}
-    <form class="inline" method="post" action="/devices/{{.D.ID}}/issuecert"><button class="btn sm" type="submit">{{t "dev.issue_cert"}}</button></form>
-    <form class="inline" method="post" action="/devices/{{.D.ID}}/reboot"><button class="btn sm danger" type="submit" onclick="return confirm('{{t "dev.reboot_confirm"}}')">⟲ {{t "dev.reboot"}}</button></form>
+  {{if canWrite .User}}<div class="badges devacts">
+    <form class="inline" method="post" action="/devices/{{.D.ID}}/poll"><button class="btn sm iconbtn" type="submit" data-tip="{{t "dev.poll"}}" aria-label="{{t "dev.poll"}}">{{template "aico" "poll"}}</button></form>
+    <form class="inline" method="post" action="/devices/{{.D.ID}}/backup"><button class="btn sm iconbtn primary" type="submit" data-tip="{{t "dev.backup"}}{{if not .HasSSH}} — {{t "dev.need_ssh"}}{{end}}" aria-label="{{t "dev.backup"}}" {{if not .HasSSH}}disabled{{end}}>{{template "aico" "backup"}}</button></form>
+    <form class="inline" method="post" action="/devices/{{.D.ID}}/fwcheck"><button class="btn sm iconbtn" type="submit" data-tip="{{t "dev.fw_check"}}" aria-label="{{t "dev.fw_check"}}">{{template "aico" "fwcheck"}}</button></form>
+    {{if .D.FwLatest}}{{if ne (fwfirst .D.FwLatest) (fwfirst .D.ROSVersion)}}<form class="inline" method="post" action="/devices/{{.D.ID}}/upgrade"><button class="btn sm iconbtn danger" type="submit" data-tip="{{t "dev.upgrade"}} {{fwfirst .D.FwLatest}}" aria-label="{{t "dev.upgrade"}}" onclick="return confirm('{{t "fw.confirm"}}')">{{template "aico" "upgrade"}}</button></form>{{end}}{{end}}
+    {{if and .D.RBUpgradeFw (ne .D.RBUpgradeFw .D.RBCurrentFw)}}<form class="inline" method="post" action="/devices/{{.D.ID}}/rbupgrade"><button class="btn sm iconbtn danger" type="submit" data-tip="{{t "dev.rb_upgrade"}} {{.D.RBUpgradeFw}}" aria-label="{{t "dev.rb_upgrade"}}" onclick="return confirm('{{t "dev.rb_confirm"}}')">{{template "aico" "chip"}}</button></form>{{end}}
+    <form class="inline" method="post" action="/devices/{{.D.ID}}/issuecert"><button class="btn sm iconbtn" type="submit" data-tip="{{t "dev.issue_cert"}}" aria-label="{{t "dev.issue_cert"}}">{{template "aico" "cert"}}</button></form>
+    <form class="inline" method="post" action="/devices/{{.D.ID}}/reboot"><button class="btn sm iconbtn danger" type="submit" data-tip="{{t "dev.reboot"}}" aria-label="{{t "dev.reboot"}}" onclick="return confirm('{{t "dev.reboot_confirm"}}')">{{template "aico" "reboot"}}</button></form>
   </div>{{end}}
 </div>
 <div class="card">
@@ -38,7 +31,7 @@
           <div class="gcap muted small">{{if .Caption}}{{.Caption}}{{else}}{{dateT .CreatedAt}}{{end}}
             {{if canWrite $.User}}<form class="inline" method="post" action="/devices/{{.DeviceID}}/image/{{.ID}}/delete" style="display:inline;margin-left:6px"><button class="link" type="submit" onclick="return confirm('{{t "img.del_confirm"}}')" title="{{t "site.delete"}}">🗑️</button></form>{{end}}</div>
         </div>{{end}}
-        {{if not (or .ModelImg .Images (and .HasCatModel .CatModel.HasImage))}}<p class="muted small" style="margin:0">{{t "img.none"}}</p>{{end}}
+        {{if not (or .ModelImg .Images (and .HasCatModel .CatModel.HasImage))}}<div class="noimg"><img src="/static/logo.svg" alt="" width="72"><div class="muted small">{{if .D.Model}}{{.D.Model}}{{else}}{{t "img.none"}}{{end}}</div></div>{{end}}
       </div>
       <div id="gnav" class="gnav" style="display:none">
         <button class="btn sm secondary" type="button" onclick="gstep(-1)">‹</button>
@@ -54,7 +47,16 @@
       {{if and .HasCatModel .CatModel.HasImage}}
       <form method="post" action="/devices/{{.D.ID}}/image/from-template" style="margin-top:6px">
         <button class="btn sm secondary" type="submit" title="{{t "img.from_template_hint"}}">🖼️ {{t "img.from_template"}}</button>
-      </form>{{end}}{{end}}
+      </form>
+      {{else if .CatChoices}}
+      <form method="post" action="/devices/{{.D.ID}}/image/from-template" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <select name="model_id" style="max-width:190px" title="{{t "img.pick_model"}}">
+          {{range .CatChoices}}<option value="{{.ID}}" {{if eq .ID $.CatBest}}selected{{end}}>{{.VendorName}} · {{.Name}}</option>{{end}}
+        </select>
+        <button class="btn sm secondary" type="submit" title="{{t "img.from_template_hint"}}">🖼️ {{t "img.from_template"}}</button>
+      </form>
+      <p class="muted small" style="margin:4px 0 0">{{t "img.pick_model_note"}}</p>
+      {{else}}<p class="muted small" style="margin:6px 0 0">{{t "img.catalog_empty"}} <a href="/vendors">{{t "ven.title"}}</a></p>{{end}}{{end}}
     </div>
     <div style="flex:1;min-width:240px">
       <h3 style="margin-top:0">{{t "img.notes"}}</h3>
@@ -86,6 +88,10 @@
 })();
 </script>
 <div class="card"><table>
+  <tr><th>{{t "dev.addresses"}}</th><td colspan="3"><div class="addrlist">
+    {{range .Addrs}}{{if eq (ipbase .Address) $.D.IP}}<span class="badge good mono" title="{{t "dev.addr_monitored"}}">● {{.Address}} <span class="small">{{.Iface}} · {{t "dev.addr_mon"}}</span></span>{{else}}{{if canWrite $.User}}<form class="inline" method="post" action="/devices/{{$.D.ID}}/setip"><input type="hidden" name="ip" value="{{.Address}}"><input type="hidden" name="next" value="device"><button class="badge mono addrpick" type="submit" title="{{t "ip.setdefault"}}" onclick="return confirm('{{t "dev.addr_confirm"}} {{.Address}}?')">{{.Address}} <span class="small muted">{{.Iface}}</span></button></form>{{else}}<span class="badge mono">{{.Address}} <span class="small muted">{{.Iface}}</span></span>{{end}}{{end}}
+    {{else}}<span class="badge good mono" title="{{t "dev.addr_monitored"}}">● {{.D.IP}} <span class="small">{{t "dev.addr_mon"}}</span></span>{{end}}
+  </div>{{if and (canWrite .User) (gt (len .Addrs) 1)}}<div class="muted small" style="margin-top:4px">{{t "dev.addr_hint"}}</div>{{end}}</td></tr>
   <tr><th>{{t "col.model"}}</th><td>{{.D.Model}}</td><th>{{t "dev.serial"}}</th><td>{{.D.Serial}}</td></tr>
   <tr><th>RouterOS</th><td>{{.D.ROSVersion}}</td><th>{{t "col.uptime"}}</th><td>{{.H.Uptime}}</td></tr>
   <tr><th>{{t "dev.rb_fw"}}</th><td>{{if .D.RBCurrentFw}}{{.D.RBCurrentFw}}{{if and .D.RBUpgradeFw (ne .D.RBUpgradeFw .D.RBCurrentFw)}} <span class="badge bad" title="{{t "dev.rb_available"}}">→ {{.D.RBUpgradeFw}}</span>{{else}} <span class="badge good">{{t "fw.uptodate"}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td><th>{{t "dev.fw_status"}}</th><td class="muted">{{.D.FwStatus}}</td></tr>
@@ -140,6 +146,7 @@
     <input name="snmp_community" placeholder="community{{if .D.SNMPCommEnc}} ({{t "set.secret_keep"}}){{end}}">
     <input name="snmp_port" value="{{if .D.SNMPPort}}{{.D.SNMPPort}}{{else}}161{{end}}" style="width:70px" title="port">
     <button class="btn sm" type="submit">{{t "dev.snmp_save"}}</button>
+    <label style="flex-direction:row;gap:6px;align-items:center;flex-basis:100%"><input type="checkbox" name="snmp_configure" {{if .SNMPPool}}checked{{else}}disabled{{end}}> {{t "dev.snmp_configure"}}{{if .SNMPPool}} <span class="mono small muted">{{.SNMPPool}}</span>{{else}} <span class="small muted">— {{t "dev.snmp_pool_unset"}} <a href="/settings#snmp">{{t "nav.settings"}}</a></span>{{end}}</label>
   </form>
   <form class="inline" method="post" action="/devices/{{.D.ID}}/snmppoll" style="margin-top:8px"><button class="btn sm primary" type="submit">{{t "dev.snmp_poll"}}</button></form>
   <p class="muted small">{{t "dev.snmp_note"}}</p>
@@ -190,7 +197,18 @@
 </div>
 {{end}}
 <div class="card">
-  <h3>{{t "dev.configs"}} <a href="/devices/{{.D.ID}}/diff" class="btn sm secondary" style="margin-left:8px">{{t "diff.compare"}}</a></h3>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+    <h3 style="margin:0">{{t "dev.configs"}}</h3>
+    <a href="/devices/{{.D.ID}}/diff" class="btn sm secondary">{{t "diff.compare"}}</a>
+    {{if canWrite .User}}<form class="inline" method="post" action="/devices/{{.D.ID}}/backup" style="margin-left:auto;gap:6px">
+      <select name="mode" title="{{t "set.mode"}}">
+        <option value="export" {{if eq .BackupMode "export"}}selected{{end}}>{{t "set.mode_export"}}</option>
+        <option value="binary" {{if eq .BackupMode "binary"}}selected{{end}}>{{t "set.mode_binary"}}</option>
+        <option value="both" {{if eq .BackupMode "both"}}selected{{end}}>{{t "set.mode_both"}}</option>
+      </select>
+      <button class="btn sm iconbtn primary" type="submit" data-tip="{{t "dev.backup_now"}}{{if not .HasSSH}} — {{t "dev.need_ssh"}}{{end}}" aria-label="{{t "dev.backup_now"}}" {{if not .HasSSH}}disabled{{end}}>{{template "aico" "backup"}}</button>
+    </form>{{end}}
+  </div>
   <div class="scroll"><table>
     <thead><tr><th>{{t "dev.taken"}}</th><th></th><th>SHA-256</th><th></th></tr></thead>
     <tbody>
@@ -198,7 +216,7 @@
       <tr><td>{{ts .TakenAt}}</td><td><span class="badge">{{.Kind}}</span></td><td class="mono">{{slice .SHA256 0 16}}…</td>
         <td class="nowrap">{{if eq .Kind "export"}}<a href="/configs/{{.ID}}">{{t "dev.view"}}</a> · {{end}}<a href="/configs/{{.ID}}/download">↓</a>{{if canWrite $.User}} · <form class="inline" method="post" action="/configs/{{.ID}}/restore"><button class="link" type="submit" onclick="return confirm('{{t "diff.restore_confirm"}}')">{{t "diff.restore"}}</button></form>{{end}}</td></tr>
     {{else}}
-      <tr><td colspan="4" class="muted">{{t "dev.no_configs"}}{{if not $.HasSSH}} {{t "dev.need_ssh"}}{{end}}</td></tr>
+      <tr><td colspan="4" class="muted">{{t "dev.no_configs"}}{{if not $.HasSSH}} {{t "dev.need_ssh"}}{{else if canWrite $.User}} <form class="inline" method="post" action="/devices/{{$.D.ID}}/backup" style="display:inline-flex;margin-left:8px"><button class="btn sm iconbtn primary" type="submit" data-tip="{{t "dev.backup_now"}}" aria-label="{{t "dev.backup_now"}}">{{template "aico" "backup"}}</button></form>{{end}}</td></tr>
     {{end}}
     </tbody>
   </table></div>
