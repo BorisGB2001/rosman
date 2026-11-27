@@ -208,3 +208,34 @@ func (n *Notifier) sendTelegram(text string) {
 	}
 	resp.Body.Close()
 }
+
+// ParseChats splits a list of Telegram chat ids (numeric, negative for groups,
+// or @channel names) separated by commas, spaces or semicolons. It returns the
+// valid ids in order and, if one token is invalid, that token.
+func ParseChats(raw string) (chats []string, bad string) {
+	fields := strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\t' })
+	seen := map[string]bool{}
+	for _, f := range fields {
+		ok := true
+		if strings.HasPrefix(f, "@") {
+			ok = len(f) > 1 && !strings.ContainsAny(f[1:], " /?#")
+		} else {
+			t := strings.TrimPrefix(f, "-")
+			ok = t != "" && strings.Trim(t, "0123456789") == ""
+		}
+		if !ok {
+			return nil, f
+		}
+		if !seen[f] {
+			seen[f] = true
+			chats = append(chats, f)
+		}
+	}
+	return chats, ""
+}
+
+// SplitChats returns the chat ids of a stored, comma-separated list.
+func SplitChats(stored string) []string {
+	out, _ := ParseChats(stored)
+	return out
+}

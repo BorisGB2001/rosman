@@ -5,18 +5,23 @@
 <p class="muted small" style="margin-top:-6px">{{t "topo.auto_note"}}</p>
 <div class="card">
   {{if .Nodes}}
-  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+  <div class="toolrow" style="margin-bottom:8px">
     <input type="search" id="topo-find" placeholder="{{t "topo.find_ph"}}" style="width:260px">
     <button class="btn sm" type="button" onclick="topoFind()">{{t "topo.find"}}</button>
-    <span id="topo-find-res" class="small"></span>
+    <span id="topo-find-res" class="res small"></span>
     {{if or .HiddenCount .ShowHidden}}<a class="btn sm secondary" href="/topology{{if not .ShowHidden}}?hidden=1{{end}}">{{if .ShowHidden}}{{t "topo.hide_hidden"}}{{else}}{{t "topo.show_hidden"}} ({{.HiddenCount}}){{end}}</a>{{end}}
   </div>
-  <div id="topo-path" class="small" style="margin-bottom:8px;color:var(--good);word-break:break-word"></div>
+  <div id="topo-path" class="small" style="margin-bottom:8px;color:var(--good);word-break:break-word;min-height:18px"></div>
   <div class="topo-legend muted small" style="margin-bottom:8px">
     <span class="badge good">●</span> {{t "topo.online"}}
     <span class="badge bad" style="margin-left:10px">●</span> {{t "topo.offline"}}
     <span class="badge" style="margin-left:10px">●</span> {{t "topo.unknown"}}
     <span style="margin-left:10px;display:inline-flex;align-items:center;gap:5px"><svg width="14" height="14" viewBox="0 0 32 32">{{template "rosmark" .}}</svg>ROSMan</span>
+    <span class="topo-kinds" style="margin-left:14px;display:inline-flex;gap:12px;align-items:center;--tc:var(--muted)">
+      <span style="display:inline-flex;align-items:center;gap:4px"><svg width="22" height="22" viewBox="-30 -30 60 60">{{template "topoglyph" "router"}}</svg>{{t "dtype.router"}}</span>
+      <span style="display:inline-flex;align-items:center;gap:4px"><svg width="22" height="22" viewBox="-30 -30 60 60">{{template "topoglyph" "switch"}}</svg>{{t "dtype.switch"}}</span>
+      <span style="display:inline-flex;align-items:center;gap:4px"><svg width="22" height="22" viewBox="-30 -30 60 60">{{template "topoglyph" "ap"}}</svg>{{t "dtype.ap"}}</span>
+    </span>
     {{if .CanWrite}}<span style="margin-left:14px">{{t "topo.drag_hint"}}</span><span style="margin-left:10px">{{t "topo.hide_hint"}}</span>{{end}}
   </div>
   <div class="scroll" style="position:relative">
@@ -36,9 +41,11 @@
       <g transform="translate(-28,-11) scale(0.6875)" style="pointer-events:none">{{template "rosmark" .}}</g>
       <text x="8" text-anchor="middle" dominant-baseline="central" font-size="9" fill="var(--fg)" style="pointer-events:none">{{.Name}}</text>
       {{else}}
-      <circle r="26" fill="var(--surface)" stroke="{{if eq .Status "up"}}var(--good){{else if eq .Status "down"}}var(--bad){{else}}var(--muted){{end}}" stroke-width="3"/>
-      <circle r="6" cx="18" cy="-18" fill="{{if eq .Status "up"}}var(--good){{else if eq .Status "down"}}var(--bad){{else}}var(--muted){{end}}"/>
-      <text text-anchor="middle" dominant-baseline="central" font-size="9" fill="var(--fg)" style="pointer-events:none">{{.Name}}</text>
+      <g style="--tc:{{if eq .Status "up"}}var(--good){{else if eq .Status "down"}}var(--bad){{else}}var(--muted){{end}}">
+      {{template "topoglyph" .Kind}}
+      <circle r="5.5" cx="22" cy="-18" fill="var(--tc)" stroke="var(--surface)" stroke-width="1.5"/>
+      <text y="36" text-anchor="middle" dominant-baseline="central" font-size="10" fill="var(--fg)" style="pointer-events:none;paint-order:stroke;stroke:var(--surface);stroke-width:3px">{{.Name}}</text>
+      </g>
       {{end}}
     </g>{{end}}
     </g>
@@ -74,6 +81,10 @@
   function esc(s){ return (s||'').replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
   nodes.forEach(function(g){
     g.addEventListener('pointerenter', function(){
+      clearTimeout(g._tt);
+      g._tt=setTimeout(function(){ showTip(g); }, parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tipdelay'),10)||0);
+    });
+    function showTip(g){
       var d=g.dataset, rows=[];
       if(d.ip) rows.push('<div><span class="muted">IP</span> '+esc(d.ip)+'</div>');
       if(d.mac) rows.push('<div><span class="muted">MAC</span> '+esc(d.mac)+'</div>');
@@ -81,12 +92,12 @@
       if(d.ros) rows.push('<div><span class="muted">ROS</span> '+esc(d.ros)+'</div>');
       tip.innerHTML='<div style="font-weight:600;margin-bottom:3px">'+esc(d.name)+'</div>'+rows.join('');
       tip.style.display='block';
-    });
+    }
     g.addEventListener('pointermove', function(evt){
       var r=wrap.getBoundingClientRect();
       tip.style.left=(evt.clientX-r.left+14)+'px'; tip.style.top=(evt.clientY-r.top+14)+'px';
     });
-    g.addEventListener('pointerleave', function(){ tip.style.display='none'; });
+    g.addEventListener('pointerleave', function(){ clearTimeout(g._tt); tip.style.display='none'; });
   });
   // drag
   var drag=null, moved=false;
@@ -121,7 +132,7 @@
   });
   var pathEl=document.getElementById('topo-path');
   function clearHighlights(){
-    nodes.forEach(function(g){ var sh=g.querySelector('circle,rect'); if(sh) sh.style.filter=''; g.classList.remove('thit','tpath'); });
+    nodes.forEach(function(g){ var sh=g.querySelector('.tshape,rect'); if(sh) sh.style.filter=''; g.classList.remove('thit','tpath'); });
     edges.forEach(function(e){ e.classList.remove('tpathedge'); });
     if(pathEl) pathEl.textContent='';
   }
@@ -148,7 +159,7 @@
   function highlight(id){
     clearHighlights();
     var g=svg.querySelector('.tnode[data-id="'+id+'"]'); if(!g) return;
-    var sh=g.querySelector('circle,rect'); if(sh) sh.style.filter='drop-shadow(0 0 8px var(--accent))';
+    var sh=g.querySelector('.tshape,rect'); if(sh) sh.style.filter='drop-shadow(0 0 8px var(--accent))';
     g.classList.add('thit');
     // Green path from ROSMan to the found device.
     var p=pathFromRosman(String(id));
@@ -203,7 +214,7 @@
 .tnode.thit text{font-weight:700}
 .tedge.tpathedge line{stroke:var(--good)!important;stroke-width:4!important}
 .tedge.tpathedge text{fill:var(--good)!important;font-weight:700}
-.tnode.tpath circle,.tnode.tpath rect{stroke:var(--good)!important}
+.tnode.tpath .tshape,.tnode.tserver.tpath rect{stroke:var(--good)!important}
 .tnode.thidden{opacity:.35}
 </style>
 {{template "tail" .}}{{end}}
@@ -211,3 +222,7 @@
 {{/* rosmark — the ROSMan logo mark from /static/logo.svg (viewBox 0 0 32 32),
       inlined so it matches the panel logo in the topology node and legend. */}}
 {{define "rosmark"}}<rect x="0" y="0" width="32" height="32" rx="7" fill="#0f1b33"/><path d="M10 22 L16 10.5 L22 22" fill="none" stroke="#3b82f6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="10.5" r="3.1" fill="#22d3ee"/><circle cx="10" cy="22" r="2.7" fill="#3b82f6"/><circle cx="22" cy="22" r="2.7" fill="#3b82f6"/>{{end}}
+
+{{/* boris.gb 2026-11-27 23:40 - topoglyph: map symbol of a device (router: circle with four arrows,
+      switch: box with two opposite arrows, ap: circle with radio waves); stroke colour comes from --tc */}}
+{{define "topoglyph"}}{{if eq . "switch"}}<rect class="tshape" x="-28" y="-17" width="56" height="34" rx="5" fill="var(--surface)" stroke="var(--tc)" stroke-width="3"/><g stroke="var(--fg)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M-17 -6 H15 M10 -10.5 L15 -6 L10 -1.5"/><path d="M17 6 H-15 M-10 1.5 L-15 6 L-10 10.5"/></g>{{else if eq . "ap"}}<circle class="tshape" r="24" fill="var(--surface)" stroke="var(--tc)" stroke-width="3"/><g stroke="var(--fg)" stroke-width="2" fill="none" stroke-linecap="round" style="pointer-events:none"><path d="M-13 -3 A18 18 0 0 1 13 -3"/><path d="M-8 2.5 A11 11 0 0 1 8 2.5"/><circle cx="0" cy="9" r="2.4" fill="var(--fg)" stroke="none"/></g>{{else}}<circle class="tshape" r="24" fill="var(--surface)" stroke="var(--tc)" stroke-width="3"/><g stroke="var(--fg)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M-14 -14 L-4 -4 M-4 -10 V-4 H-10"/><path d="M14 14 L4 4 M4 10 V4 H10"/><path d="M4 -4 L14 -14 M8 -14 H14 V-8"/><path d="M-4 4 L-14 14 M-14 8 V14 H-8"/></g>{{end}}{{end}}

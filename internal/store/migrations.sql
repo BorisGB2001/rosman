@@ -56,6 +56,12 @@ CREATE TABLE IF NOT EXISTS configs (
 );
 CREATE INDEX IF NOT EXISTS idx_configs_dev ON configs(device_id, taken_at);
 
+-- boris.gb 2026-11-27 23:10 - neighbours the operator hid from the "discovered" list on the devices page
+CREATE TABLE IF NOT EXISTS neighbor_ignores (
+    key        TEXT PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- One row per (device, rule). state is 'active' or 'resolved'.
 CREATE TABLE IF NOT EXISTS alerts (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

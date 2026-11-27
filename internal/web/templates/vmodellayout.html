@@ -2,8 +2,10 @@
 {{if .Msg}}<div class="note ok">{{.Msg}}</div>{{end}}
 {{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
 <div class="cardhead"><h1 style="margin:0">{{t "lay.title"}}: {{.Title}}{{if .Sub}} <small class="muted">{{.Sub}}</small>{{end}}</h1>
-  <a href="{{.Back}}" class="muted small" style="margin-left:auto">← {{if .IsDevice}}{{t "dev.back_card"}}{{else}}{{t "ven.title"}}{{end}}</a></div>
+  <a href="{{.Back}}" class="muted small" style="margin-left:auto">← {{if .IsDevice}}{{t "dev.back_card"}}{{else}}{{t "ven.title"}}{{end}}</a>
+  {{if .IsDevice}}<form class="inline" method="post" action="{{.Back}}/reboot" onsubmit="return confirm('{{t "dev.reboot_confirm"}}')"><button class="btn sm danger" type="submit">⟲ {{t "dev.reboot"}}</button></form>{{end}}</div>
 <p class="muted small" style="margin-top:-6px">{{if .IsDevice}}{{t "lay.help_device"}}{{else}}{{t "lay.help"}}{{end}}</p>
+{{if .IsDevice}}<p id="lg-default-note" class="small" style="display:none;margin:-4px 0 8px;color:var(--accent)"></p>{{end}}
 {{if .IsDevice}}
 <div class="card">
   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
@@ -281,6 +283,15 @@ function lgAddGroup(){
   var c=document.getElementById('ng-color').value;
   STATE.groups.push({id:uid(),name:n,color:c}); document.getElementById('ng-name').value=''; lgRender();
 }
+// boris.gb 2026-11-27 23:45 - first edit of a device panel starts from a ready layout (model template, else the
+// device's real ports) instead of an empty canvas; nothing is stored until "Save".
+(function(){
+  var HAS_OWN = {{if .HasOwn}}true{{else}}false{{end}};
+  if (!IS_DEVICE || HAS_OWN || STATE.rows.length) return;
+  var note = document.getElementById('lg-default-note');
+  if (TPL && Array.isArray(TPL.rows) && TPL.rows.length) { lgFromTemplate(); if (note) { note.textContent = '{{t "lay.default_tpl"}}'; note.style.display = 'block'; } }
+  else if (REAL.length) { lgFromReal(); if (note) { note.textContent = '{{t "lay.default_real"}}'; note.style.display = 'block'; } }
+})();
 lgRender();
 </script>
 {{template "tail" .}}{{end}}

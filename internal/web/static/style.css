@@ -579,7 +579,7 @@ tr.rowdown a { color: var(--bad); }
 .downdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-right: 6px; vertical-align: 1px; }
 /* иконки-кнопки со всплывающей подписью */
 .iconbtn { display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px; position: relative; }
-[data-tip]:hover::after, [data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); right: 0; background: var(--fg); color: var(--bg); padding: 3px 9px; border-radius: 5px; font-size: 12px; font-weight: 400; white-space: nowrap; z-index: 60; pointer-events: none; }
+/* boris.gb 2026-11-27 23:20 - подсказки рисует скрипт (#rmtip) после задержки из настроек пользователя */
 /* две карточки в одну строку (SNMP + локация на странице устройства) */
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: stretch; }
 .pair > .card { min-width: 0; }
@@ -633,3 +633,33 @@ button.badge.addrpick:hover { border-color: var(--accent); color: var(--fg); }
 .aicode { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 12.5px; background: var(--bg); border: 1px solid var(--border, #2a2f3a); border-radius: 6px; padding: 10px 12px; white-space: pre-wrap; word-break: break-word; margin: 8px 0; }
 .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: aispin .8s linear infinite; vertical-align: -1px; margin-right: 6px; }
 @keyframes aispin { to { transform: rotate(360deg); } }
+
+/* boris.gb 2026-11-27 23:25 - всплывающая подсказка с задержкой (задержка — Аккаунт → Подсказки) */
+#rmtip { position: fixed; z-index: 1000; max-width: 360px; pointer-events: none; background: var(--fg); color: var(--bg);
+  padding: 4px 10px; border-radius: 6px; font-size: 12px; line-height: 1.35; white-space: pre-line; opacity: 0; transition: opacity .12s; box-shadow: 0 6px 18px #0005; }
+#rmtip.show { opacity: 1; }
+
+/* boris.gb 2026-11-27 23:25 - Обзор: плашки «Сервер» и «ROSMan» */
+.srvcard .srvhead { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
+.srvrow { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.srvtile { display: flex; flex-direction: column; gap: 3px; min-height: 72px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); min-width: 0; }
+.srvtile > span { color: var(--muted); font-size: 12px; }
+.srvtile > b { font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srvtile > small { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile > small { display: block; font-size: 11px; margin-top: 2px; }
+
+/* boris.gb 2026-11-27 23:25 - строки фильтров над таблицами: одинаковая высота полей и кнопок, чтобы ряд не «прыгал» */
+.cardhead input[type=search], .cardhead input[type=text], .cardhead select, .cardhead .btn.sm,
+.toolrow input, .toolrow select, .toolrow .btn { height: 30px; box-sizing: border-box; vertical-align: middle; }
+.cardhead .btn.sm, .toolrow .btn { display: inline-flex; align-items: center; }
+.toolrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; min-height: 34px; }
+.toolrow .res { display: inline-block; min-width: 160px; min-height: 18px; line-height: 18px; }
+#selcount { display: inline-block; min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* boris.gb 2026-11-27 23:25 - таблица устройств: значки «логи в ROSMan» и «SNMP» */
+.flagico { display: inline-flex; vertical-align: middle; }
+.flagico.on { color: var(--good); }
+.flagico.off { color: var(--muted); opacity: .35; }
+
+/* boris.gb 2026-11-27 23:25 - блок «Команда на устройство» */
+.execout { min-height: 120px; max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; margin: 10px 0 0; padding: 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); font-size: 12px; }

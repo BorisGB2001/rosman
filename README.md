@@ -67,6 +67,17 @@ Localization lives in plain JSON files under
   `get_alerts`, `get_config`. `rosman mcp https://host:port` is a stdio bridge
   for Claude Code / Claude Desktop that pins the self-signed certificate
   (`ROSMAN_TOKEN`, `ROSMAN_CERT_PIN`; ready-made commands on the Account page).
+- **Server panel** — the dashboard shows the host (hardware, CPU load, memory,
+  disk, temperature, uptime) and what ROSMan itself takes: process memory,
+  database, stored backups, device logs, data directory.
+- **Command on a device** — operators run a RouterOS command on one device
+  straight from the device list and see its output (audited).
+- **Per-device alerts** — a device's own temperature threshold and its own
+  Telegram recipients (a group or users) on top of the global ones.
+- **Topology symbols** — routers, switches and Wi-Fi access points are drawn
+  with their usual network symbols.
+- **Hints** — button hints appear after a hover delay each user sets on the
+  Account page (default 2.5 s).
 
 Credentials are encrypted at rest (AES-256-GCM); passwords are bcrypt-hashed.
 

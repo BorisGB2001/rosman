@@ -51,7 +51,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-var Version = "1.8.0"
+var Version = "1.9.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -71,6 +71,9 @@ const userKey ctxKey = 1
 func New(a *app.App) (*Server, error) {
 	funcs := template.FuncMap{
 		"mb": func(b int64) string { return fmt.Sprintf("%.0f MB", float64(b)/1024/1024) },
+		"hbytes": hbytesAny,
+		// tipdelay: the signed-in user's hover delay before a hint shows (ms).
+		"tipdelay": func(u model.User) int { if u.TipDelayMS <= 0 { return 2500 }; return u.TipDelayMS },
 		"ago": func(t *time.Time) string {
 			if t == nil {
 				return "—"
@@ -385,6 +388,10 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /devices/{id}/upgrade", s.authed(s.requireRole(model.RoleOperator, s.deviceUpgrade)))
 	mux.Handle("POST /devices/{id}/rbupgrade", s.authed(s.requireRole(model.RoleOperator, s.deviceRBUpgrade)))
 	mux.Handle("POST /devices/{id}/reboot", s.authed(s.requireRole(model.RoleOperator, s.deviceReboot)))
+	mux.Handle("POST /devices/{id}/exec", s.authed(s.requireRole(model.RoleOperator, s.deviceExec)))
+	mux.Handle("POST /devices/{id}/alertprefs", s.authed(s.requireRole(model.RoleOperator, s.deviceAlertPrefs)))
+	mux.Handle("POST /neighbors/ignore", s.authed(s.requireRole(model.RoleOperator, s.neighborIgnore)))
+	mux.Handle("POST /account/prefs", s.authed(s.accountPrefs))
 	mux.Handle("GET /sites", s.authed(s.sitesPage))
 	mux.Handle("POST /sites/new", s.authed(s.requireRole(model.RoleOperator, s.siteCreate)))
 	mux.Handle("POST /sites/{id}/delete", s.authed(s.requireRole(model.RoleOperator, s.siteDelete)))
@@ -966,7 +973,9 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 		LTE      model.LTEInfo
 		VPNCount int
 		VPNInfo  string
+		SyslogOn bool // device logs to ROSMan (remote logging action configured)
 	}
+	syslogT, _ := s.a.Store.DeviceSyslogTargets()
 	rows := make([]row, 0, len(devs))
 	outdatedN := 0
 	for _, d := range devs {
@@ -982,6 +991,7 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		rr := row{Device: d, Alerts: alertN[d.ID]}
+		_, rr.SyslogOn = syslogT[d.ID]
 		if l := fwFirst(d.FwLatest); l != "" && l != fwFirst(d.ROSVersion) {
 			rr.Outdated = true
 			outdatedN++
@@ -1007,9 +1017,11 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 	managedIP, _ := s.a.Store.AllManagedAddrs()
 	managedMAC, _ := s.a.Store.AllManagedMacs()
 	showAllNeigh := r.URL.Query().Get("allneigh") == "1"
+	ignored, _ := s.a.Store.IgnoredNeighbors()
 	type disc struct {
 		Identity, IP, MAC, Platform, SeenBy string
-		Managed                             bool
+		Managed, Ignored                    bool
+		Key                                 string // MAC, else IP, else identity: the hide-key
 	}
 	aggm := map[string]*disc{}
 	var dorder []string
@@ -1029,9 +1041,12 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 			if key == "" {
 				continue
 			}
+			if ignored[key] && !showAllNeigh {
+				continue // hidden by the operator ("don't show again")
+			}
 			d := aggm[key]
 			if d == nil {
-				d = &disc{Identity: n.Identity, IP: n.IP, MAC: n.MAC, Platform: n.Platform, Managed: isManaged}
+				d = &disc{Identity: n.Identity, IP: n.IP, MAC: n.MAC, Platform: n.Platform, Managed: isManaged, Ignored: ignored[key], Key: key}
 				aggm[key] = d
 				dorder = append(dorder, key)
 			}
@@ -1055,7 +1070,7 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 	}
 	s.render(w, r, "devices", map[string]any{"Active": "devices", "Devices": rows,
 		"Sites": sites, "AllTags": allTags, "FSite": fSite, "FTag": fTag, "FType": fType,
-		"Discovered": discovered, "ShowAllNeigh": showAllNeigh, "Templates": tpls,
+		"Discovered": discovered, "ShowAllNeigh": showAllNeigh, "Templates": tpls, "IgnoredN": len(ignored),
 		"OutdatedN": outdatedN, "HasSSH": s.a.HasSSHKey(),
 		"Msg": r.URL.Query().Get("msg"), "Err": r.URL.Query().Get("err")})
 }
@@ -1182,6 +1197,7 @@ func (s *Server) dashboardPage(w http.ResponseWriter, r *http.Request) {
 		"Outdated": outdated, "SitesN": len(sites), "Alerts": alerts, "AlertCount": len(alerts),
 		"Versions": vers, "CVEAffected": cveAffected, "TopCPU": topCPU,
 		"Attention": attention, "OnlinePct": onlinePct, "FreePorts": freePorts, "VlanN": len(vlanSet),
+		"Srv": s.serverPanel(),
 		"LogCrit": func() []model.SyslogMsg {
 			rows, _ := s.a.Store.Syslog(model.SyslogFilter{MaxSev: 2, Since: time.Now().Add(-24 * time.Hour), Limit: 8})
 			return rows
@@ -1193,6 +1209,7 @@ func (s *Server) firmwarePage(w http.ResponseWriter, r *http.Request) {
 	type Row struct {
 		ID                            int64
 		Name, Installed, Latest, Chan string
+		Model                         string
 		Outdated                      bool
 		RBCurrent, RBUpgrade          string // RouterBOARD firmware now / pending
 		RBOutdated                    bool   // a board firmware upgrade is pending
@@ -1205,7 +1222,7 @@ func (s *Server) firmwarePage(w http.ResponseWriter, r *http.Request) {
 		if rbOut {
 			rbPending++
 		}
-		rows = append(rows, Row{ID: d.ID, Name: d.Name, Installed: inst, Latest: lat, Chan: d.FwChannel,
+		rows = append(rows, Row{ID: d.ID, Name: d.Name, Model: d.Model, Installed: inst, Latest: lat, Chan: d.FwChannel,
 			Outdated: lat != "" && lat != inst, RBCurrent: d.RBCurrentFw, RBUpgrade: d.RBUpgradeFw, RBOutdated: rbOut})
 	}
 	data := map[string]any{"Active": "firmware", "Rows": rows, "RBPending": rbPending}
@@ -1513,7 +1530,7 @@ func (s *Server) newDeviceForm(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deviceSetType(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	t := r.FormValue("device_type")
-	if t != "router" && t != "switch" && t != "mix" {
+	if t != "router" && t != "switch" && t != "mix" && t != "ap" {
 		t = ""
 	}
 	_ = s.a.Store.SetDeviceType(id, t)
@@ -2991,11 +3008,14 @@ func (s *Server) backupsPage(w http.ResponseWriter, r *http.Request) {
 		Export, Binary     *time.Time
 		Last               *time.Time // last successful backup run
 		Status             string     // ok | stale | never
+		Size               int64      // bytes of this device's stored snapshots
 	}
+	sizes, _ := s.a.Store.BackupSizesByDevice()
+	totalN, totalBytes, _ := s.a.Store.BackupTotals()
 	rows := make([]row, 0, len(devs))
 	var okN, staleN, neverN int
 	for _, d := range devs {
-		rr := row{ID: d.ID, Name: d.Name, Model: d.Model}
+		rr := row{ID: d.ID, Name: d.Name, Model: d.Model, Size: sizes[d.ID]}
 		if t, ok := times[d.ID]["export"]; ok {
 			rr.Export = &t
 		}
@@ -3030,6 +3050,7 @@ func (s *Server) backupsPage(w http.ResponseWriter, r *http.Request) {
 	})
 	s.render(w, r, "backups", map[string]any{"Active": "backups", "Rows": rows,
 		"OkN": okN, "StaleN": staleN, "NeverN": neverN, "Total": len(devs),
+		"BkCount": totalN, "BkBytes": totalBytes,
 		"SSHPubKey": s.a.SSHPublicKey()})
 }
 
@@ -3787,6 +3808,7 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 		Status                 string // up|down|unknown
 		Server                 bool
 		Hidden                 bool
+		Kind                   string // router | switch | ap — picks the map symbol
 	}
 	const cx, cy, rad = 500.0, 360.0, 300.0
 	nn := len(devs)
@@ -3821,7 +3843,7 @@ func (s *Server) topologyPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		nodes = append(nodes, Node{ID: d.ID, Name: d.Name, IP: d.IP, MAC: macByDev[d.ID],
-			Model: d.Model, ROS: d.ROSVersion, X: x, Y: y, Status: st, Hidden: isHidden})
+			Model: d.Model, ROS: d.ROSVersion, X: x, Y: y, Status: st, Hidden: isHidden, Kind: nodeKind(d)})
 	}
 	type Edge struct {
 		A, B int64

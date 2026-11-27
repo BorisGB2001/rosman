@@ -19,6 +19,7 @@ type User struct {
 	CreatedAt     time.Time
 	TOTPSecretEnc string
 	TOTPEnabled   bool
+	TipDelayMS    int // hover delay before a hint (tooltip) appears
 }
 
 // ComplianceRule checks a device's /export config for a required or forbidden
@@ -89,41 +90,43 @@ type APIToken struct {
 
 // Device is a managed RouterOS unit.
 type Device struct {
-	ID          int64
-	Name        string
-	IP          string
-	APIPort     int
-	APITLS      bool
-	APIUser     string
-	APIPassEnc  string // AES-GCM encrypted
-	SSHUser     string
-	APICertPin  string // sha256 hex of the device's API TLS leaf cert (TOFU)
-	SSHHostPin  string // sha256 base64 of the device's SSH host key (TOFU)
-	Model       string
-	Serial      string
-	ROSVersion  string
-	LastSeen    *time.Time
-	CreatedAt   time.Time
-	APISSLCert    string     // name of the cert bound to api-ssl
-	APICertExpiry *time.Time // its invalid-after
-	FwLatest      string     // latest RouterOS version known to the device
-	FwChannel     string     // update channel (stable/testing/...)
-	FwStatus      string     // device's update status string
-	RBCurrentFw   string     // RouterBOARD firmware running now (/system/routerboard)
-	RBUpgradeFw   string     // RouterBOARD firmware available after upgrade+reboot
-	SiteID        *int64     // location
-	SiteName      string     // joined for display
-	Tags          []string   // grouping tags (filled on demand)
-	SNMPEnabled   bool
-	SNMPCommEnc   string // encrypted community
-	SNMPPort      int
-	DeviceType      string     // router | switch | mix | "" (unknown)
-	LastFail        *time.Time // last poll failure
-	Notes           string     // free-text admin description shown on the device card
-	PollIntervalSec int        // per-device poll interval in seconds (0 = global default)
+	ID                int64
+	Name              string
+	IP                string
+	APIPort           int
+	APITLS            bool
+	APIUser           string
+	APIPassEnc        string // AES-GCM encrypted
+	SSHUser           string
+	APICertPin        string // sha256 hex of the device's API TLS leaf cert (TOFU)
+	SSHHostPin        string // sha256 base64 of the device's SSH host key (TOFU)
+	Model             string
+	Serial            string
+	ROSVersion        string
+	LastSeen          *time.Time
+	CreatedAt         time.Time
+	APISSLCert        string     // name of the cert bound to api-ssl
+	APICertExpiry     *time.Time // its invalid-after
+	FwLatest          string     // latest RouterOS version known to the device
+	FwChannel         string     // update channel (stable/testing/...)
+	FwStatus          string     // device's update status string
+	RBCurrentFw       string     // RouterBOARD firmware running now (/system/routerboard)
+	RBUpgradeFw       string     // RouterBOARD firmware available after upgrade+reboot
+	SiteID            *int64     // location
+	SiteName          string     // joined for display
+	Tags              []string   // grouping tags (filled on demand)
+	SNMPEnabled       bool
+	SNMPCommEnc       string // encrypted community
+	SNMPPort          int
+	DeviceType        string     // router | switch | mix | "" (unknown)
+	LastFail          *time.Time // last poll failure
+	Notes             string     // free-text admin description shown on the device card
+	PollIntervalSec   int        // per-device poll interval in seconds (0 = global default)
 	LastBackup        *time.Time // last successful backup run (changed or not)
 	BackupIntervalSec int        // per-device backup period in seconds (0 = global default)
 	PortLayout        string     // per-device front-panel layout JSON ("" = model template / automatic)
+	TempAlertC        int        // per-device temperature alert threshold, °C (0 = global setting)
+	TGChats           string     // per-device Telegram chat ids for its alerts, comma-separated
 }
 
 // FwJob is a firmware upgrade run.
@@ -192,7 +195,7 @@ type VendorModel struct {
 	CreatedAt     time.Time
 	VendorName    string // joined for display
 	VendorWebsite string
-	PortLayout    string // JSON: admin-defined port arrangement + groups
+	PortLayout    string  // JSON: admin-defined port arrangement + groups
 	Extra         []int64 // ids of extra photos (filled on demand)
 }
 
@@ -207,13 +210,13 @@ type Site struct {
 
 // Health is one health sample.
 type Health struct {
-	DeviceID  int64
-	TS        time.Time
-	CPU       int     // percent
-	FreeMem   int64   // bytes
-	TotalMem  int64   // bytes
-	Uptime    string  // RouterOS uptime string
-	Temp      float64 // °C (0 when unknown)
+	DeviceID int64
+	TS       time.Time
+	CPU      int     // percent
+	FreeMem  int64   // bytes
+	TotalMem int64   // bytes
+	Uptime   string  // RouterOS uptime string
+	Temp     float64 // °C (0 when unknown)
 }
 
 // Alert is one monitoring finding (one row per device+rule).
@@ -295,10 +298,10 @@ type NeighborSighting struct {
 
 // LTEInfo is a per-device LTE summary for the device list.
 type LTEInfo struct {
-	Present    bool
-	Info       string // e.g. "lte · -95 dBm · MegaFon"
-	RSRP       string // raw RSRP for colour-coding, e.g. "-95"
-	FwUpgrade  bool   // modem firmware upgrade available
+	Present   bool
+	Info      string // e.g. "lte · -95 dBm · MegaFon"
+	RSRP      string // raw RSRP for colour-coding, e.g. "-95"
+	FwUpgrade bool   // modem firmware upgrade available
 }
 
 // IfaceSample is one per-interface byte-counter reading.

@@ -2,8 +2,8 @@
 package store
 
 import (
-	_ "embed"
 	"database/sql"
+	_ "embed"
 	"errors"
 	"strings"
 	"time"
@@ -61,6 +61,11 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE devices ADD COLUMN last_backup_at TIMESTAMP`,
 		`ALTER TABLE devices ADD COLUMN backup_interval_sec INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE devices ADD COLUMN port_layout TEXT NOT NULL DEFAULT ''`,
+		// boris.gb 2026-11-27 23:10 - per-device temperature alert threshold (0 = global) and Telegram chat ids for its alerts
+		`ALTER TABLE devices ADD COLUMN temp_alert_c INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE devices ADD COLUMN tg_chats TEXT NOT NULL DEFAULT ''`,
+		// boris.gb 2026-11-27 23:10 - per-user delay before a hint (tooltip) appears, ms
+		`ALTER TABLE users ADD COLUMN tip_delay_ms INTEGER NOT NULL DEFAULT 2500`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -313,12 +318,12 @@ func (s *Store) CreateUser(u model.User) (int64, error) {
 	return res.LastInsertId()
 }
 
-const userCols = `id,username,password_hash,role,created_at,totp_secret_enc,totp_enabled`
+const userCols = `id,username,password_hash,role,created_at,totp_secret_enc,totp_enabled,tip_delay_ms`
 
 func scanUser(row interface{ Scan(...any) error }) (model.User, error) {
 	var u model.User
 	var role string
-	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &role, &u.CreatedAt, &u.TOTPSecretEnc, &u.TOTPEnabled)
+	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &role, &u.CreatedAt, &u.TOTPSecretEnc, &u.TOTPEnabled, &u.TipDelayMS)
 	if errors.Is(err, sql.ErrNoRows) {
 		return u, ErrNotFound
 	}
@@ -677,7 +682,7 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 		&d.SSHUser, &d.APICertPin, &d.SSHHostPin, &d.Model, &d.Serial, &d.ROSVersion, &last, &d.CreatedAt,
 		&d.APISSLCert, &exp, &d.FwLatest, &d.FwChannel, &d.FwStatus, &site,
 		&snmpEn, &d.SNMPCommEnc, &d.SNMPPort, &d.DeviceType, &fail, &d.PollIntervalSec, &d.Notes,
-		&d.RBCurrentFw, &d.RBUpgradeFw, &lastBk, &d.BackupIntervalSec, &d.PortLayout)
+		&d.RBCurrentFw, &d.RBUpgradeFw, &lastBk, &d.BackupIntervalSec, &d.PortLayout, &d.TempAlertC, &d.TGChats)
 	d.APITLS = tls != 0
 	if lastBk.Valid {
 		d.LastBackup = &lastBk.Time
@@ -698,7 +703,7 @@ func scanDevice(row interface{ Scan(...any) error }) (model.Device, error) {
 	return d, err
 }
 
-const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id,snmp_enabled,snmp_community_enc,snmp_port,device_type,last_fail_at,poll_interval_sec,notes,rb_current_fw,rb_upgrade_fw,last_backup_at,backup_interval_sec,port_layout`
+const deviceCols = `id,name,ip,api_port,api_tls,api_user,api_pass_enc,ssh_user,api_cert_pin,ssh_host_pin,model,serial,ros_version,last_seen,created_at,api_ssl_cert,api_cert_expiry,fw_latest,fw_channel,fw_status,site_id,snmp_enabled,snmp_community_enc,snmp_port,device_type,last_fail_at,poll_interval_sec,notes,rb_current_fw,rb_upgrade_fw,last_backup_at,backup_interval_sec,port_layout,temp_alert_c,tg_chats`
 
 // SetDeviceType sets a device's role (router/switch/mix, or "" for unknown).
 func (s *Store) SetDeviceType(id int64, t string) error {
@@ -2106,4 +2111,73 @@ func b2i(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// ---- per-device alert prefs, user prefs, backup sizes, neighbour ignores ----
+
+// SetDeviceAlertPrefs stores a device's own temperature threshold (°C, 0 =
+// use the global setting) and the Telegram chat ids its alerts go to.
+func (s *Store) SetDeviceAlertPrefs(id int64, tempC int, chats string) error {
+	_, err := s.db.Exec(`UPDATE devices SET temp_alert_c=?, tg_chats=? WHERE id=?`, tempC, chats, id)
+	return err
+}
+
+// SetUserTipDelay stores how long (ms) a user must hover before a hint shows.
+func (s *Store) SetUserTipDelay(id int64, ms int) error {
+	_, err := s.db.Exec(`UPDATE users SET tip_delay_ms=? WHERE id=?`, ms, id)
+	return err
+}
+
+// BackupTotals returns the number of stored config snapshots and their total
+// size in bytes (the content column, i.e. what the snapshots take in the DB).
+func (s *Store) BackupTotals() (count int64, bytes int64, err error) {
+	err = s.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(length(content)),0) FROM configs`).Scan(&count, &bytes)
+	return
+}
+
+// BackupSizesByDevice maps device id → total bytes of its stored snapshots.
+func (s *Store) BackupSizesByDevice() (map[int64]int64, error) {
+	rows, err := s.db.Query(`SELECT device_id, COALESCE(SUM(length(content)),0) FROM configs GROUP BY device_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]int64{}
+	for rows.Next() {
+		var id, n int64
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
+}
+
+// SetNeighborIgnored hides (on=true) or shows again (on=false) a discovered
+// neighbour, keyed by its MAC (or IP when there is no MAC).
+func (s *Store) SetNeighborIgnored(key string, on bool) error {
+	if on {
+		_, err := s.db.Exec(`INSERT OR IGNORE INTO neighbor_ignores(key) VALUES(?)`, key)
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM neighbor_ignores WHERE key=?`, key)
+	return err
+}
+
+// IgnoredNeighbors returns the set of neighbour keys the operator hid.
+func (s *Store) IgnoredNeighbors() (map[string]bool, error) {
+	rows, err := s.db.Query(`SELECT key FROM neighbor_ignores`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out[k] = true
+	}
+	return out, rows.Err()
 }

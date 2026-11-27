@@ -19,6 +19,7 @@
         <option value="router" {{if eq .FType "router"}}selected{{end}}>{{t "dtype.router"}}</option>
         <option value="switch" {{if eq .FType "switch"}}selected{{end}}>{{t "dtype.switch"}}</option>
         <option value="mix" {{if eq .FType "mix"}}selected{{end}}>{{t "dtype.mix"}}</option>
+        <option value="ap" {{if eq .FType "ap"}}selected{{end}}>{{t "dtype.ap"}}</option>
       </select>
     </form>
     <button type="button" class="btn sm secondary gearbtn" data-cols-for="devtable" title="{{t "col.columns"}}">⚙</button>
@@ -62,7 +63,7 @@
   </script>
   {{end}}
   <div class="scroll"><table id="devtable" class="dtable">
-    <thead><tr>{{if canWrite .User}}<th data-nosort style="width:28px"><input type="checkbox" id="dchkall" title="{{t "bulk.all"}}" onclick="document.querySelectorAll('.dchk').forEach(c=>{ if(c.closest('tr').style.display!=='none') c.checked=this.checked; })"></th>{{end}}<th data-col="name" data-label="{{t "col.name"}}">{{t "col.name"}}</th><th data-col="ip" data-label="IP">IP</th><th data-col="mac" data-label="MAC">MAC</th><th data-col="site" data-label="{{t "col.site"}}">{{t "col.site"}}</th><th data-col="tags" data-label="{{t "col.tags"}}">{{t "col.tags"}}</th><th data-col="type" data-label="{{t "col.type"}}">{{t "col.type"}}</th><th data-col="model" data-label="{{t "col.model"}}">{{t "col.model"}}</th><th data-col="ros" data-label="RouterOS">RouterOS</th><th data-col="latest" data-label="{{t "fw.latest"}}">{{t "fw.latest"}}</th><th data-col="rbfw" data-label="{{t "col.rb_fw"}}">{{t "col.rb_fw"}}</th><th data-col="alerts" data-label="{{t "nav.alerts"}}">{{t "nav.alerts"}}</th><th data-col="serial" data-label="{{t "dev.serial"}}">{{t "dev.serial"}}</th><th data-col="cpu" data-label="CPU">CPU</th><th data-col="poll" data-label="{{t "col.poll"}}">{{t "col.poll"}}</th><th data-col="lte" data-label="LTE">LTE</th><th data-col="vpn" data-label="VPN">VPN</th><th data-col="seen" data-label="{{t "col.seen"}}">{{t "col.seen"}}</th><th data-col="added" data-label="{{t "col.added"}}">{{t "col.added"}}</th><th data-col="lastpoll" data-label="{{t "col.lastpoll"}}">{{t "col.lastpoll"}}</th><th data-col="backup" data-label="{{t "col.lastbackup"}}">{{t "col.lastbackup"}}</th><th data-nosort data-col="actions" data-label="{{t "col.actions"}}">{{t "col.actions"}}</th></tr></thead>
+    <thead><tr>{{if canWrite .User}}<th data-nosort style="width:28px"><input type="checkbox" id="dchkall" title="{{t "bulk.all"}}" onclick="document.querySelectorAll('.dchk').forEach(c=>{ if(c.closest('tr').style.display!=='none') c.checked=this.checked; })"></th>{{end}}<th data-col="name" data-label="{{t "col.name"}}">{{t "col.name"}}</th><th data-col="ip" data-label="IP">IP</th><th data-col="mac" data-label="MAC">MAC</th><th data-col="site" data-label="{{t "col.site"}}">{{t "col.site"}}</th><th data-col="tags" data-label="{{t "col.tags"}}">{{t "col.tags"}}</th><th data-col="type" data-label="{{t "col.type"}}">{{t "col.type"}}</th><th data-col="model" data-label="{{t "col.model"}}">{{t "col.model"}}</th><th data-col="ros" data-label="RouterOS">RouterOS</th><th data-col="latest" data-label="{{t "fw.latest"}}">{{t "fw.latest"}}</th><th data-col="rbfw" data-label="{{t "col.rb_fw"}}">{{t "col.rb_fw"}}</th><th data-col="alerts" data-label="{{t "nav.alerts"}}">{{t "nav.alerts"}}</th><th data-col="serial" data-label="{{t "dev.serial"}}">{{t "dev.serial"}}</th><th data-col="cpu" data-label="CPU">CPU</th><th data-col="poll" data-label="{{t "col.poll"}}">{{t "col.poll"}}</th><th data-col="lte" data-label="LTE">LTE</th><th data-col="vpn" data-label="VPN">VPN</th><th data-col="seen" data-label="{{t "col.seen"}}">{{t "col.seen"}}</th><th data-col="added" data-label="{{t "col.added"}}">{{t "col.added"}}</th><th data-col="lastpoll" data-label="{{t "col.lastpoll"}}">{{t "col.lastpoll"}}</th><th data-col="backup" data-label="{{t "col.lastbackup"}}">{{t "col.lastbackup"}}</th><th data-col="syslog" data-label="{{t "col.syslog"}}" title="{{t "col.syslog_tip"}}">{{t "col.syslog"}}</th><th data-col="snmp" data-label="SNMP" title="{{t "col.snmp_tip"}}">SNMP</th><th data-nosort data-col="actions" data-label="{{t "col.actions"}}">{{t "col.actions"}}</th></tr></thead>
     <tbody>
     {{range .Devices}}
       <tr{{if .LastFail}} class="rowdown" title="{{t "col.failing_since"}}: {{ago .LastFail}}"{{end}}>
@@ -87,6 +88,8 @@
         <td class="muted" data-sort="{{ts .CreatedAt}}">{{dateT .CreatedAt}}</td>
         <td class="muted" data-sort="{{if .LastFail}}{{tsp .LastFail}}{{else}}{{tsp .LastSeen}}{{end}}">{{if .LastFail}}<span class="badge bad" title="{{t "col.failing_since"}}">{{ago .LastFail}}</span>{{else if .LastSeen}}<span class="badge good">{{ago .LastSeen}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
         <td data-sort="{{tsp .LastBackup}}">{{if .LastBackup}}<span class="badge {{if .BackupStale}}bad{{else}}good{{end}}" title="{{tsp .LastBackup}} · {{t "bkp.period"}}: {{.BackupEvery}}{{if .BackupStale}} · {{t "bkp.overdue"}}{{end}}">{{ago .LastBackup}}</span>{{else}}<span class="badge bad" title="{{t "bkp.period"}}: {{.BackupEvery}}">{{t "bk.never"}}</span>{{end}}</td>
+        <td data-sort="{{if .SyslogOn}}1{{else}}0{{end}}">{{if .SyslogOn}}<a class="flagico on" href="/syslog?dev={{.ID}}" data-tip="{{t "col.syslog_on"}}" aria-label="{{t "col.syslog_on"}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg></a>{{else}}<span class="flagico off" data-tip="{{t "col.syslog_off"}}" aria-label="{{t "col.syslog_off"}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg></span>{{end}}</td>
+        <td data-sort="{{if .SNMPEnabled}}1{{else}}0{{end}}">{{if .SNMPEnabled}}<span class="flagico on" data-tip="{{t "col.snmp_on"}}" aria-label="{{t "col.snmp_on"}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15a9 9 0 0 1 18 0"/><path d="M12 15l4.5-5"/><circle cx="12" cy="15" r="1.6"/><line x1="3" y1="19" x2="21" y2="19"/></svg></span>{{else}}<span class="flagico off" data-tip="{{t "col.snmp_off"}}" aria-label="{{t "col.snmp_off"}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15a9 9 0 0 1 18 0"/><path d="M12 15l4.5-5"/><circle cx="12" cy="15" r="1.6"/><line x1="3" y1="19" x2="21" y2="19"/></svg></span>{{end}}</td>
         <td><div style="display:flex;gap:12px;align-items:center;font-size:15px">
           <a href="/devices/{{.ID}}" title="{{t "act.edit"}}" style="text-decoration:none">✏️</a>
           <a href="#" title="{{t "act.copy"}}" style="text-decoration:none" onclick="navigator.clipboard&&navigator.clipboard.writeText('{{.IP}}');return false;">⧉</a>
@@ -94,28 +97,67 @@
         </div></td>
       </tr>
     {{else}}
-      <tr><td colspan="22" class="muted">{{t "devices.empty"}} {{if canWrite $.User}}<a href="/devices/new">{{t "devices.add_first"}}</a>{{end}}</td></tr>
+      <tr><td colspan="24" class="muted">{{t "devices.empty"}} {{if canWrite $.User}}<a href="/devices/new">{{t "devices.add_first"}}</a>{{end}}</td></tr>
     {{end}}
     </tbody>
   </table></div>
 </div>
 
-{{if .Discovered}}
-<div class="cardhead" style="margin-top:6px"><h2 style="margin:0;font-size:16px">{{t "disc.title"}}</h2>
-  {{if .ShowAllNeigh}}<a class="btn sm secondary" href="/">{{t "disc.hide_managed"}}</a>{{else}}<a class="btn sm secondary" href="/?allneigh=1">{{t "disc.show_all"}}</a>{{end}}</div>
+{{if and (canWrite .User) .Devices}}
+<div class="cardhead" style="margin-top:6px"><h2 style="margin:0;font-size:16px">{{t "exec.title"}}</h2><span class="muted small">{{t "exec.note"}}</span></div>
 <div class="card">
-  <p class="muted small">{{t "disc.note"}}</p>
+  <div class="toolrow">
+    <select id="exec-dev" style="min-width:220px;max-width:320px">{{range .Devices}}<option value="{{.ID}}">{{.Name}} ({{.IP}})</option>{{end}}</select>
+    <input id="exec-cmd" class="mono" placeholder="/system resource print" style="flex:1;min-width:260px" autocomplete="off">
+    <button class="btn sm primary" type="button" id="exec-run" {{if not .HasSSH}}disabled title="{{t "dev.need_ssh"}}"{{end}}>{{t "exec.run"}}</button>
+    <span id="exec-status" class="res small muted"></span>
+  </div>
+  <pre id="exec-out" class="execout mono"></pre>
+  <p class="muted small" style="margin:6px 0 0">{{t "exec.hint"}}</p>
+</div>
+<script>
+(function(){
+  var btn=document.getElementById('exec-run'); if(!btn) return;
+  var sel=document.getElementById('exec-dev'), cmd=document.getElementById('exec-cmd'), out=document.getElementById('exec-out'), st=document.getElementById('exec-status');
+  function esc(s){ return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
+  function run(){
+    var c=cmd.value.trim(); if(!c||btn.disabled) return;
+    var dev=sel.options[sel.selectedIndex].text;
+    btn.disabled=true; st.textContent='{{t "exec.running"}}'; out.textContent='';
+    fetch('/devices/'+encodeURIComponent(sel.value)+'/exec',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({command:c})})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        out.textContent=j.output||'';
+        st.textContent='';
+        if(j.error){ window.rmToast&&rmToast(esc(dev)+': '+esc(j.error),'err'); }
+        else { window.rmToast&&rmToast('{{t "exec.done"}}: '+esc(dev),'ok'); }
+      })
+      .catch(function(e){ st.textContent=''; window.rmToast&&rmToast(esc(String(e)),'err'); })
+      .finally(function(){ btn.disabled=false; });
+  }
+  btn.addEventListener('click', run);
+  cmd.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); run(); } });
+})();
+</script>
+{{end}}
+
+{{if or .Discovered .IgnoredN}}
+<div class="cardhead" style="margin-top:6px"><h2 style="margin:0;font-size:16px">{{t "disc.title"}}</h2>
+  {{if .ShowAllNeigh}}<a class="btn sm secondary" href="/">{{t "disc.hide_managed"}}</a>{{else}}<a class="btn sm secondary" href="/?allneigh=1">{{t "disc.show_all"}}{{if .IgnoredN}} ({{t "disc.hidden_n"}} {{.IgnoredN}}){{end}}</a>{{end}}</div>
+<div class="card">
+  <p class="muted small">{{t "disc.note"}}{{if canWrite .User}} {{t "disc.ignore_note"}}{{end}}</p>
   <div class="scroll"><table class="dtable">
-    <thead><tr><th>Identity</th><th>IP</th><th>MAC</th><th>{{t "neigh.platform"}}</th><th>{{t "disc.seenby"}}</th><th>{{t "al.state"}}</th><th></th></tr></thead>
+    <thead><tr>{{if canWrite $.User}}<th data-nosort title="{{t "disc.ignore_tip"}}">{{t "disc.ignore"}}</th>{{end}}<th>Identity</th><th>IP</th><th>MAC</th><th>{{t "neigh.platform"}}</th><th>{{t "disc.seenby"}}</th><th>{{t "al.state"}}</th><th></th></tr></thead>
     <tbody>
     {{range .Discovered}}
-      <tr {{if .Managed}}style="opacity:.6"{{end}}>
+      <tr {{if or .Managed .Ignored}}style="opacity:.6"{{end}}>
+        {{if canWrite $.User}}<td><form class="inline" method="post" action="/neighbors/ignore"><input type="hidden" name="key" value="{{.Key}}"><input type="hidden" name="on" value="{{if .Ignored}}0{{else}}1{{end}}"><input type="checkbox" {{if .Ignored}}checked{{end}} onchange="this.form.submit()" title="{{if .Ignored}}{{t "disc.unignore_tip"}}{{else}}{{t "disc.ignore_tip"}}{{end}}" aria-label="{{t "disc.ignore"}}"></form></td>{{end}}
         <td>{{if .Identity}}{{.Identity}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="mono">{{if .IP}}{{.IP}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="mono muted">{{.MAC}}</td>
         <td class="muted">{{.Platform}}</td>
         <td class="muted">{{.SeenBy}}</td>
-        <td>{{if .Managed}}<span class="badge good">{{t "disc.managed"}}</span>{{else}}<span class="badge">{{t "disc.new"}}</span>{{end}}</td>
+        <td>{{if .Managed}}<span class="badge good">{{t "disc.managed"}}</span>{{else if .Ignored}}<span class="badge">{{t "disc.ignored"}}</span>{{else}}<span class="badge">{{t "disc.new"}}</span>{{end}}</td>
         <td>{{if and (not .Managed) .IP (canWrite $.User)}}<a class="btn sm primary" href="/devices/new?ip={{.IP}}&name={{qesc .Identity}}">+ {{t "nav.add"}}</a>{{end}}</td>
       </tr>
     {{end}}

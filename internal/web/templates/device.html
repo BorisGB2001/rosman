@@ -112,7 +112,8 @@
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
     <h3 style="margin:0">{{t "dev.faceplate"}}</h3>
     <span class="badge">{{if eq .FpSource "device"}}{{t "fp.src_device"}}{{else if eq .FpSource "model"}}{{t "fp.src_model"}}{{else}}{{t "fp.src_auto"}}{{end}}</span>
-    {{if canWrite .User}}<a class="btn sm secondary" href="/devices/{{.D.ID}}/layout" style="margin-left:auto">✎ {{t "fp.edit_device"}}</a>{{end}}
+    {{if canWrite .User}}<a class="btn sm secondary" href="/devices/{{.D.ID}}/layout" style="margin-left:auto">✎ {{t "fp.edit_device"}}</a>
+    <form class="inline" method="post" action="/devices/{{.D.ID}}/reboot" onsubmit="return confirm('{{t "dev.reboot_confirm"}}')"><button class="btn sm danger" type="submit">⟲ {{t "dev.reboot"}}</button></form>{{end}}
   </div>
   {{if .Faceplate}}{{.Faceplate}}<p class="muted small" style="margin:10px 0 0">{{t "dev.faceplate_legend"}}</p>{{else}}<p class="muted">{{t "dev.faceplate_none"}}</p>{{end}}
 </div>
@@ -147,6 +148,17 @@
   {{if .HasTemp}}<div style="margin-top:10px"><div class="muted small">{{t "dev.temp"}} — {{printf "%.0f" .H.Temp}}°C</div>{{.TempGraph}}</div>{{end}}
 </div>
 {{if canWrite .User}}
+<div class="card" id="alerts">
+  <h3>{{t "dev.alert_prefs"}}</h3>
+  <form class="inline" method="post" action="/devices/{{.D.ID}}/alertprefs" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <label style="flex-direction:column;align-items:flex-start;gap:4px">{{t "dev.temp_threshold"}}
+      <span style="display:flex;gap:6px;align-items:center"><input name="temp_c" value="{{if .D.TempAlertC}}{{.D.TempAlertC}}{{end}}" placeholder="{{t "dev.temp_global"}}" style="width:110px"> °C</span></label>
+    <label style="flex-direction:column;align-items:flex-start;gap:4px;flex:1;min-width:260px">{{t "dev.tg_chats"}}
+      <input name="tg_chats" value="{{.D.TGChats}}" placeholder="-1001234567890, @username" style="width:100%"></label>
+    <button class="btn sm primary" type="submit">{{t "dev.alert_save"}}</button>
+  </form>
+  <p class="muted small" style="margin:8px 0 0">{{t "dev.alert_note"}} · {{t "dev.temp_now"}}: {{if .HasTemp}}{{printf "%.0f" .H.Temp}}°C{{else}}—{{end}}</p>
+</div>
 <div class="pair">
 <div class="card">
   <h3>SNMP {{if .D.SNMPEnabled}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</h3>
@@ -168,6 +180,7 @@
       <option value="router" {{if eq .D.DeviceType "router"}}selected{{end}}>{{t "dtype.router"}}</option>
       <option value="switch" {{if eq .D.DeviceType "switch"}}selected{{end}}>{{t "dtype.switch"}}</option>
       <option value="mix" {{if eq .D.DeviceType "mix"}}selected{{end}}>{{t "dtype.mix"}}</option>
+      <option value="ap" {{if eq .D.DeviceType "ap"}}selected{{end}}>{{t "dtype.ap"}}</option>
     </select>
   </form>
   <form class="inline" method="post" action="/devices/{{.D.ID}}/pollinterval" style="margin-bottom:10px">

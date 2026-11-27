@@ -4,6 +4,16 @@
 {{if .Err}}<div class="note err">{{.Err}}</div>{{end}}
 
 <div class="card narrow">
+  <h3>{{t "acc.prefs"}}</h3>
+  <form class="inline" method="post" action="/account/prefs" style="gap:8px;flex-wrap:wrap;align-items:center">
+    <label style="flex-direction:row;gap:6px;align-items:center">{{t "acc.tip_delay"}}
+      <input name="tip_delay_ms" type="number" min="0" max="10000" step="100" value="{{tipdelay .U}}" style="width:100px"> {{t "acc.ms"}}</label>
+    <button class="btn sm primary" type="submit">{{t "acc.save"}}</button>
+  </form>
+  <p class="muted small" style="margin:6px 0 0">{{t "acc.tip_delay_note"}}</p>
+</div>
+
+<div class="card narrow">
   <h3>{{t "acc.2fa"}} {{if .TOTPEnabled}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</h3>
   {{if .TOTPEnabled}}
     <p class="muted small">{{t "acc.2fa_on"}}</p>

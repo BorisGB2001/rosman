@@ -284,3 +284,10 @@ func (s *Store) AIReports(limit int) ([]model.AIReport, error) {
 	}
 	return out, rows.Err()
 }
+
+// SyslogSize returns how many stored log lines there are and roughly how many
+// bytes their text takes (message, topics and source), for the Server panel.
+func (s *Store) SyslogSize() (count int64, bytes int64, err error) {
+	err = s.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(length(msg)+length(topics)+length(src)),0) FROM syslog`).Scan(&count, &bytes)
+	return
+}

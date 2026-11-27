@@ -8,6 +8,9 @@
   <div class="tile"><span>{{t "bk.never"}}</span><b {{if .NeverN}}style="color:var(--bad)"{{end}}>{{.NeverN}}</b></div>
   <div class="tile"><span>{{t "cap.total"}}</span><b>{{.Total}}</b></div>
 </div>
+<div class="tiles four">
+  <div class="tile"><span>{{t "bk.total_size"}}</span><b>{{hbytes .BkBytes}}</b><small class="muted">{{.BkCount}} {{t "srv.snapshots"}}</small></div>
+</div>
 
 {{if and .NeverN .SSHPubKey}}
 <details class="card" style="border-color:var(--warn)">
@@ -29,6 +32,7 @@
       <th data-col="last" data-label="{{t "col.lastbackup"}}">{{t "col.lastbackup"}}</th>
       <th data-col="export" data-label="{{t "bk.export"}}">{{t "bk.export"}}</th>
       <th data-col="binary" data-label="{{t "bk.binary"}}">{{t "bk.binary"}}</th>
+      <th data-col="size" data-label="{{t "bk.size"}}">{{t "bk.size"}}</th>
     </tr></thead>
     <tbody>
     {{range .Rows}}
@@ -43,8 +47,9 @@
         <td class="muted" data-sort="{{tsp .Last}}">{{if .Last}}{{ago .Last}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="muted" data-sort="{{tsp .Export}}">{{if .Export}}{{ago .Export}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="muted" data-sort="{{tsp .Binary}}">{{if .Binary}}{{ago .Binary}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td class="muted" data-sort="{{.Size}}">{{if .Size}}{{hbytes .Size}}{{else}}<span class="muted">—</span>{{end}}</td>
       </tr>
-    {{else}}<tr><td colspan="6" class="muted">{{t "devices.empty"}}</td></tr>{{end}}
+    {{else}}<tr><td colspan="7" class="muted">{{t "devices.empty"}}</td></tr>{{end}}
     </tbody>
   </table></div>
   <p class="muted small">{{t "bk.note"}}</p>

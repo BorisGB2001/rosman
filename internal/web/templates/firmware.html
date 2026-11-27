@@ -27,12 +27,13 @@
 <form method="post" action="/firmware/upgrade">
 <div class="card">
   <div class="scroll"><table>
-    <thead><tr><th></th><th>{{t "al.device"}}</th><th>{{t "fw.installed"}}</th><th>{{t "fw.latest"}}</th><th>{{t "fw.channel"}}</th><th>{{t "col.rb_fw"}}</th><th></th></tr></thead>
+    <thead><tr><th></th><th>{{t "al.device"}}</th><th>{{t "col.model"}}</th><th>{{t "fw.installed"}}</th><th>{{t "fw.latest"}}</th><th>{{t "fw.channel"}}</th><th>{{t "col.rb_fw"}}</th><th></th></tr></thead>
     <tbody>
     {{range .Rows}}
       <tr>
         <td>{{if .Outdated}}<input type="checkbox" name="device_ids" value="{{.ID}}">{{end}}</td>
         <td><a href="/devices/{{.ID}}">{{.Name}}</a></td>
+        <td class="muted">{{if .Model}}{{.Model}}{{else}}—{{end}}</td>
         <td>{{.Installed}}</td>
         <td>{{.Latest}}</td>
         <td class="muted">{{.Chan}}</td>

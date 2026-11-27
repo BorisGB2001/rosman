@@ -1,6 +1,29 @@
 {{define "dashboard"}}{{template "head" .}}
 <div class="cardhead"><h1 style="margin:0">{{t "nav.dashboard"}}</h1>
   <span class="muted small">{{t "dash.onlinepct"}}: {{.OnlinePct}}%</span></div>
+{{with .Srv}}
+<div class="card srvcard">
+  <div class="srvhead"><h3 style="margin:0">{{t "srv.server"}}</h3>
+    <span class="muted small">{{.Host.Hostname}}{{if .Host.OS}} · {{.Host.OS}}{{end}}{{if .Host.Kernel}} · {{.Host.Kernel}}{{end}}{{if .Host.Uptime}} · {{t "srv.uptime"}} {{humanDur .Host.Uptime}}{{end}}</span></div>
+  <div class="srvrow">
+    <div class="srvtile"><span>{{t "srv.hardware"}}</span><b>{{if .Host.Hardware}}{{.Host.Hardware}}{{else}}—{{end}}</b><small class="muted">{{if .Host.CPUModel}}{{.Host.CPUModel}} · {{end}}{{.Host.Cores}} {{t "srv.cores"}}</small></div>
+    <div class="srvtile"><span>CPU</span><b>{{.Host.CPUPct}}%</b><small class="muted">{{t "srv.load"}} {{printf "%.2f" .Host.Load1}}</small></div>
+    <div class="srvtile"><span>{{t "srv.mem"}}</span><b>{{if .Host.MemTotal}}{{hbytes .Host.MemUsed}} / {{hbytes .Host.MemTotal}}{{else}}—{{end}}</b></div>
+    <div class="srvtile"><span>{{t "srv.disk"}}</span><b>{{if .Host.DiskTotal}}{{hbytes .Host.DiskUsed}} / {{hbytes .Host.DiskTotal}}{{else}}—{{end}}</b></div>
+    <div class="srvtile"><span>{{t "srv.temp"}}</span><b>{{if .Host.TempC}}{{printf "%.0f" .Host.TempC}}°C{{else}}—{{end}}</b></div>
+  </div>
+  <div class="srvhead" style="margin-top:12px"><h3 style="margin:0;font-size:15px">ROSMan</h3>
+    <span class="muted small">{{t "srv.rosman_note"}}</span></div>
+  <div class="srvrow">
+    <div class="srvtile"><span>{{t "srv.rss"}}</span><b>{{if .Self.RSS}}{{hbytes .Self.RSS}}{{else}}—{{end}}</b><small class="muted">{{t "srv.heap"}} {{hbytes .Self.HeapInUse}}</small></div>
+    <div class="srvtile"><span>{{t "srv.dbsize"}}</span><b>{{hbytes .DBBytes}}</b></div>
+    <div class="srvtile"><span>{{t "srv.backups"}}</span><b>{{hbytes .BkBytes}}</b><small class="muted">{{.BkN}} {{t "srv.snapshots"}}</small></div>
+    <div class="srvtile"><span>{{t "srv.logs"}}</span><b>{{hbytes .LogBytes}}</b><small class="muted">{{.LogN}} {{t "srv.lines"}}</small></div>
+    <div class="srvtile"><span>{{t "srv.datadir"}}</span><b>{{hbytes .Self.DataDir}}</b><small class="muted">{{t "srv.disk_note"}}</small></div>
+    <div class="srvtile"><span>{{t "srv.goroutines"}}</span><b>{{.Self.Goroutines}}</b><small class="muted">{{t "srv.svc_uptime"}} {{humanDur .Self.Uptime}}</small></div>
+  </div>
+</div>
+{{end}}
 <div class="tiles">
   <a class="tile" href="/"><span>{{t "dash.total"}}</span><b>{{.Total}}</b></a>
   <div class="tile"><span>{{t "dash.online"}}</span><b style="color:var(--good)">{{.Online}}</b></div>

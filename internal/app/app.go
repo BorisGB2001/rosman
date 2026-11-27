@@ -897,7 +897,12 @@ func (a *App) evalThresholds(d model.Device, h ros.Health) {
 	}
 	check("cpu_high", "CPU", h.CPU, a.settingIntDefault("alert_cpu", 0), "%")
 	if h.Temp > 0 {
-		check("temp_high", "Temp", int(h.Temp+0.5), a.settingIntDefault("alert_temp", 0), "°C")
+		// A device's own threshold wins over the global one (0 = use global).
+		thresh := d.TempAlertC
+		if thresh <= 0 {
+			thresh = a.settingIntDefault("alert_temp", 0)
+		}
+		check("temp_high", "Temp", int(h.Temp+0.5), thresh, "°C")
 	}
 	if h.TotalMem > 0 {
 		used := int(float64(h.TotalMem-h.FreeMem) / float64(h.TotalMem) * 100)
@@ -1223,6 +1228,18 @@ func (a *App) alertNotifyDev(d model.Device, subject, text string) {
 		return
 	}
 	a.alertNotify(subject, text)
+	// Telegram recipients set on the device (a group or single users), in
+	// addition to the global chat. The chat that equals the global one is
+	// skipped so nobody gets the same message twice.
+	if tok := a.setting("tg_token"); tok != "" {
+		global := a.setting("tg_chat")
+		for _, c := range notify.SplitChats(d.TGChats) {
+			if c == global {
+				continue
+			}
+			_ = notify.SendTelegramText(tok, c, subject+"\n"+text)
+		}
+	}
 }
 
 // TestNotify sends a test message to the given Telegram and SMTP settings and

@@ -65,3 +65,33 @@ func TestEvalThresholds(t *testing.T) {
 		t.Fatal("temp alert not cleared after disabling threshold")
 	}
 }
+
+// A device's own temperature threshold wins over the global one.
+func TestDeviceTempThreshold(t *testing.T) {
+	st, err := store.Open(t.TempDir() + "/t.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := st.CreateDevice(model.Device{Name: "dev1", IP: "10.0.0.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &App{Store: st, Notify: notify.New("", "", ""), Cfg: config.Config{}}
+	_ = st.SetSetting("alert_temp", "80")
+	_ = st.SetDeviceAlertPrefs(id, 55, "-100123,@ops")
+	d, _ := st.Device(id)
+	if d.TempAlertC != 55 || d.TGChats != "-100123,@ops" {
+		t.Fatalf("prefs not stored: %d %q", d.TempAlertC, d.TGChats)
+	}
+	a.evalThresholds(d, ros.Health{Temp: 60})
+	if !active(t, st, id, "temp_high") {
+		t.Fatal("device threshold 55°C not applied at 60°C (global is 80)")
+	}
+	// Back to the global threshold: 60°C is under 80°C, the alert clears.
+	_ = st.SetDeviceAlertPrefs(id, 0, "")
+	d, _ = st.Device(id)
+	a.evalThresholds(d, ros.Health{Temp: 60})
+	if active(t, st, id, "temp_high") {
+		t.Fatal("alert not cleared after returning to the global threshold")
+	}
+}
