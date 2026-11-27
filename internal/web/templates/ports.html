@@ -1,13 +1,15 @@
 {{define "ports"}}{{template "head" .}}
 <div class="cardhead"><h1 style="margin:0">{{t "cap.title"}}</h1>
-  <a class="btn sm secondary" href="/ports.csv">↓ CSV</a></div>
+  <form class="inline" method="get" action="/ports" style="margin-left:auto"><select name="site" onchange="this.form.submit()"><option value="">{{t "filter.all_sites"}}</option>{{range .Sites}}<option value="{{.ID}}" {{if eq .ID $.FSite}}selected{{end}}>{{.Name}}</option>{{end}}</select></form>
+  <a class="btn sm secondary" href="/ports.csv{{if .FSite}}?site={{.FSite}}{{end}}">↓ CSV</a></div>
 <p class="muted small" style="margin-top:-6px">{{t "cap.subtitle"}}</p>
 
-<div class="tiles four">
+<div class="tiles oneline">
   <div class="tile"><span>{{t "cap.total"}}</span><b>{{.TTotal}}</b></div>
   <div class="tile"><span>{{t "cap.used"}}</span><b style="color:var(--good)">{{.TUp}}</b><small>{{pct .TUp .TTotal}}%</small></div>
   <div class="tile"><span>{{t "cap.free"}}</span><b style="color:var(--accent)">{{.TFree}}</b><small>{{pct .TFree .TTotal}}%</small></div>
   <div class="tile"><span>{{t "cap.disabled"}}</span><b style="color:var(--muted)">{{.TDis}}</b><small>{{pct .TDis .TTotal}}%</small></div>
+  <div class="tile"><span>⚡ PoE</span><b style="color:#f59e0b">{{.TPoE}}</b><small>{{t "cap.poe_used"}}: {{.TPoEUsed}}</small></div>
 </div>
 
 <div class="card">
@@ -21,6 +23,7 @@
       <th data-col="total" data-label="{{t "cap.total"}}">{{t "cap.total"}}</th>
       <th data-col="used" data-label="{{t "cap.used"}}">{{t "cap.used"}}</th>
       <th data-col="free" data-label="{{t "cap.free"}}">{{t "cap.free"}}</th>
+      <th data-col="poe" data-label="PoE" title="{{t "cap.poe_tip"}}">⚡ PoE</th>
       <th data-nosort data-col="bar" data-label="">　</th>
       <th data-col="freeports" data-label="{{t "cap.free_ports"}}">{{t "cap.free_ports"}}</th>
     </tr></thead>
@@ -32,13 +35,14 @@
         <td data-sort="{{.Total}}">{{.Total}}</td>
         <td data-sort="{{.Up}}"><span class="badge good">{{.Up}}</span></td>
         <td data-sort="{{.Free}}">{{if gt .Free 0}}<span class="badge" style="background:var(--accent);color:#fff">{{.Free}}</span>{{else}}<span class="muted">0</span>{{end}}</td>
+        <td data-sort="{{.PoE}}">{{if gt .PoE 0}}<span class="badge" style="background:#f59e0b;color:#1a1a1a" title="{{t "cap.poe_tip"}}">{{.PoEPowered}} / {{.PoE}}</span>{{if gt .PoEWatts 0.0}} <span class="muted small">{{printf "%.1f" .PoEWatts}} W</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td style="min-width:120px"><div style="display:flex;height:10px;width:110px;border-radius:5px;overflow:hidden;background:var(--line)">
           {{if gt .Up 0}}<div style="background:var(--good);width:{{pct .Up .Total}}%"></div>{{end}}
           {{if gt .Disabled 0}}<div style="background:var(--muted);width:{{pct .Disabled .Total}}%"></div>{{end}}
         </div></td>
-        <td class="mono muted small">{{range $i, $p := .FreePorts}}{{if $i}}, {{end}}{{$p}}{{end}}</td>
+        <td class="mono muted small">{{range $i, $p := .FreePorts}}{{if $i}}, {{end}}{{$p.Name}}{{if $p.PoE}}<span style="color:#f59e0b" title="PoE">⚡</span>{{end}}{{end}}</td>
       </tr>
-    {{else}}<tr><td colspan="7" class="muted">{{t "devices.empty"}}</td></tr>{{end}}
+    {{else}}<tr><td colspan="8" class="muted">{{t "devices.empty"}}</td></tr>{{end}}
     </tbody>
   </table></div>
   <p class="muted small">{{t "cap.note"}}</p>

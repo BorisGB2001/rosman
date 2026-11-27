@@ -51,7 +51,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-var Version = "1.10.0"
+var Version = "1.11.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -612,6 +612,7 @@ func (s *Server) authed(h http.HandlerFunc) http.Handler {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
+		s.a.Store.TouchUser(u.ID, remoteIP(r))
 		r = r.WithContext(context.WithValue(r.Context(), userKey, u))
 		h(w, r)
 	})
@@ -664,6 +665,7 @@ func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: tok, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	_ = s.a.Store.AddAudit(u.Username, "login", r.RemoteAddr)
+	_ = s.a.Store.MarkLogin(u.ID, remoteIP(r))
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
@@ -3122,19 +3124,26 @@ func boolStr(b bool) string {
 // portsCSV exports per-device port capacity.
 func (s *Server) portsCSV(w http.ResponseWriter, r *http.Request) {
 	devs, _ := s.a.Store.Devices()
+	fSite, _ := strconv.ParseInt(r.URL.Query().Get("site"), 10, 64)
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="rosman-ports-%s.csv"`, time.Now().Format("2006-01-02")))
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"device", "model", "total", "used", "free", "disabled", "free_ports"})
+	_ = cw.Write([]string{"device", "model", "total", "used", "free", "disabled", "poe_ports", "free_ports"})
 	for _, d := range devs {
+		if fSite > 0 && (d.SiteID == nil || *d.SiteID != fSite) {
+			continue
+		}
 		ports, _ := s.a.Store.DevicePorts(d.ID)
-		var total, up, free, dis int
+		var total, up, free, dis, poe int
 		var freeP []string
 		for _, p := range ports {
 			if physicalPort(p.Name) == "" {
 				continue
 			}
 			total++
+			if p.PoEOn() {
+				poe++
+			}
 			switch {
 			case p.Disabled:
 				dis++
@@ -3148,7 +3157,7 @@ func (s *Server) portsCSV(w http.ResponseWriter, r *http.Request) {
 		if total == 0 {
 			continue
 		}
-		_ = cw.Write([]string{d.Name, d.Model, strconv.Itoa(total), strconv.Itoa(up), strconv.Itoa(free), strconv.Itoa(dis), strings.Join(freeP, " ")})
+		_ = cw.Write([]string{d.Name, d.Model, strconv.Itoa(total), strconv.Itoa(up), strconv.Itoa(free), strconv.Itoa(dis), strconv.Itoa(poe), strings.Join(freeP, " ")})
 	}
 	cw.Flush()
 }
@@ -3192,15 +3201,26 @@ func (s *Server) vlansCSV(w http.ResponseWriter, r *http.Request) {
 // across the fleet, with the names of the free ports.
 func (s *Server) portsPage(w http.ResponseWriter, r *http.Request) {
 	devs, _ := s.a.Store.Devices()
+	sites, _ := s.a.Store.Sites()
+	fSite, _ := strconv.ParseInt(r.URL.Query().Get("site"), 10, 64)
+	type freePort struct {
+		Name string
+		PoE  bool // PoE-out available on this free port
+	}
 	type row struct {
 		ID                          int64
 		Name, Model                 string
 		Total, Up, Free, Disabled   int
-		FreePorts                   []string
+		FreePorts                   []freePort
+		PoE, PoEPowered             int     // ports with PoE-out on / feeding a device now
+		PoEWatts                    float64 // power drawn over PoE now
 	}
 	rows := make([]row, 0, len(devs))
-	var tTotal, tUp, tFree, tDis int
+	var tTotal, tUp, tFree, tDis, tPoE, tPoEUsed int
 	for _, d := range devs {
+		if fSite > 0 && (d.SiteID == nil || *d.SiteID != fSite) {
+			continue
+		}
 		ports, _ := s.a.Store.DevicePorts(d.ID)
 		rr := row{ID: d.ID, Name: d.Name, Model: d.Model}
 		for _, p := range ports {
@@ -3208,6 +3228,15 @@ func (s *Server) portsPage(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			rr.Total++
+			if p.PoEOn() {
+				rr.PoE++
+				if p.PoEPowered() {
+					rr.PoEPowered++
+				}
+				if v, err := strconv.ParseFloat(p.PoEPower, 64); err == nil {
+					rr.PoEWatts += v
+				}
+			}
 			switch {
 			case p.Disabled:
 				rr.Disabled++
@@ -3216,10 +3245,12 @@ func (s *Server) portsPage(w http.ResponseWriter, r *http.Request) {
 			default:
 				rr.Free++
 				if len(rr.FreePorts) < 24 {
-					rr.FreePorts = append(rr.FreePorts, p.Name)
+					rr.FreePorts = append(rr.FreePorts, freePort{p.Name, p.PoEOn()})
 				}
 			}
 		}
+		tPoE += rr.PoE
+		tPoEUsed += rr.PoEPowered
 		if rr.Total == 0 {
 			continue
 		}
@@ -3236,7 +3267,8 @@ func (s *Server) portsPage(w http.ResponseWriter, r *http.Request) {
 		return rows[i].Name < rows[j].Name
 	})
 	s.render(w, r, "ports", map[string]any{"Active": "ports", "Rows": rows,
-		"TTotal": tTotal, "TUp": tUp, "TFree": tFree, "TDis": tDis})
+		"TTotal": tTotal, "TUp": tUp, "TFree": tFree, "TDis": tDis, "TPoE": tPoE, "TPoEUsed": tPoEUsed,
+		"Sites": sites, "FSite": fSite})
 }
 
 func (s *Server) reportsPage(w http.ResponseWriter, r *http.Request) {

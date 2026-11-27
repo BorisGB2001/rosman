@@ -42,6 +42,7 @@ func sevClass(sev int) string {
 func syslogFilter(r *http.Request) (f model.SyslogFilter, rng string) {
 	q := r.URL.Query()
 	f.DeviceID, _ = strconv.ParseInt(q.Get("dev"), 10, 64)
+	f.SiteID, _ = strconv.ParseInt(q.Get("site"), 10, 64)
 	switch q.Get("sev") {
 	case "err":
 		f.MaxSev = 3
@@ -95,6 +96,7 @@ func (s *Server) syslogPage(w http.ResponseWriter, r *http.Request) {
 		"Rows": rows, "Total": total, "ErrN": errN, "WarnN": warnN, "ByDev": byDev, "Top": top,
 		"Devices": devs, "Configured": len(targets), "Silent": silent, "Sending": len(byDev),
 		"Dev": f.DeviceID, "Sev": r.URL.Query().Get("sev"), "Q": f.Text, "Range": rng,
+		"Site": f.SiteID, "Sites": func() []model.Site { ss, _ := s.a.Store.Sites(); return ss }(),
 		"Older": older, "Paged": f.BeforeID > 0, "Query": q.Encode(), "Live": r.URL.Query().Get("live") == "1",
 		"Info": s.a.SyslogStatus(),
 	})

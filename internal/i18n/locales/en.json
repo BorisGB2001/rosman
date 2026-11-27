@@ -451,7 +451,7 @@
   "dev.snmp_poll": "Poll via SNMP",
   "dev.snmp_note": "SNMP v2c. Data (CPU/memory/temperature) feeds the same graphs. With “Configure on the device” ROSMan enables SNMP itself and limits the community to the allowed pool from settings.",
   "dev.faceplate": "Front panel",
-  "dev.faceplate_legend": "Green — link up, grey — port up without link, dim — disabled. Hover a port for its name.",
+  "dev.faceplate_legend": "Green — link up, grey — port up without link, dim — disabled. Hover a port for its name. ⚡ — a PoE port: filled amber — powering a device now, outline — PoE on but no load, grey — PoE off.",
   "dev.graphs": "Load",
   "dev.graphs_note": "(~2h)",
   "dev.temp": "Temperature",
@@ -1086,5 +1086,10 @@
   "nb.sync_now": "Sync to NetBox",
   "dmsg.netbox-synced": "Device synced to NetBox",
   "dmsg.netbox-sync-started": "NetBox sync started — see the status bar",
-  "act.netbox": "NetBox sync"
+  "act.netbox": "NetBox sync",
+  "usr.last_login": "Last sign-in",
+  "usr.last_seen": "Last activity",
+  "usr.never": "never",
+  "cap.poe_used": "powering now",
+  "cap.poe_tip": "PoE-out ports: powering a device now / all PoE ports; right — total power drawn"
 }

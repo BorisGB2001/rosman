@@ -186,6 +186,7 @@ func Poll(d model.Device, pass string, timeout time.Duration) (Health, string, e
 				Iface: m["name"], RxBytes: rx, TxBytes: tx, Running: m["running"] == "true"})
 		}
 	}
+	pollPoE(c, &h)
 	// Configured IP addresses (for the device list's IP dropdown).
 	if r, err := c.Run("/ip/address/print"); err == nil {
 		for _, re := range r.Re {

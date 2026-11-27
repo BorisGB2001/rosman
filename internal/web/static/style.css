@@ -671,3 +671,6 @@ button.badge.addrpick:hover { border-color: var(--accent); color: var(--fg); }
 tr.rowmanaged td { background: color-mix(in srgb, var(--good) 14%, transparent); }
 tr.rowmanaged td:first-child { box-shadow: inset 3px 0 0 var(--good); }
 tr.rowignored td { opacity: .55; }
+
+/* boris.gb 2026-11-28 00:20 - плашки «Покрытие бэкапов» и «Ёмкость портов»: все в одну строку, пока хватает ширины окна */
+.tiles.oneline { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }

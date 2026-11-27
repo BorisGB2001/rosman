@@ -66,6 +66,14 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE devices ADD COLUMN tg_chats TEXT NOT NULL DEFAULT ''`,
 		// boris.gb 2026-11-27 23:10 - per-user delay before a hint (tooltip) appears, ms
 		`ALTER TABLE users ADD COLUMN tip_delay_ms INTEGER NOT NULL DEFAULT 2500`,
+		// boris.gb 2026-11-28 00:02 - PoE-out of each port (mode, live status, watts) and the user's last sign-in
+		`ALTER TABLE device_ports ADD COLUMN poe TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE device_ports ADD COLUMN poe_status TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE device_ports ADD COLUMN poe_power TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP`,
+		`ALTER TABLE users ADD COLUMN last_login_ip TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE users ADD COLUMN last_seen_at TIMESTAMP`,
+		`ALTER TABLE users ADD COLUMN last_seen_ip TEXT NOT NULL DEFAULT ''`,
 	} {
 		_, _ = db.Exec(alter)
 	}
@@ -318,14 +326,22 @@ func (s *Store) CreateUser(u model.User) (int64, error) {
 	return res.LastInsertId()
 }
 
-const userCols = `id,username,password_hash,role,created_at,totp_secret_enc,totp_enabled,tip_delay_ms`
+const userCols = `id,username,password_hash,role,created_at,totp_secret_enc,totp_enabled,tip_delay_ms,last_login_at,last_login_ip,last_seen_at,last_seen_ip`
 
 func scanUser(row interface{ Scan(...any) error }) (model.User, error) {
 	var u model.User
 	var role string
-	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &role, &u.CreatedAt, &u.TOTPSecretEnc, &u.TOTPEnabled, &u.TipDelayMS)
+	var login, seen sql.NullTime
+	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &role, &u.CreatedAt, &u.TOTPSecretEnc, &u.TOTPEnabled, &u.TipDelayMS,
+		&login, &u.LastLoginIP, &seen, &u.LastSeenIP)
 	if errors.Is(err, sql.ErrNoRows) {
 		return u, ErrNotFound
+	}
+	if login.Valid {
+		u.LastLoginAt = &login.Time
+	}
+	if seen.Valid {
+		u.LastSeenAt = &seen.Time
 	}
 	u.Role = model.Role(role)
 	return u, err
@@ -1501,8 +1517,8 @@ func (s *Store) ReplacePorts(deviceID int64, ports []model.Port) error {
 		return err
 	}
 	for i, p := range ports {
-		if _, err := tx.Exec(`INSERT INTO device_ports(device_id,pos,name,type,running,disabled) VALUES(?,?,?,?,?,?)`,
-			deviceID, i, p.Name, p.Type, b2i(p.Running), b2i(p.Disabled)); err != nil {
+		if _, err := tx.Exec(`INSERT INTO device_ports(device_id,pos,name,type,running,disabled,poe,poe_status,poe_power) VALUES(?,?,?,?,?,?,?,?,?)`,
+			deviceID, i, p.Name, p.Type, b2i(p.Running), b2i(p.Disabled), p.PoE, p.PoEStatus, p.PoEPower); err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -1511,7 +1527,7 @@ func (s *Store) ReplacePorts(deviceID int64, ports []model.Port) error {
 }
 
 func (s *Store) DevicePorts(deviceID int64) ([]model.Port, error) {
-	rows, err := s.db.Query(`SELECT name,type,running,disabled FROM device_ports WHERE device_id=? ORDER BY pos`, deviceID)
+	rows, err := s.db.Query(`SELECT name,type,running,disabled,poe,poe_status,poe_power FROM device_ports WHERE device_id=? ORDER BY pos`, deviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -1520,7 +1536,7 @@ func (s *Store) DevicePorts(deviceID int64) ([]model.Port, error) {
 	for rows.Next() {
 		var p model.Port
 		var run, dis int
-		if err := rows.Scan(&p.Name, &p.Type, &run, &dis); err != nil {
+		if err := rows.Scan(&p.Name, &p.Type, &run, &dis, &p.PoE, &p.PoEStatus, &p.PoEPower); err != nil {
 			return nil, err
 		}
 		p.Running, p.Disabled = run != 0, dis != 0
@@ -2180,4 +2196,19 @@ func (s *Store) IgnoredNeighbors() (map[string]bool, error) {
 		out[k] = true
 	}
 	return out, rows.Err()
+}
+
+// MarkLogin records a successful sign-in (time and client address).
+func (s *Store) MarkLogin(id int64, ip string) error {
+	now := time.Now().UTC()
+	_, err := s.db.Exec(`UPDATE users SET last_login_at=?, last_login_ip=?, last_seen_at=?, last_seen_ip=? WHERE id=?`, now, ip, now, ip, id)
+	return err
+}
+
+// TouchUser records activity in the web UI. It writes at most once a minute
+// per user (or when the address changes), so it is cheap on every request.
+func (s *Store) TouchUser(id int64, ip string) {
+	now := time.Now().UTC()
+	_, _ = s.db.Exec(`UPDATE users SET last_seen_at=?, last_seen_ip=? WHERE id=? AND (last_seen_at IS NULL OR last_seen_at<? OR last_seen_ip<>?)`,
+		now, ip, id, now.Add(-time.Minute), ip)
 }

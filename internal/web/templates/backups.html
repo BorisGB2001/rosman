@@ -2,13 +2,11 @@
 <div class="cardhead"><h1 style="margin:0">{{t "bk.title"}}</h1>
   <span class="muted small">{{t "bk.subtitle"}}</span></div>
 
-<div class="tiles four">
+<div class="tiles oneline">
   <div class="tile"><span>{{t "bk.ok"}}</span><b style="color:var(--good)">{{.OkN}}</b></div>
   <div class="tile"><span>{{t "bk.stale"}}</span><b {{if .StaleN}}style="color:var(--warn)"{{end}}>{{.StaleN}}</b></div>
   <div class="tile"><span>{{t "bk.never"}}</span><b {{if .NeverN}}style="color:var(--bad)"{{end}}>{{.NeverN}}</b></div>
   <div class="tile"><span>{{t "cap.total"}}</span><b>{{.Total}}</b></div>
-</div>
-<div class="tiles four">
   <div class="tile"><span>{{t "bk.total_size"}}</span><b>{{hbytes .BkBytes}}</b><small class="muted">{{.BkCount}} {{t "srv.snapshots"}}</small></div>
 </div>
 

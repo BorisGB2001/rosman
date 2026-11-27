@@ -21,7 +21,7 @@
 
 <div class="card">
   <div class="scroll"><table class="dtable">
-    <thead><tr><th>{{t "login.user"}}</th><th>{{t "usr.role"}}</th><th>2FA</th><th>{{t "ca.created"}}</th><th>{{t "usr.actions"}}</th></tr></thead>
+    <thead><tr><th>{{t "login.user"}}</th><th>{{t "usr.role"}}</th><th>2FA</th><th>{{t "ca.created"}}</th><th>{{t "usr.last_login"}}</th><th>{{t "usr.last_seen"}}</th><th>{{t "usr.actions"}}</th></tr></thead>
     <tbody>
     {{range .Users}}
       <tr>
@@ -37,6 +37,8 @@
         </td>
         <td>{{if .TOTPEnabled}}<span class="badge good">on</span> <form class="inline" method="post" action="/users/{{.ID}}/2fa-disable"><button class="link" type="submit" onclick="return confirm('{{t "usr.2fa_reset_confirm"}}')">{{t "usr.reset"}}</button></form>{{else}}<span class="badge">off</span>{{end}}</td>
         <td class="muted">{{ts .CreatedAt}}</td>
+        <td class="nowrap">{{if .LastLoginAt}}<span title="{{tsp .LastLoginAt}}">{{ago .LastLoginAt}}</span> <span class="muted mono small">{{.LastLoginIP}}</span>{{else}}<span class="muted">{{t "usr.never"}}</span>{{end}}</td>
+        <td class="nowrap">{{if .LastSeenAt}}<span title="{{tsp .LastSeenAt}}">{{ago .LastSeenAt}}</span> <span class="muted mono small">{{.LastSeenIP}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
         <td>
           <details><summary class="link" style="display:inline-block">{{t "usr.resetpw"}}</summary>
             <form class="inline" method="post" action="/users/{{.ID}}/password" style="margin-top:6px">

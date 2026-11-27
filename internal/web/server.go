@@ -2,6 +2,8 @@ package web
 
 import (
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"strings"
 
@@ -90,4 +92,13 @@ func hbytesAny(v any) string {
 		return humanBytes(uint64(n))
 	}
 	return "—"
+}
+
+// remoteIP is the client address without the port. ROSMan terminates TLS
+// itself, so RemoteAddr is the real peer; proxy headers are not trusted.
+func remoteIP(r *http.Request) string {
+	if h, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return h
+	}
+	return r.RemoteAddr
 }

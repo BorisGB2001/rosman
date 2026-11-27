@@ -83,6 +83,10 @@ Localization lives in plain JSON files under
   or created with manufacturer, type, role, platform, site, interface and
   primary IP. Devices that already existed in NetBox only get empty fields
   filled and a `rosman` tag; nothing is deleted.
+- **PoE** — PoE-out ports are read from the device (mode, live status, watts),
+  marked with ⚡ on the front panel and counted on the port capacity page.
+- **User activity** — the user list shows each account's last sign-in and last
+  activity with the client IP.
 - **Panel editor** — drag tiles, separators and whole lines; select several
   tiles (Ctrl/⌘-click, Shift-click, a line handle) and move them together;
   any number of separators per line.

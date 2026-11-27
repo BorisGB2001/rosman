@@ -16,7 +16,8 @@
 
 <div class="card">
   <form method="get" action="/syslog" style="display:flex;flex-direction:row;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-    <select name="dev" onchange="this.form.submit()"><option value="">{{t "slg.f_alldev"}}</option>{{range .Devices}}<option value="{{.ID}}" {{if eq .ID $.Dev}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+    <select name="site" onchange="this.form.dev.value='';this.form.submit()" title="{{t "col.site"}}"><option value="">{{t "filter.all_sites"}}</option>{{range .Sites}}<option value="{{.ID}}" {{if eq .ID $.Site}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+    <select name="dev" onchange="this.form.submit()"><option value="">{{t "slg.f_alldev"}}</option>{{range .Devices}}{{if or (eq $.Site 0) (and .SiteID (eq (deref .SiteID) $.Site))}}<option value="{{.ID}}" {{if eq .ID $.Dev}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}</select>
     <span class="pseg">
       <a href="#" data-set="sev=" class="{{if eq .Sev ""}}on{{end}}">{{t "slg.f_all"}}</a><a href="#" data-set="sev=warn" class="{{if eq .Sev "warn"}}on{{end}}">{{t "slg.f_warn"}}</a><a href="#" data-set="sev=err" class="{{if eq .Sev "err"}}on{{end}}">{{t "slg.f_err"}}</a>
     </span>

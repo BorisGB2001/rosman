@@ -39,6 +39,10 @@ func syslogWhere(f model.SyslogFilter) (string, []any) {
 		w = append(w, "l.device_id=?")
 		args = append(args, f.DeviceID)
 	}
+	if f.SiteID > 0 {
+		w = append(w, "l.device_id IN (SELECT id FROM devices WHERE site_id=?)")
+		args = append(args, f.SiteID)
+	}
 	if f.MaxSev > 0 {
 		w = append(w, "l.sev<=?")
 		args = append(args, f.MaxSev)

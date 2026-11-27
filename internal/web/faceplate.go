@@ -105,6 +105,39 @@ func drawPort(b *strings.Builder, x, y int, kind, color string, led bool, title,
 		cx, y+fpCH+13, template.HTMLEscapeString(label))
 }
 
+// drawPoE marks a PoE-out port with a lightning bolt in the tile's top-left
+// corner: filled amber while it powers a device, amber outline when PoE is on
+// but nothing draws power, grey when PoE-out is switched off.
+func drawPoE(b *strings.Builder, x, y int, p model.Port) {
+	if p.PoE == "" {
+		return
+	}
+	fill, stroke := "var(--surface)", "#f59e0b"
+	switch {
+	case p.PoEPowered():
+		fill = "#f59e0b"
+	case !p.PoEOn():
+		stroke = "var(--muted)"
+	}
+	fmt.Fprintf(b, `<path d="M%d %d l-5 8 h4 l-2 7 l6 -9 h-4 l2 -6 z" fill="%s" stroke="%s" stroke-width="1.2" stroke-linejoin="round"><title>%s</title></path>`,
+		x+10, y+3, fill, stroke, template.HTMLEscapeString(poeTitle(p)))
+}
+
+// poeTitle describes a port's PoE-out for hints ("PoE: auto-on, powered-on, 3.2 W").
+func poeTitle(p model.Port) string {
+	if p.PoE == "" {
+		return ""
+	}
+	s := "PoE: " + p.PoE
+	if p.PoEStatus != "" {
+		s += ", " + p.PoEStatus
+	}
+	if p.PoEPower != "" && strings.Trim(p.PoEPower, "0.") != "" {
+		s += ", " + p.PoEPower + " W"
+	}
+	return s
+}
+
 func portColor(p model.Port) (color string, led bool) {
 	switch {
 	case p.Disabled:
@@ -159,8 +192,13 @@ func facePlateSVG(ports []model.Port, lang string) template.HTML {
 		fmt.Fprintf(&b, `<rect x="0.5" y="0.5" width="%d" height="%d" rx="9" fill="var(--bg)" stroke="var(--line)"/>`, W-1, H-1)
 		for i, p := range ps {
 			color, led := portColor(p)
-			drawPort(&b, fpPad+(i%perRow)*(fpCW+fpGap), fpPad+(i/perRow)*(fpCH+fpGap+fpLbl), k, color, led,
-				p.Name+" ("+p.Type+")", kindLabel(k, p.Name))
+			x, y := fpPad+(i%perRow)*(fpCW+fpGap), fpPad+(i/perRow)*(fpCH+fpGap+fpLbl)
+			title := p.Name + " (" + p.Type + ")"
+			if t := poeTitle(p); t != "" {
+				title += " · " + t
+			}
+			drawPort(&b, x, y, k, color, led, title, kindLabel(k, p.Name))
+			drawPoE(&b, x, y, p)
 		}
 		b.WriteString(`</svg></div>`)
 	}
@@ -247,6 +285,9 @@ func facePlateFromLayout(layoutJSON string, ports []model.Port) template.HTML {
 			title := slot.Label
 			if present {
 				title = p.Name + " (" + p.Type + ")"
+				if t := poeTitle(p); t != "" {
+					title += " · " + t
+				}
 			}
 			text := slot.Label
 			if slot.Name != "" {
@@ -254,6 +295,9 @@ func facePlateFromLayout(layoutJSON string, ports []model.Port) template.HTML {
 				title += " — " + slot.Name
 			}
 			drawPort(&svg, fpPad+c*(fpCW+fpGap), fpPad, kind, color, led, title, shortText(text, 8))
+			if present {
+				drawPoE(&svg, fpPad+c*(fpCW+fpGap), fpPad, p)
+			}
 			drawn++
 		}
 		b.WriteString(`<div class="fpgroup">`)

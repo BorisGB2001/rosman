@@ -20,6 +20,10 @@ type User struct {
 	TOTPSecretEnc string
 	TOTPEnabled   bool
 	TipDelayMS    int // hover delay before a hint (tooltip) appears
+	LastLoginAt   *time.Time
+	LastLoginIP   string
+	LastSeenAt    *time.Time // last request in the web UI
+	LastSeenIP    string
 }
 
 // ComplianceRule checks a device's /export config for a required or forbidden
@@ -272,11 +276,20 @@ type BridgeHost struct {
 
 // Port is a physical/interface port for the device faceplate.
 type Port struct {
-	Name     string
-	Type     string
-	Running  bool
-	Disabled bool
+	Name      string
+	Type      string
+	Running   bool
+	Disabled  bool
+	PoE       string // PoE-out mode: auto-on | forced-on | off; "" = the port has no PoE-out
+	PoEStatus string // powered-on, waiting-for-load, short-circuit, …
+	PoEPower  string // watts drawn now, as reported ("3.2")
 }
+
+// PoEOn reports whether the port can feed power (PoE-out not switched off).
+func (p Port) PoEOn() bool { return p.PoE != "" && p.PoE != "off" }
+
+// PoEPowered reports whether the port is feeding a device right now.
+func (p Port) PoEPowered() bool { return p.PoEStatus == "powered-on" }
 
 // NetAddr is one IP address configured on the device.
 type NetAddr struct {
@@ -366,7 +379,8 @@ type SyslogMsg struct {
 // SyslogFilter narrows a syslog query. Zero values mean "any".
 type SyslogFilter struct {
 	DeviceID int64
-	MaxSev   int // 0 = any; otherwise sev <= MaxSev (3 = errors and worse)
+	SiteID   int64 // only devices of this location (0 = any)
+	MaxSev   int   // 0 = any; otherwise sev <= MaxSev (3 = errors and worse)
 	Text     string
 	Since    time.Time
 	BeforeID int64
