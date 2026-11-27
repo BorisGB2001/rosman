@@ -63,6 +63,21 @@
   <label>{{t "slg.set_days"}}<input name="syslog_days" value="{{.Syslog.Days}}" style="width:90px"></label>
   <p class="muted small">{{t "slg.stored"}}: {{.Syslog.Stored}} · <a href="/syslog">{{t "slg.title"}}</a></p>
 </div>
+<div class="card narrow" id="netbox">
+  <h3>NetBox {{if .NBOn}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</h3>
+  <p class="muted small">{{t "nb.set_note"}}</p>
+  <label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="netbox_enabled" {{if eq (index .V "netbox_enabled") "on"}}checked{{end}}> {{t "nb.set_enabled"}}</label>
+  <label>{{t "nb.set_url"}}<input name="netbox_url" value="{{index .V "netbox_url"}}" placeholder="https://netbox.example.ru"></label>
+  <label>{{t "nb.set_token"}}<input type="password" name="netbox_token" autocomplete="off" placeholder="{{if .NBTokenSet}}{{t "set.secret_keep"}}{{else}}nbt_… / 40 hex{{end}}"></label>
+  {{if .NBTokenSet}}<label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="netbox_token_clear"> {{t "nb.set_token_clear"}}</label>{{end}}
+  <label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="netbox_insecure" {{if eq (index .V "netbox_insecure") "on"}}checked{{end}}> {{t "nb.set_insecure"}}</label>
+  <label>{{t "nb.set_site"}}<input name="netbox_site" value="{{index .V "netbox_site"}}" placeholder="{{t "nb.set_site_ph"}}"></label>
+  <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn secondary sm" type="submit" formaction="/settings/netbox/check" formnovalidate>{{t "nb.check"}}</button>
+    <button class="btn secondary sm" type="submit" formaction="/settings/netbox/syncall" formnovalidate onclick="return confirm('{{t "nb.syncall_confirm"}}')">{{t "nb.syncall"}}</button>
+  </div>
+  <p class="muted small">{{t "nb.set_rules"}}</p>
+</div>
 <div class="card narrow" id="ai">
   <h3>{{t "ai.set_title"}} {{if or .AIKeySet .AIEnvKey}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</h3>
   <p class="muted small">{{t "ai.set_note"}}</p>

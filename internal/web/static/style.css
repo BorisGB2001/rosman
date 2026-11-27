@@ -641,7 +641,10 @@ button.badge.addrpick:hover { border-color: var(--accent); color: var(--fg); }
 
 /* boris.gb 2026-11-27 23:25 - Обзор: плашки «Сервер» и «ROSMan» */
 .srvcard .srvhead { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
-.srvrow { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+/* boris.gb 2026-11-27 23:49 - обе строки по 6 равных колонок на всю ширину: плашки одной ширины в обоих рядах */
+.srvrow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 1200px) { .srvrow { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .srvrow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .srvtile { display: flex; flex-direction: column; gap: 3px; min-height: 72px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); min-width: 0; }
 .srvtile > span { color: var(--muted); font-size: 12px; }
 .srvtile > b { font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -663,3 +666,8 @@ button.badge.addrpick:hover { border-color: var(--accent); color: var(--fg); }
 
 /* boris.gb 2026-11-27 23:25 - блок «Команда на устройство» */
 .execout { min-height: 120px; max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; margin: 10px 0 0; padding: 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); font-size: 12px; }
+
+/* boris.gb 2026-11-27 23:49 - обнаруженные соседи: уже добавленные в базу — зелёные, скрытые — бледные */
+tr.rowmanaged td { background: color-mix(in srgb, var(--good) 14%, transparent); }
+tr.rowmanaged td:first-child { box-shadow: inset 3px 0 0 var(--good); }
+tr.rowignored td { opacity: .55; }

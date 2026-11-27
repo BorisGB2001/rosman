@@ -63,6 +63,7 @@
   <span class="muted small">{{t "lay.brush"}}:</span>
   <span id="brush-chip" class="badge">—</span>
   <span class="muted small">{{t "lay.brush_switch"}}</span>
+  <span id="selinfo" style="visibility:hidden;margin-left:auto;display:inline-flex;gap:8px;align-items:center"><span class="badge" style="background:var(--accent);color:#fff">{{t "lay.selected"}}: <b id="selcount-l">0</b></span><button type="button" class="btn sm secondary" onclick="selClear()">{{t "lay.sel_clear"}}</button></span>
 </div>
 
 <!-- Editor grid -->
@@ -102,7 +103,25 @@
 .ltile.missing .pbody{outline:2px dashed var(--bad);outline-offset:1px}
 .ltile .pdel{position:absolute;top:-6px;right:-4px;font-size:11px;line-height:1;cursor:pointer;opacity:0;background:var(--bad);color:#fff;border-radius:50%;width:15px;height:15px;display:flex;align-items:center;justify-content:center}
 .ltile:hover .pdel{opacity:1}
-.ltile.dragging{opacity:.4}
+.ltile.dragging{opacity:.35}
+/* boris.gb 2026-11-27 23:55 - перетаскивание строк/плиток, выделение, вставка разделителя */
+.ltile,.lhandle{touch-action:none}
+.ltile.sel .pbody{outline:2px solid var(--accent);outline-offset:2px}
+.ltile.gap.sel .pbody{border-left-color:var(--fg)}
+.lhandle{align-self:stretch;display:flex;align-items:center;padding:0 4px;cursor:grab;color:var(--muted);font-size:16px;user-select:none;border-right:1px dashed var(--line);margin-right:2px}
+.lhandle:hover{color:var(--accent)}
+.lrow.dragging{opacity:.4}
+.lrow{flex-wrap:nowrap}
+.lrow .lblock{flex-wrap:wrap;min-width:0;flex:0 1 auto}
+.lrow .lrowbody{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;flex:1;min-width:0}
+.lrowempty{align-self:center;padding:0 6px}
+.ltile .pgap{position:absolute;bottom:14px;right:-6px;font-size:11px;line-height:1;cursor:pointer;opacity:0;background:var(--surface);color:var(--accent);border:1px solid var(--accent);border-radius:4px;width:15px;height:15px;display:flex;align-items:center;justify-content:center}
+.ltile:hover .pgap{opacity:1}
+body.lgdragging, body.lgdragging *{cursor:grabbing!important;user-select:none}
+.lghost{position:fixed;z-index:1000;pointer-events:none;background:var(--accent);color:#fff;font-size:12px;padding:3px 9px;border-radius:6px;box-shadow:0 6px 18px #0006;white-space:nowrap}
+.lmark{position:fixed;z-index:999;pointer-events:none;background:var(--accent);border-radius:2px;box-shadow:0 0 0 2px #fff3}
+.lnewrow{margin-top:4px;padding:10px;border:2px dashed var(--line);border-radius:8px;text-align:center;color:var(--muted);font-size:13px}
+.lnewrow.on{border-color:var(--accent);color:var(--accent);background:#8882}
 .grpbtn{display:flex;align-items:center;gap:6px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;cursor:pointer}
 .grpbtn.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
 .grpsw{width:16px;height:16px;border-radius:3px;border:1px solid #0004}
@@ -167,12 +186,24 @@ function lgEditTile(slot){
 if(!Array.isArray(STATE.groups)) STATE.groups=[];
 if(!Array.isArray(STATE.rows)) STATE.rows=[];
 var BRUSH=null; // null = clear-group brush; else a group id
-var DRAG=null;  // {r,c}
+// boris.gb 2026-11-27 23:55 - drag & drop on pointer events (works in every browser and on touch):
+// tiles and separators are dragged one by one or as a selection (Ctrl/⌘-click, Shift-click, click on a row handle),
+// whole rows are dragged by their handle ⠿. HTML5 drag&drop did not start in some browsers.
+var SEL=new Set();   // selected slot objects
+var ANCHOR=null;     // last plainly selected slot, for Shift-click ranges
+var PD=null;         // pending press: {x,y,kind,slot,ri,el}
+var DRAG=null;       // active drag: {kind,items,ri,ghost}
+var JUSTDRAGGED=false;
 
 function gcolor(id){var g=STATE.groups.find(function(x){return x.id===id});return g?g.color:'';}
 function uid(){return 'g'+Math.random().toString(36).slice(2,7);}
+function slotPos(slot){ for(var r=0;r<STATE.rows.length;r++){ var c=STATE.rows[r].indexOf(slot); if(c>=0) return {r:r,c:c}; } return null; }
+function selOrdered(){ var out=[]; STATE.rows.forEach(function(row){ row.forEach(function(s){ if(SEL.has(s)) out.push(s); }); }); return out; }
+function selClean(){ var live=new Set(); STATE.rows.forEach(function(r){r.forEach(function(s){live.add(s);});}); SEL.forEach(function(s){ if(!live.has(s)) SEL.delete(s); }); }
+function selClear(){ SEL.clear(); ANCHOR=null; lgRender(); }
 
 function lgRender(){
+  selClean();
   // groups panel
   var gl=document.getElementById('grouplist'); gl.innerHTML='';
   var none=mkGroupBtn(null,'{{t "lay.no_group"}}','transparent');
@@ -182,20 +213,25 @@ function lgRender(){
   var chip=document.getElementById('brush-chip');
   if(BRUSH===null){chip.textContent='{{t "lay.no_group"}}';chip.style.background='';chip.style.color='';}
   else{var g=STATE.groups.find(function(x){return x.id===BRUSH});chip.textContent=g?g.name:'—';chip.style.background=g?g.color:'';chip.style.color='#07140a';}
+  // selection info
+  var si=document.getElementById('selinfo');
+  if(si){ si.style.visibility=SEL.size?'visible':'hidden'; document.getElementById('selcount-l').textContent=SEL.size; }
   // grid
   var grid=document.getElementById('grid'); grid.innerHTML='';
   STATE.rows.forEach(function(row,ri){
     var rd=document.createElement('div'); rd.className='lrow'; rd.dataset.r=ri;
-    rd.addEventListener('dragover',function(e){e.preventDefault();rd.classList.add('drop');});
-    rd.addEventListener('dragleave',function(){rd.classList.remove('drop');});
-    rd.addEventListener('drop',function(e){e.preventDefault();rd.classList.remove('drop');lgDrop(ri,row.length);});
+    var h=document.createElement('div'); h.className='lhandle'; h.textContent='⠿'; h.title='{{t "lay.row_handle"}}';
+    h.addEventListener('pointerdown',function(e){ if(e.button!==0) return; e.preventDefault(); PD={x:e.clientX,y:e.clientY,kind:'row',ri:ri,el:rd}; });
+    rd.appendChild(h);
+    var body=document.createElement('div'); body.className='lrowbody'; rd.appendChild(body);
     var blk=null;
     row.forEach(function(slot,ci){
       var t=mkTile(slot,ri,ci);
-      if(slot.gap){ blk=null; rd.appendChild(t); return; }
-      if(!blk){ blk=document.createElement('div'); blk.className='lblock'; rd.appendChild(blk); }
+      if(slot.gap){ blk=null; body.appendChild(t); return; }
+      if(!blk){ blk=document.createElement('div'); blk.className='lblock'; body.appendChild(blk); }
       blk.appendChild(t);
     });
+    if(!row.length){ var em=document.createElement('span'); em.className='muted small lrowempty'; em.textContent='{{t "lay.row_empty"}}'; body.appendChild(em); }
     grid.appendChild(rd);
   });
   document.getElementById('emptyhint').style.display=STATE.rows.length?'none':'block';
@@ -219,46 +255,159 @@ function mkGroupBtn(id,name,color){
 }
 
 function mkTile(slot,ri,ci){
-  var d=document.createElement('div'); d.className='ltile'+(slot.gap?' gap':''); d.draggable=true;
+  var d=document.createElement('div'); d.className='ltile'+(slot.gap?' gap':'')+(SEL.has(slot)?' sel':'');
   d.dataset.r=ri; d.dataset.c=ci;
   var body=document.createElement('div'); body.className='pbody';
   if(!slot.gap){ var col=gcolor(slot.group); if(col) body.style.background=col; var s=document.createElement('span'); s.className='slot'; body.appendChild(s); }
   var lab=document.createElement('div'); lab.className='plabel'; lab.textContent=slot.gap?'':(slot.label||''); lab.title=slot.label||'';
+  if(slot.gap) d.title='{{t "lay.gap_title"}}';
   if(IS_DEVICE && !slot.gap && !realFor(slot.label)){ d.classList.add('missing'); d.title='{{t "lay.not_on_device"}}'; }
-  var del=document.createElement('div'); del.className='pdel'; del.textContent='×';
-  del.onclick=function(e){e.stopPropagation();STATE.rows[ri].splice(ci,1);if(STATE.rows[ri].length===0)STATE.rows.splice(ri,1);lgRender();};
+  var del=document.createElement('div'); del.className='pdel'; del.textContent='×'; del.title='{{t "site.delete"}}';
+  del.onclick=function(e){e.stopPropagation(); var p=slotPos(slot); if(!p) return; STATE.rows[p.r].splice(p.c,1); SEL.delete(slot); lgRender();};
   d.appendChild(del); d.appendChild(body); d.appendChild(lab);
   if(!slot.gap){
     if(slot.name){ var nm=document.createElement('div'); nm.className='pname'; nm.textContent=slot.name; nm.title=slot.name; d.appendChild(nm); }
     var ed=document.createElement('div'); ed.className='pedit'; ed.textContent='✎'; ed.title='{{t "lay.rename"}}';
     ed.onclick=function(e){e.stopPropagation();lgEditTile(slot);};
     d.appendChild(ed);
+    var gp=document.createElement('div'); gp.className='pgap'; gp.textContent='⎸'; gp.title='{{t "lay.insert_gap"}}';
+    gp.onclick=function(e){e.stopPropagation(); var p=slotPos(slot); if(!p) return; STATE.rows[p.r].splice(p.c+1,0,{gap:true}); lgRender();};
+    d.appendChild(gp);
     d.ondblclick=function(e){e.stopPropagation();lgEditTile(slot);};
   }
-  if(!slot.gap){
-    d.onclick=function(){ if(BRUSH===null)delete slot.group; else slot.group=BRUSH; lgRender(); };
-  }
-  d.addEventListener('dragstart',function(e){DRAG={r:ri,c:ci};d.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
-  d.addEventListener('dragend',function(){d.classList.remove('dragging');});
-  d.addEventListener('dragover',function(e){e.preventDefault();});
-  d.addEventListener('drop',function(e){e.preventDefault();e.stopPropagation();lgDrop(ri,ci);});
+  d.onclick=function(e){
+    if(JUSTDRAGGED) return;
+    if(e.ctrlKey||e.metaKey){ if(SEL.has(slot)) SEL.delete(slot); else SEL.add(slot); ANCHOR=slot; lgRender(); return; }
+    if(e.shiftKey && ANCHOR){
+      var a=slotPos(ANCHOR), b=slotPos(slot);
+      if(a && b){
+        var lin=[]; STATE.rows.forEach(function(r){ r.forEach(function(x){ lin.push(x); }); });
+        var i=lin.indexOf(ANCHOR), j=lin.indexOf(slot); if(i>j){ var t=i; i=j; j=t; }
+        for(var k=i;k<=j;k++) SEL.add(lin[k]);
+        lgRender(); return;
+      }
+    }
+    if(slot.gap) return;
+    // paint with the brush: the whole selection when the clicked tile is part of it
+    var targets=(SEL.has(slot) && SEL.size>1)?selOrdered():[slot];
+    targets.forEach(function(x){ if(x.gap) return; if(BRUSH===null) delete x.group; else x.group=BRUSH; });
+    lgRender();
+  };
+  // macOS turns Ctrl-click into a right click: treat it as "add to selection" too
+  d.addEventListener('contextmenu',function(e){ if(!e.ctrlKey) return; e.preventDefault(); if(SEL.has(slot)) SEL.delete(slot); else SEL.add(slot); ANCHOR=slot; lgRender(); });
+  d.addEventListener('pointerdown',function(e){
+    if(e.button!==0 || e.ctrlKey && navigator.platform.indexOf('Mac')===0 || e.target.closest('.pdel,.pedit,.pgap')) return;
+    PD={x:e.clientX,y:e.clientY,kind:'tiles',slot:slot,el:d};
+  });
   return d;
 }
 
-function lgDrop(tr,tc){
-  if(!DRAG) return;
-  var moved=STATE.rows[DRAG.r][DRAG.c];
-  // remove from source
-  STATE.rows[DRAG.r].splice(DRAG.c,1);
-  // adjust target col if same row and after source
-  if(DRAG.r===tr && DRAG.c<tc) tc--;
-  if(!STATE.rows[tr]) tr=STATE.rows.length-1>=0?STATE.rows.length-1:0;
-  if(!STATE.rows[tr]){STATE.rows.push([]);tr=STATE.rows.length-1;}
-  STATE.rows[tr].splice(tc,0,moved);
-  // drop empty source row
-  STATE.rows=STATE.rows.filter(function(r){return r.length>0;});
-  DRAG=null; lgRender();
+// ---- drag engine ----
+function mk(cls){ var e=document.createElement('div'); e.className=cls; document.body.appendChild(e); return e; }
+var MARK=null, NEWROW=null;
+function beginDrag(e){
+  document.body.classList.add('lgdragging');
+  if(PD.kind==='row'){
+    DRAG={kind:'row',ri:PD.ri,ghost:mk('lghost')};
+    DRAG.ghost.textContent='{{t "lay.row"}} '+(PD.ri+1);
+    PD.el.classList.add('dragging');
+  } else {
+    var items=(SEL.has(PD.slot)&&SEL.size>1)?selOrdered():[PD.slot];
+    DRAG={kind:'tiles',items:items,ghost:mk('lghost')};
+    var ports=items.filter(function(x){return !x.gap;}).length, gaps=items.length-ports;
+    DRAG.ghost.textContent=items.length===1?(items[0].gap?'⎸':(items[0].label||'?')):('{{t "lay.ghost_ports"}}: '+ports+(gaps?' · ⎸ '+gaps:''));
+    document.querySelectorAll('.ltile').forEach(function(el){ var r=+el.dataset.r, c=+el.dataset.c; if(items.indexOf(STATE.rows[r][c])>=0) el.classList.add('dragging'); });
+    // drop zone for "a new line at the end"
+    NEWROW=document.createElement('div'); NEWROW.className='lnewrow'; NEWROW.textContent='+ {{t "lay.new_row"}}';
+    document.getElementById('grid').appendChild(NEWROW);
+  }
+  MARK=mk('lmark');
 }
+function rowsEls(){ return Array.prototype.slice.call(document.querySelectorAll('#grid .lrow')); }
+function tileTarget(x,y){
+  if(NEWROW){ var nr=NEWROW.getBoundingClientRect(); if(y>=nr.top-4){ return {r:STATE.rows.length,c:0,box:nr,newRow:true}; } }
+  var rows=rowsEls(); if(!rows.length) return {r:STATE.rows.length,c:0,newRow:true};
+  var best=0, bd=1e9;
+  rows.forEach(function(rd,i){ var b=rd.getBoundingClientRect(); var dd=y<b.top?b.top-y:(y>b.bottom?y-b.bottom:0); if(dd<bd){bd=dd;best=i;} });
+  var rd=rows[best], tiles=Array.prototype.slice.call(rd.querySelectorAll('.ltile'));
+  var idx=tiles.length;
+  for(var i=0;i<tiles.length;i++){
+    var b=tiles[i].getBoundingClientRect();
+    if(y<b.top){ idx=i; break; }
+    if(y<=b.bottom && x<b.left+b.width/2){ idx=i; break; }
+  }
+  var mb;
+  if(idx<tiles.length){ var t=tiles[idx].getBoundingClientRect(); mb={left:t.left-5,top:t.top,height:t.height}; }
+  else if(tiles.length){ var l=tiles[tiles.length-1].getBoundingClientRect(); mb={left:l.right+3,top:l.top,height:l.height}; }
+  else { var rb=rd.getBoundingClientRect(); mb={left:rb.left+34,top:rb.top+6,height:rb.height-12}; }
+  return {r:+rd.dataset.r,c:idx,mark:mb};
+}
+function rowTarget(y){
+  var rows=rowsEls(), idx=rows.length;
+  for(var i=0;i<rows.length;i++){ var b=rows[i].getBoundingClientRect(); if(y<b.top+b.height/2){ idx=i; break; } }
+  var ref=rows[Math.min(idx,rows.length-1)].getBoundingClientRect();
+  var top=idx<rows.length?ref.top-7:ref.bottom+5;
+  return {i:idx,mark:{left:ref.left,top:top,width:ref.width}};
+}
+function moveDrag(e){
+  DRAG.ghost.style.left=(e.clientX+14)+'px'; DRAG.ghost.style.top=(e.clientY+12)+'px';
+  if(NEWROW) NEWROW.classList.remove('on');
+  if(DRAG.kind==='row'){
+    var t=rowTarget(e.clientY); DRAG.t=t;
+    MARK.className='lmark h'; MARK.style.left=t.mark.left+'px'; MARK.style.top=t.mark.top+'px'; MARK.style.width=t.mark.width+'px'; MARK.style.height='3px';
+  } else {
+    var tt=tileTarget(e.clientX,e.clientY); DRAG.t=tt;
+    if(tt.newRow){ MARK.style.display='none'; if(NEWROW) NEWROW.classList.add('on'); }
+    else { MARK.style.display='block'; MARK.className='lmark'; MARK.style.left=tt.mark.left+'px'; MARK.style.top=tt.mark.top+'px'; MARK.style.height=tt.mark.height+'px'; MARK.style.width='3px'; }
+  }
+}
+function endDrag(){
+  document.body.classList.remove('lgdragging');
+  if(DRAG&&DRAG.ghost) DRAG.ghost.remove();
+  if(MARK){ MARK.remove(); MARK=null; }
+  if(NEWROW){ NEWROW.remove(); NEWROW=null; }
+}
+function finishDrag(){
+  var t=DRAG.t;
+  if(DRAG.kind==='row' && t){
+    var src=DRAG.ri, dst=t.i; if(dst>src) dst--;
+    if(dst!==src){ var row=STATE.rows.splice(src,1)[0]; STATE.rows.splice(dst,0,row); }
+  } else if(DRAG.kind==='tiles' && t){
+    var items=DRAG.items, trow=t.newRow?null:STATE.rows[t.r], c=t.c;
+    if(trow){ c-=trow.slice(0,c).filter(function(x){return items.indexOf(x)>=0;}).length; }
+    var emptied=[];
+    STATE.rows.forEach(function(r){ var had=false; for(var i=r.length-1;i>=0;i--){ if(items.indexOf(r[i])>=0){ r.splice(i,1); had=true; } } if(had && !r.length) emptied.push(r); });
+    if(trow){ Array.prototype.splice.apply(trow,[c,0].concat(items)); }
+    else STATE.rows.push(items.slice());
+    // a line the drag left empty disappears; a line added on purpose ("Add row") stays
+    STATE.rows=STATE.rows.filter(function(r){ return r.length || emptied.indexOf(r)<0 || r===trow; });
+  }
+}
+document.addEventListener('pointermove',function(e){
+  if(!PD) return;
+  if(!DRAG){ if(Math.abs(e.clientX-PD.x)+Math.abs(e.clientY-PD.y)<6) return; beginDrag(e); }
+  e.preventDefault(); moveDrag(e);
+});
+document.addEventListener('pointerup',function(){
+  if(DRAG){ finishDrag(); endDrag(); DRAG=null; JUSTDRAGGED=true; setTimeout(function(){JUSTDRAGGED=false;},0); PD=null; lgRender(); return; }
+  // a click on a row handle (no drag) selects / unselects the whole line
+  if(PD && PD.kind==='row'){
+    var row=STATE.rows[PD.ri]||[], all=row.length && row.every(function(s){return SEL.has(s);});
+    row.forEach(function(s){ if(all) SEL.delete(s); else SEL.add(s); });
+    lgRender();
+  }
+  PD=null;
+});
+document.addEventListener('keydown',function(e){
+  if(e.target.closest && e.target.closest('input,textarea,select')) return;
+  if(e.key==='Escape'){ if(DRAG){ endDrag(); DRAG=null; PD=null; lgRender(); } else if(SEL.size){ selClear(); } }
+  if((e.key==='Delete'||e.key==='Backspace') && SEL.size){
+    e.preventDefault();
+    if(!confirm('{{t "lay.del_sel_confirm"}} ('+SEL.size+')')) return;
+    STATE.rows.forEach(function(r){ for(var i=r.length-1;i>=0;i--) if(SEL.has(r[i])) r.splice(i,1); });
+    SEL.clear(); lgRender();
+  }
+});
 
 function lgGenerate(){
   var eth=parseInt(document.getElementById('g-eth').value)||0;
@@ -276,7 +425,13 @@ function lgAddTile(){
   if(!STATE.rows.length)STATE.rows.push([]);
   STATE.rows[STATE.rows.length-1].push({label:lab}); document.getElementById('t-label').value=''; lgRender();
 }
-function lgAddGap(){ if(!STATE.rows.length)STATE.rows.push([]); STATE.rows[STATE.rows.length-1].push({gap:true}); lgRender(); }
+// a separator goes after the last selected tile; without a selection — to the end of the last line.
+// Any number of separators per line is allowed.
+function lgAddGap(){
+  var sel=selOrdered();
+  if(sel.length){ var p=slotPos(sel[sel.length-1]); STATE.rows[p.r].splice(p.c+1,0,{gap:true}); lgRender(); return; }
+  if(!STATE.rows.length)STATE.rows.push([]); STATE.rows[STATE.rows.length-1].push({gap:true}); lgRender();
+}
 function lgAddRow(){ STATE.rows.push([]); lgRender(); }
 function lgAddGroup(){
   var n=(document.getElementById('ng-name').value||'').trim(); if(!n)return;

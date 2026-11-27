@@ -78,6 +78,14 @@ Localization lives in plain JSON files under
   with their usual network symbols.
 - **Hints** — button hints appear after a hover delay each user sets on the
   Account page (default 2.5 s).
+- **NetBox sync** — with a NetBox URL and API token (Settings → NetBox) every
+  device is mirrored one way, ROSMan → NetBox: matched by serial, IP or name,
+  or created with manufacturer, type, role, platform, site, interface and
+  primary IP. Devices that already existed in NetBox only get empty fields
+  filled and a `rosman` tag; nothing is deleted.
+- **Panel editor** — drag tiles, separators and whole lines; select several
+  tiles (Ctrl/⌘-click, Shift-click, a line handle) and move them together;
+  any number of separators per line.
 
 Credentials are encrypted at rest (AES-256-GCM); passwords are bcrypt-hashed.
 

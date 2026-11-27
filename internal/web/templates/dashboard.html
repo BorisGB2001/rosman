@@ -4,13 +4,14 @@
 {{with .Srv}}
 <div class="card srvcard">
   <div class="srvhead"><h3 style="margin:0">{{t "srv.server"}}</h3>
-    <span class="muted small">{{.Host.Hostname}}{{if .Host.OS}} · {{.Host.OS}}{{end}}{{if .Host.Kernel}} · {{.Host.Kernel}}{{end}}{{if .Host.Uptime}} · {{t "srv.uptime"}} {{humanDur .Host.Uptime}}{{end}}</span></div>
+    <span class="muted small">{{.Host.Hostname}}{{if .Host.Kernel}} · {{t "srv.kernel"}} {{.Host.Kernel}}{{end}}</span></div>
   <div class="srvrow">
     <div class="srvtile"><span>{{t "srv.hardware"}}</span><b>{{if .Host.Hardware}}{{.Host.Hardware}}{{else}}—{{end}}</b><small class="muted">{{if .Host.CPUModel}}{{.Host.CPUModel}} · {{end}}{{.Host.Cores}} {{t "srv.cores"}}</small></div>
     <div class="srvtile"><span>CPU</span><b>{{.Host.CPUPct}}%</b><small class="muted">{{t "srv.load"}} {{printf "%.2f" .Host.Load1}}</small></div>
     <div class="srvtile"><span>{{t "srv.mem"}}</span><b>{{if .Host.MemTotal}}{{hbytes .Host.MemUsed}} / {{hbytes .Host.MemTotal}}{{else}}—{{end}}</b></div>
     <div class="srvtile"><span>{{t "srv.disk"}}</span><b>{{if .Host.DiskTotal}}{{hbytes .Host.DiskUsed}} / {{hbytes .Host.DiskTotal}}{{else}}—{{end}}</b></div>
     <div class="srvtile"><span>{{t "srv.temp"}}</span><b>{{if .Host.TempC}}{{printf "%.0f" .Host.TempC}}°C{{else}}—{{end}}</b></div>
+    <div class="srvtile"><span>{{t "srv.uptime_tile"}}</span><b>{{if .Host.Uptime}}{{humanDur .Host.Uptime}}{{else}}—{{end}}</b><small class="muted">{{if .Host.OS}}{{.Host.OS}}{{end}}</small></div>
   </div>
   <div class="srvhead" style="margin-top:12px"><h3 style="margin:0;font-size:15px">ROSMan</h3>
     <span class="muted small">{{t "srv.rosman_note"}}</span></div>

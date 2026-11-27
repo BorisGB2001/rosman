@@ -150,7 +150,7 @@
     <thead><tr>{{if canWrite $.User}}<th data-nosort title="{{t "disc.ignore_tip"}}">{{t "disc.ignore"}}</th>{{end}}<th>Identity</th><th>IP</th><th>MAC</th><th>{{t "neigh.platform"}}</th><th>{{t "disc.seenby"}}</th><th>{{t "al.state"}}</th><th></th></tr></thead>
     <tbody>
     {{range .Discovered}}
-      <tr {{if or .Managed .Ignored}}style="opacity:.6"{{end}}>
+      <tr class="{{if .Managed}}rowmanaged{{else if .Ignored}}rowignored{{end}}">
         {{if canWrite $.User}}<td><form class="inline" method="post" action="/neighbors/ignore"><input type="hidden" name="key" value="{{.Key}}"><input type="hidden" name="on" value="{{if .Ignored}}0{{else}}1{{end}}"><input type="checkbox" {{if .Ignored}}checked{{end}} onchange="this.form.submit()" title="{{if .Ignored}}{{t "disc.unignore_tip"}}{{else}}{{t "disc.ignore_tip"}}{{end}}" aria-label="{{t "disc.ignore"}}"></form></td>{{end}}
         <td>{{if .Identity}}{{.Identity}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="mono">{{if .IP}}{{.IP}}{{else}}<span class="muted">—</span>{{end}}</td>

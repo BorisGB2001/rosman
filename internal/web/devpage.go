@@ -117,3 +117,43 @@ func (s *Server) accountPrefs(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, "/account?msg=prefs-saved", http.StatusSeeOther)
 }
+
+// netboxCheck tests the NetBox URL/token typed in the settings form (an empty
+// token field means the stored one) without saving anything.
+func (s *Server) netboxCheck(w http.ResponseWriter, r *http.Request) {
+	ver, err := s.a.NetBoxCheck(r.FormValue("netbox_url"), r.FormValue("netbox_token"), r.FormValue("netbox_insecure") == "on")
+	if err != nil {
+		http.Redirect(w, r, "/settings?err="+urlq("NetBox: "+err.Error())+"#netbox", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/settings?msg="+urlq("NetBox "+ver+": OK")+"#netbox", http.StatusSeeOther)
+}
+
+// netboxSyncAll mirrors every device to NetBox in the background; progress is
+// shown in the status bar.
+func (s *Server) netboxSyncAll(w http.ResponseWriter, r *http.Request) {
+	if !s.a.NetBoxConfigured() {
+		http.Redirect(w, r, "/settings?err="+urlq("NetBox: синхронизация выключена или не заданы URL и токен")+"#netbox", http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "netbox_sync_all", "")
+	go s.a.NetBoxSyncAll()
+	http.Redirect(w, r, "/settings?msg=netbox-sync-started#netbox", http.StatusSeeOther)
+}
+
+// deviceNetBoxSync mirrors one device to NetBox now and reports the result.
+func (s *Server) deviceNetBoxSync(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	dst := fmt.Sprintf("/devices/%d", id)
+	d, err := s.a.Store.Device(id)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if err := s.a.NetBoxSync(d, true); err != nil {
+		http.Redirect(w, r, dst+"?err="+urlq("NetBox: "+err.Error())+"#netbox", http.StatusSeeOther)
+		return
+	}
+	_ = s.a.Store.AddAudit(userFrom(r).Username, "netbox_sync", d.Name)
+	http.Redirect(w, r, dst+"?msg=netbox-synced#netbox", http.StatusSeeOther)
+}

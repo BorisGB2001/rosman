@@ -107,6 +107,12 @@
       {{if .HasSSH}}<form class="inline" method="post" action="/devices/{{.D.ID}}/sshkey" onsubmit="return confirm('{{t "ssh.key_confirm"}}')"><button class="btn sm" type="submit" title="{{t "ssh.key_hint"}}">🔑 {{t "ssh.key_install"}}</button></form>{{end}}
       {{if .D.SSHHostPin}}<form class="inline" method="post" action="/devices/{{.D.ID}}/hostpin-reset" onsubmit="return confirm('{{t "ssh.pin_confirm"}}')"><button class="btn sm" type="submit" title="{{t "ssh.pin_hint"}}">{{t "ssh.pin_reset"}}</button></form>{{end}}
     </span>{{end}}</td></tr>
+  {{if or .NBOn .NB.ID}}<tr id="netbox"><th>NetBox</th><td colspan="3">
+    {{if .NB.URL}}<a href="{{.NB.URL}}" target="_blank" rel="noopener">{{t "nb.open"}} #{{.NB.ID}} ↗</a> <span class="muted small">· {{t "nb.synced"}} {{.NB.At}}{{if not .NB.Owned}} · {{t "nb.not_owned"}}{{end}}</span>
+    {{else if .NB.Err}}<span class="badge bad" title="{{.NB.Err}}">{{t "nb.error"}}</span> <span class="muted small">{{.NB.At}} · {{.NB.Err}}</span>
+    {{else}}<span class="muted">{{t "nb.never"}}</span>{{end}}
+    {{if and (canWrite .User) .NBOn}}<form class="inline" method="post" action="/devices/{{.D.ID}}/netbox" style="margin-left:10px"><button class="btn sm" type="submit">⇄ {{t "nb.sync_now"}}</button></form>{{end}}
+  </td></tr>{{end}}
 </table></div>
 <div class="card">
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">

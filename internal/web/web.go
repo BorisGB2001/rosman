@@ -51,7 +51,7 @@ var tmplFS embed.FS
 var staticFS embed.FS
 
 // Version is the product version shown in the UI and used for releases.
-var Version = "1.9.0"
+var Version = "1.10.0"
 
 const (
 	cookieName  = "rosman_session"
@@ -485,6 +485,9 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /settings/backup/export", s.authed(s.requireRole(model.RoleAdmin, s.backupExport)))
 	mux.Handle("POST /settings/backup/import", s.authed(s.requireRole(model.RoleAdmin, s.backupImport)))
 	mux.Handle("POST /settings/testnotify", s.authed(s.requireRole(model.RoleAdmin, s.settingsTestNotify)))
+	mux.Handle("POST /settings/netbox/check", s.authed(s.requireRole(model.RoleAdmin, s.netboxCheck)))
+	mux.Handle("POST /settings/netbox/syncall", s.authed(s.requireRole(model.RoleAdmin, s.netboxSyncAll)))
+	mux.Handle("POST /devices/{id}/netbox", s.authed(s.requireRole(model.RoleOperator, s.deviceNetBoxSync)))
 	mux.Handle("GET /configs/{id}/download", s.authed(s.configDownload))
 	mux.Handle("GET /ca", s.authed(s.requireRole(model.RoleAdmin, s.caPage)))
 	mux.Handle("POST /ca/generate", s.authed(s.requireRole(model.RoleAdmin, s.caGenerate)))
@@ -1505,6 +1508,7 @@ func (s *Server) deviceSetSite(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_ = s.a.Store.SetDeviceSite(id, sid)
+	s.a.NetBoxSyncAsync(id)
 	http.Redirect(w, r, "/devices/"+r.PathValue("id"), http.StatusSeeOther)
 }
 
@@ -1534,6 +1538,7 @@ func (s *Server) deviceSetType(w http.ResponseWriter, r *http.Request) {
 		t = ""
 	}
 	_ = s.a.Store.SetDeviceType(id, t)
+	s.a.NetBoxSyncAsync(id)
 	http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?msg=type-saved", http.StatusSeeOther)
 }
 
@@ -1549,6 +1554,7 @@ func (s *Server) deviceSetIP(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.a.Store.UpdateDeviceIP(id, ip)
 	_ = s.a.Store.AddAudit(userFrom(r).Username, "device_setip", ip)
+	s.a.NetBoxSyncAsync(id)
 	if r.FormValue("next") == "device" {
 		http.Redirect(w, r, "/devices/"+r.PathValue("id")+"?msg=default-ip-set", http.StatusSeeOther)
 		return
@@ -1833,6 +1839,7 @@ func (s *Server) deviceDetail(w http.ResponseWriter, r *http.Request) {
 	snmpPool, _ := s.a.SNMPAllowed()
 	s.render(w, r, "device", map[string]any{"Active": "devices",
 		"D": d, "H": health, "Configs": cfgs, "Neighbors": neighbors, "Traffic": traffic,
+		"NB": s.a.NetBoxLink(d.ID), "NBOn": s.a.NetBoxConfigured(),
 		"Sites": sites, "DevTags": devTags, "BackupMode": s.a.BackupMode(),
 		"Clients":  clients,
 		"Images":   images, "ModelImg": modelImgPath(s.a.Cfg.DataDir, d.Model),
@@ -4247,9 +4254,12 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 			"alert_cpu": get("alert_cpu"), "alert_temp": get("alert_temp"), "alert_mem": get("alert_mem"),
 			"backup_interval_hours": get("backup_interval_hours"), "backup_stale_days": get("backup_stale_days"),
 			"snmp_allowed": get("snmp_allowed"),
+			"netbox_url": get("netbox_url"), "netbox_site": get("netbox_site"),
+			"netbox_enabled": get("netbox_enabled"), "netbox_insecure": get("netbox_insecure"),
 			"syslog_host": get("syslog_host"), "syslog_topics": get("syslog_topics"),
 		},
 		"Syslog":     s.a.SyslogStatus(),
+		"NBTokenSet": get("netbox_token_enc") != "", "NBOn": s.a.NetBoxConfigured(),
 		"AIKeySet":   get("ai_api_key_enc") != "", "AIModel": s.a.AIModel(), "AIModels": app.AIModels,
 		"AIEnvKey":   os.Getenv("ANTHROPIC_API_KEY") != "",
 		"BkEnvHours": int(s.a.Cfg.BackupInterval.Hours()),
@@ -4694,6 +4704,24 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.FormValue("ai_api_key_clear") == "on" {
 		set("ai_api_key_enc", "")
+	}
+	// NetBox mirroring: URL, API token (stored encrypted; empty field keeps it), TLS check, default site.
+	for _, k := range []string{"netbox_enabled", "netbox_insecure"} {
+		if r.FormValue(k) == "on" {
+			set(k, "on")
+		} else {
+			set(k, "")
+		}
+	}
+	set("netbox_url", strings.TrimSpace(r.FormValue("netbox_url")))
+	set("netbox_site", strings.TrimSpace(r.FormValue("netbox_site")))
+	if v := strings.TrimSpace(r.FormValue("netbox_token")); v != "" {
+		if enc, err := s.a.Box.Encrypt(v); err == nil {
+			set("netbox_token_enc", enc)
+		}
+	}
+	if r.FormValue("netbox_token_clear") == "on" {
+		set("netbox_token_enc", "")
 	}
 	s.a.SyslogReload()
 	if r.FormValue("git_enabled") == "on" {

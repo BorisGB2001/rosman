@@ -279,7 +279,10 @@ func (a *App) PollDevice(d model.Device) error {
 	_ = a.Store.ReplaceClients(d.ID, h.Clients)
 	_ = a.Store.AddIfaceSamples(d.ID, now, h.Ifaces)
 	_ = a.Store.PruneIfaceBefore(now.Add(-24 * time.Hour))
-	return a.Store.UpdateInventory(d.ID, h.Model, h.Serial, h.Version, now)
+	err = a.Store.UpdateInventory(d.ID, h.Model, h.Serial, h.Version, now)
+	// mirror to NetBox when configured and something it shows changed
+	a.NetBoxSyncAsync(d.ID)
+	return err
 }
 
 // RefreshFirmware forces an update check on the device and re-evaluates the alert.
